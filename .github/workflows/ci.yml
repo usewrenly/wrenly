@@ -1,0 +1,109 @@
+# Fixture-only validation; no deployment or model-provider secrets.
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: 'true'
+  TURBO_TELEMETRY_DISABLED: '1'
+  NEXT_TELEMETRY_DISABLED: '1'
+  # Constructor-only fixture URL for default skipped DB suites; no service is required here.
+  WRENLY_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_ci
+  WRENLY_AUTH_SECRET: fixture-only-ci-auth-secret-01234567890123456789
+  WRENLY_APP_URL: http://localhost:3002
+  WRENLY_WEB_URL: http://localhost:3000
+  NEXT_PUBLIC_WEB_URL: http://localhost:3000
+  NEXT_PUBLIC_API_URL: http://localhost:3002
+  WRENLY_PREVIEW_ENABLED: 'false'
+  WRENLY_APP_DATABASES_ENABLED: 'false'
+  WRENLY_PUBLISHING_ENABLED: 'false'
+
+jobs:
+  checks:
+    name: Tests, types, lint and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.14'
+      - run: bun install --frozen-lockfile
+      - name: Check high and critical dependency advisories
+        run: bun audit --audit-level=high
+      - run: bun test
+      - run: bun run check-types
+      - run: bun run lint
+      - run: bun run build
+
+  postgres:
+    name: Fresh schema, auth and upgrade acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: wrenly
+          POSTGRES_PASSWORD: fixture-only
+          POSTGRES_DB: wrenly_ci
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wrenly -d wrenly_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --cpus 1
+          --memory 512m
+    env:
+      WRENLY_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_ci
+      WRENLY_TEST_SETUP_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_setup_test
+      WRENLY_TEST_MEMBER_UPGRADE_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_member_upgrade_test
+      WRENLY_TEST_PROVIDER_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_provider_test
+      WRENLY_TEST_SKILLS_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_skills_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.14'
+      - run: bun install --frozen-lockfile
+      - name: Create guarded fixture databases
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          for database in wrenly_setup_test wrenly_member_upgrade_test wrenly_provider_test wrenly_skills_test; do
+            docker exec "$POSTGRES_CONTAINER" createdb -U wrenly "$database"
+          done
+      - name: Verify documented migration command and safe repetition
+        working-directory: packages/db
+        run: |
+          bun run db:check
+          bun run db:migrate
+          bun run db:migrate
+      - name: Verify owner, invitations, providers and retained history
+        run: |
+          bun test \
+            packages/db/tests/integration/identity/instance-setup.integration.test.ts \
+            packages/db/tests/integration/identity/member-access-upgrade.integration.test.ts \
+            packages/db/tests/integration/configuration/provider-connections.integration.test.ts \
+            packages/db/tests/integration/configuration/skills.integration.test.ts
+      - name: Verify private password recovery and first-prompt Skills
+        env:
+          WRENLY_TEST_PASSWORD_RECOVERY_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_setup_test
+        run: bun test packages/db/tests/integration/identity/password-recovery.integration.test.ts

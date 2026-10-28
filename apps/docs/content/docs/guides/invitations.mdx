@@ -1,0 +1,70 @@
+---
+title: Invite local members
+description: Owner-authorized invitations backed by Better Auth Organization memberships.
+---
+
+Every user signs in to a local Better Auth account. Public signup is closed.
+The instance owner can authorize additional accounts from **Settings → Instance
+access** (`/settings/access`). Apply all checked-in migrations
+before starting an updated API.
+
+## Issue an invitation
+
+If prompted, enable invitations to initialize the instance organization and owner
+membership. Enter the recipient's email and create an invitation. Copy the private
+link displayed once and share it through a trusted channel. It expires after 48
+hours; no email service or external Wrenly account is required. Saved plaintext
+links are not retained for later retrieval.
+
+Invitees receive role `member`. They can create personal projects, but cannot
+administer the instance or access another person's projects. Invitations do not
+change the owner's credentials, existing project ownership or existing-account
+passwords.
+
+## Accept an invitation
+
+A new user opens the private link and supplies their name and a password of 8–128
+characters. Better Auth creates the credentials and membership atomically with
+invitation consumption. Ordinary sign-in then opens the workspace.
+
+An existing user signs in to the exact invited account and reopens the original
+link before accepting. An invitation cannot replace that account's password or
+sign in as its owner. The private proof is removed from the address bar immediately
+and stays only in page memory; reload requires reopening the original link.
+
+## Revoke or recover
+
+The owner can revoke pending invitations. Revocation disables both the membership
+invitation and its private authorization. Issue a fresh link when replacing a
+revoked or expired one. Accepted invitations cannot remove memberships; member
+removal is separate work.
+
+Retry a lost acceptance acknowledgement from the same form. If the account was
+created but sign-in failed, sign in normally with the chosen password. If issuance
+acknowledgement was lost, refresh the access list and revoke/reissue rather than
+trying to recover a stored plaintext link.
+
+The first slice supports up to 20 live pending invitations and 100 organization
+members. It uses owner-authorized delivery, not mailbox verification. SMTP,
+project sharing, team administration and delegated roles are not included.
+
+## Suspend or restore a member
+
+The instance owner can use **Settings → Members → Suspend access** for a non-owner
+member. Review the confirmation before applying it. Wrenly ends their sessions,
+revokes preview access and requests cleanup of ready previews. Accounts, credentials,
+private projects and history are retained. The owner cannot suspend their own account.
+
+Queued/running builds, conversations, preview preparation and unresolved publishing
+must finish or be cancelled/reconciled before suspension. A blocker leaves access
+unchanged. Existing deployed applications remain deployed; suspension controls access
+to Wrenly, not the public runtime of a generated application.
+
+**Restore access** lets the person sign in normally again. It does not revive old
+cookies, restart previews or repeat builds. If an action cannot be confirmed, use
+**Check saved access** before another change. An explicit retry retains the same
+request identity; newer changes require review.
+
+Migration **0019** is required. It backfills existing session bindings and adds the
+native Better Auth administration fields and access audit. Raw Better Auth admin and
+organization HTTP endpoints remain closed. Membership still does not share projects.

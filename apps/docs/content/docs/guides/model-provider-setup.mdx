@@ -1,0 +1,103 @@
+---
+title: Models & providers
+description: Connect inference, choose a model and verify a real response.
+---
+
+A **provider** is the service hosting an AI model; a **model** is the particular
+identifier you select. **Inference** means asking that model to produce an answer.
+For example, connect an Ollama service, then choose one of its installed models.
+Provider setup happens in the interface rather than through routine `.env` edits.
+
+## Connect a provider
+
+The instance owner opens **Settings → Providers**.
+
+1. Choose **Local · Ollama**, **Hosted provider**, or the advanced compatible-endpoint option.
+2. For hosted inference, search the catalog, choose a provider marked compatible and
+   review its destination. Enter its token when required. For Ollama, enter its server address.
+3. Select **Save connection**. Saving stores configuration; it does not start inference.
+4. Select **Check connection** on the saved card. Choose an installed or served model.
+   If listing is unavailable, an entered/catalog ID remains labelled as not live-verified.
+5. Select **Set instance default** to use that connection/model for new requests.
+
+<Callout title="A catalog entry is not an implemented adapter">
+The searchable catalog covers more services than Wrenly currently supports. The working
+transport is OpenAI-compatible, including configured Ollama. Other native protocols
+require adapters. A catalog price or model ID does not prove account availability.
+</Callout>
+
+## Verify inference
+
+Open a project and ask a simple question. A successful model-list check establishes
+reachability; an actual response establishes inference. Building additionally needs
+the framework's [Docker toolchain](/docs/guides/local-previews).
+
+If the check fails, confirm the saved destination and service availability. If a model
+is listed but cannot answer, check account access, quota and the exact identifier.
+Wrenly does not silently switch providers to hide a failure.
+
+## Choose a model on this browser
+
+Open **Settings → Models**. Search by model/provider or filter Local and Cloud, then
+select a model for new private-project prompts. **Use instance default** clears the
+browser override. This does not change other members' preferences or admitted work.
+
+The choice includes both provider and model: two providers can use the same model
+name. If an older browser preference has no provider, select the pair again; Wrenly
+will not guess a provider or select the first available model.
+
+If the browser cannot read or save a preference, Wrenly shows a storage error.
+Allow site storage and choose the model again. A failed save keeps the previous
+selection; a failed reset does not claim that the instance default was restored.
+
+A missing saved choice remains visible for explicit correction. Refresh discovery
+checks availability again; older inventory is labelled when refresh fails.
+
+Shared projects use the owner's saved **Project model**, configured in project settings.
+A missing or disabled project connection blocks inference instead of falling back to
+the instance default. [Learn about project access](/docs/guides/project-settings).
+
+## Set up local inference
+
+Discovery lists models already installed in the configured Ollama service. An unreachable
+service and a reachable service with no models have different guidance. Install/run
+Ollama and a model on the intended inference machine, then check that service from
+Wrenly. The API machine may differ from the browser machine.
+
+Wrenly does not scan unrelated hosts or download large models automatically. The
+catalog includes an attributed local snapshot; normal browsing does not require internet.
+The owner can explicitly refresh metadata without retargeting saved credentials.
+
+## Manage a saved connection
+
+Replace its token or disable/re-enable it from **Providers**. Empty token edits retain
+the saved token. Destination changes require a new connection so queued work cannot be
+retargeted. Tokens clear from successful form saves and are not returned to the browser.
+Members use enabled connections without viewing credentials; hosted usage consumes the
+configured provider account's quota.
+
+Admitted work retains its connection version/model. Token rotation supplies a replacement
+credential for that same connection. Disabled connections stop execution rather than
+selecting a replacement automatically.
+
+## Import existing server configuration
+
+Under **Existing server configuration**, review the destination and choose **Import
+connection**. Wrenly copies the credential server-side to the encrypted store without
+changing `.env` or exposing the token. Finish old requests first, check the saved connection,
+then select a default and clear outdated browser overrides.
+
+Repeated imports do not rotate tokens or re-enable disabled connections. Imported sources
+cannot silently switch to another provider.
+
+## Back up credentials
+
+Saved provider tokens are encrypted in PostgreSQL. Their separate encryption key is
+created in the API's private persistent data directory. `WRENLY_DATA_DIR` defaults to
+`.local/wrenly` relative to the API working directory; container installations must persist
+that location. Back it up with PostgreSQL. Changing the auth signing secret does not
+rotate this key.
+
+If the key is missing while saved tokens exist, restore the matching backup. Wrenly
+refuses to generate a replacement that would make the old tokens unreadable. Token-free
+local connections do not need a provider encryption key.

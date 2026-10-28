@@ -1,0 +1,12 @@
+{
+	admin off
+	auto_https off
+	frankenphp
+	servers {
+		protocols h1
+	}
+}
+:3000 {
+	root * /app/public
+	php_server
+}

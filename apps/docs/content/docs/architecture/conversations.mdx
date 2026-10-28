@@ -1,0 +1,130 @@
+---
+title: Conversations and revisions
+description: Durable conversations, explicit build actions and selected-revision editing.
+---
+
+A conversation is the messages you exchange with Wrenly. A revision is a saved
+version of the app. Asking a question should not rebuild the app; requesting a change
+should build on the version you selected.
+
+For example, “Why did you choose this layout?” asks for an answer. “Add a booking
+calendar” asks for a change. Wrenly saves both the messages and any resulting build
+activity so refreshing the page does not lose them.
+
+In the details below, **inference** means asking the model for an answer; **admission**
+means checking and saving a request before accepting work; and **replay** means reading
+saved progress again. A **frozen** setting is the version saved with that request,
+which later settings changes must not replace.
+
+Wrenly separates user messages, assistant responses
+and build activity. Auto is the default mode: it answers questions and builds for
+clear implementation requests. Plan discusses requirements and revises an approach
+without generation, even if a message asks it to build. Switching back to Auto
+does not execute the plan; submit a new implementation request. Historical Ask/Build
+turns remain compatible for history and retries. Changes use the revision selected when the
+message is submitted. Discussion and planning do not implicitly publish an app.
+
+<ExecutionFlow kind="build" />
+
+## Current implementation
+
+Persistence, bounded server-side inference, atomic build actions and owned HTTP
+routes are implemented. The API accepts Auto and Plan, with historical Ask/Build compatibility. The dashboard and
+workspace use persisted conversations, with separate assistant messages and build
+activity. The selected revision is preserved in the URL. Migration
+`0005_conversation-foundation.sql` adds
+conversations, turns, messages, action links and replay events.
+
+Admission saves immutable model/provider and base revision settings with an
+idempotency key. Duplicate submissions return the original turn. Ownership and
+revision checks precede inference. One active turn per project and bounded queue
+and history limits prevent unbounded admission. History and events use ordered,
+bounded cursor reads. Public snapshots exclude executor claim tokens.
+
+Actual validated answers and clarifications are persisted as assistant messages;
+status and interruption events remain separate. A leased executor cannot write
+after losing ownership. Expired inference is marked interrupted and requires an
+explicit retry rather than silently repeating a model call. A build proposal cannot
+be completed through the answer-only persistence method.
+
+## Conversation execution and routes
+
+POST `/api/projects/:id/messages` admits a turn with a UUID `Idempotency-Key`.
+GET the same path reads paginated messages and the latest turn identity. GET
+`/api/conversation-turns/:id` reads saved state; its `/events` endpoint replays
+ordered SSE events, and POST `/cancel` explicitly stops inference. Browser
+subscription loss does not cancel the saved turn.
+
+The worker runs one inference at a time per API process. It uses the selected
+configured provider and model, renews its claim, and aborts on cancellation,
+shutdown, lost ownership or `WRENLY_MODEL_TIMEOUT_SECONDS`. Provider redirects
+are rejected, response bodies are bounded, and failed calls are not automatically
+retried. Actual structured model answers are saved separately from status events.
+
+Context includes the selected revision's saved outcome, bounded diagnostics,
+file manifest and bounded conversation history. Source bodies are not provided in
+this pass; the model is instructed to explain missing evidence. Essential history
+that exceeds the budget fails explicitly rather than being silently discarded.
+
+After upgrading, apply all checked-in migrations with `bun run db:migrate` from
+`packages/db` before restarting the API. Current startup requires migrations through0030.
+To check persistence, send a question, reload and confirm the prompt and response return.
+
+## Build actions and editing
+
+Build proposals save their assistant text, action link and durable build admission
+in one database transaction. Recovery reconciles that linked job rather than
+repeating the model decision or admitting another build. Tool results use saved
+job outcomes and remain separate from assistant-written messages.
+
+Next.js editing now uses `edit_app_v1` over MCP. The API applies validated explicit
+create/update/delete operations to the complete saved source snapshot; omitted
+files survive. Complete editing context is limited to 128,000 serialized bytes;
+oversized source fails explicitly. Laravel13 uses the same editing contract. Roadmap frameworks cannot be used for
+follow-up editing until their MCP servers implement and verify it.
+
+The workspace exposes Auto/Plan controls and binds new requests to the
+selected revision. Browsing another revision does not stop live execution or
+change the base of an admitted turn. Reload restores messages, activity, source,
+logs and revision selection. Assistant Markdown disables raw HTML and does not
+load model-provided images automatically.
+
+Response retry creates a new saved turn with its original settings. Exact build
+retry remains a separate build action, visibly labelled outside the conversation.
+Ambiguous admission retains one key and frozen input for acknowledgement recovery.
+Older build history is labelled separately rather than fabricated as chat messages.
+
+For a useful check, ask a question in Auto, discuss a plan in Plan mode, then switch
+back to Auto and explicitly request a small change. Confirm Plan never starts a build
+and the change uses the selected revision. Automated fixtures cannot tell you whether
+your chosen model produces good answers, so check its real response too.
+
+These capabilities do not depend on multiple autonomous agents. Framework-specific
+MCP servers remain generation/editing tool providers. A model supplies the response;
+the server validates the proposed action before it admits durable work.
+
+The current context bound is measured in characters rather than provider-specific
+tokens. Model context windows vary; token-aware sizing and compaction remain work
+before public conversation launch. For local Ollama models, context size is
+configured on the model itself, as described in its
+[compatibility documentation](https://docs.ollama.com/api/openai-compatibility#setting-the-local-context-size).
+
+## Workspace navigation
+
+The revision selector shows the selected build's short identifier and marks its entry
+in history. Browsing another revision does not change an already admitted request's
+base revision. Source navigation uses expandable directories, sorted before files,
+with path search and read-only source. Filtering the file list does not clear the
+selected file's source, and file reordering preserves selection by path.
+
+User briefs carry their sender/time inside the message and a profile initials marker
+beside it. Current projects remain private; instance membership does not imply shared
+conversation authorship. Responsive composer controls preserve drafts and keep Send
+available when long model identifiers require a separate row.
+
+## Find the implementation
+
+`apps/api/src/modules/conversations/contracts` defines allowed modes and model decisions.
+`persistence` saves messages and progress, `execution` asks the model and connects allowed
+build proposals, and `http` handles browser requests. Unit and controlled browser checks
+live under `tests`; PostgreSQL fixtures verify real saved-state changes separately.

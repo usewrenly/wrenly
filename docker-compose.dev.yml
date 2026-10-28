@@ -1,0 +1,81 @@
+# docker-compose.dev.yml
+# Start the development database: docker compose -f docker-compose.dev.yml up -d postgres
+# Publishing services additionally need the setup described below.
+# Stop with:                           docker compose -f docker-compose.dev.yml down
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wrenly-postgres
+    environment:
+      POSTGRES_DB: wrenly
+      POSTGRES_USER: wrenly
+      POSTGRES_PASSWORD: wrenly_dev
+    ports:
+      - "65432:5432"
+    volumes:
+      - wrenly_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wrenly -d wrenly"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: wrenly-gitea
+    environment:
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__server__DOMAIN=localhost
+      - GITEA__server__HTTP_PORT=3030
+      - GITEA__server__ROOT_URL=http://localhost:3030
+      - GITEA__security__INSTALL_LOCK=true
+      # Admin user created on first run
+      - GITEA__admin__DEFAULT_EMAIL_NOTIFICATIONS=disabled
+    ports:
+      - "3030:3030"
+    volumes:
+      - wrenly_gitea_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/api/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+  # Optional: prepare .local/registry/auth/htpasswd first (see apps/docs/content/docs/guides/publishing-setup.mdx).
+  # Start with: docker compose -f docker-compose.dev.yml --profile publishing up -d
+  registry:
+    image: registry:3
+    profiles: [publishing]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:5000"
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Wrenly local registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    volumes:
+      - wrenly_registry_data:/var/lib/registry
+      - type: bind
+        source: ./.local/registry/auth/htpasswd
+        target: /auth/htpasswd
+        read_only: true
+        bind:
+          create_host_path: false
+    mem_limit: 512m
+    cpus: 1
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  wrenly_postgres_data:
+    name: wrenly_postgres_data
+  wrenly_gitea_data:
+    name: wrenly_gitea_data
+  wrenly_registry_data:
+    name: wrenly_registry_data

@@ -1,0 +1,201 @@
+---
+title: Install Wrenly
+description: Start a local instance, create its owner and connect your first model.
+---
+
+import { Step, Steps } from "fumadocs-ui/components/steps";
+
+An instance is your installation of Wrenly: its accounts, projects and settings belong
+to that installation. You do not need an external Wrenly account. You do need to sign in,
+even if you are the only person using it. That keeps a server address from becoming an
+open invitation to your private projects.
+
+## Who needs to install it?
+
+Only the **instance operator**—the person running the server—sets up Wrenly. Everyone
+invited to that instance opens its web address and signs in; they do not need Git,
+Bun or a source checkout on their own computer.
+
+This guide currently uses a source checkout. Contributors use that same checkout to
+change and test the code, but ordinary users do not need to become contributors.
+A packaged guided installer is not released yet. The reserved `@wrenly` npm scope is
+for future package distribution; there is no published installer command to run today.
+
+## Get the source
+
+Download the intended source release or clone the public repository. Open a terminal
+in the extracted/cloned folder containing `package.json`. Invited teammates do not
+repeat this installation; they use your instance's web address.
+
+## Prerequisites
+
+Use Bun1.3.14, Node24 or newer, Git and Docker. The source checkout is required; the
+public source release is planned for28October2026. Linux with local Docker is the
+supported host for the current isolated preview/publishing workflows. Those optional
+workflows have additional toolchain requirements described in their own guides.
+
+The local development services contain example credentials. This walkthrough is for
+your development machine; review network exposure, HTTPS and persistent backups before
+making an installation available to other people.
+
+<Steps>
+
+<Step>
+
+### Prepare the configuration
+
+From the repository root:
+
+```bash
+cp .env.example .env
+cp apps/web/.env.example apps/web/.env.local
+bun install --frozen-lockfile
+```
+
+API commands and migrations read the root `.env`. Web public addresses stay in
+`apps/web/.env.local`. You do not need a separate API environment file.
+
+If those private files already exist, edit them instead of copying over them. In the
+root `.env`, set these core values:
+
+| Setting | Local value | Why it is needed |
+| --- | --- | --- |
+| `WRENLY_DATABASE_URL` | `postgresql://wrenly:wrenly_dev@localhost:65432/wrenly` | Connects the API to the development PostgreSQL service |
+| `WRENLY_AUTH_SECRET` | A fresh random secret | Protects authentication; keep it stable and private |
+| `WRENLY_APP_URL` | `http://localhost:3002` | The API's address |
+| `WRENLY_WEB_URL` | `http://localhost:3000` | The browser application's address |
+| `WRENLY_APP_DATABASES_ENABLED` | `false` initially | Experimental Development databases have a separate opt-in setup |
+| `WRENLY_PREVIEW_ENABLED` | `false` initially | Lets you finish account/model setup before preparing Docker preview toolchains |
+| `WRENLY_PUBLISHING_ENABLED` | `false` initially | Publishing is a separate explicit setup |
+
+Generate the authentication secret with:
+
+```bash
+openssl rand -base64 32
+```
+
+Paste the result as `WRENLY_AUTH_SECRET`; it is not a password you sign in with. Keep it
+out of screenshots and commits. You will choose your account password in the browser.
+
+The web configuration supplies `NEXT_PUBLIC_WEB_URL=http://localhost:3000` and
+`NEXT_PUBLIC_API_URL=http://localhost:3002`. Public settings identify addresses; provider
+tokens belong on the server and are configured through Settings after sign-in.
+Use a plain HTTP(S) origin for `NEXT_PUBLIC_WEB_URL`, without credentials, a path,
+query parameters or a fragment. Better Auth uses this browser-facing address.
+The Next.js server forwards browser `/api` requests to `NEXT_PUBLIC_API_URL`.
+Use an HTTP(S) origin without `/api` or credentials, reachable from that server;
+restart Next.js after changing it.
+
+</Step>
+
+<Step>
+
+### Start PostgreSQL and apply migrations
+
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres
+cd packages/db
+bun run db:migrate
+cd ../..
+```
+
+A migration updates Wrenly's database structure while preserving existing data. Always
+apply every checked-in migration before starting a newer API. Running the migration
+command again on an up-to-date database is safe; deleting your database is not an
+upgrade procedure.
+
+</Step>
+
+<Step>
+
+### Start the apps
+
+```bash
+bun run dev
+```
+
+Keep this terminal running. Open `http://localhost:3000` for the builder. The API uses
+port3002; the documentation/landing app uses port3001. They are separate applications,
+so opening the API address is not how you open the builder.
+
+</Step>
+
+<Step>
+
+### Create the first owner
+
+In another terminal:
+
+```bash
+cd apps/api
+bun run setup
+```
+
+Open the private, short-lived link it prints. Choose your name, email and password,
+then complete ordinary sign-in. The one-time proof establishes who may create the
+first account; it is not a permanent sign-in link. Keep it private.
+
+See [First owner and sign-in](/docs/guides/instance-setup) for expiry, an existing
+installation and recovery. Do not reset an existing installation to claim ownership.
+
+</Step>
+
+<Step>
+
+### Connect a model
+
+Open Settings and follow [Models and providers](/docs/guides/model-provider-setup).
+Connect a supported hosted provider or an installed local Ollama model, check its
+model list and choose a default. Then ask a simple question from a project.
+
+A successful model-list check proves that the connection is reachable; the response
+proves that inference works. Building additionally needs the framework's isolated
+Docker validation toolchain. Prepare [local previews](/docs/guides/local-previews)
+and [publishing](/docs/guides/private-publishing) when you are ready for those steps.
+
+</Step>
+
+</Steps>
+
+## Documentation without an external service
+
+The local docs app works at `http://localhost:3001/docs`, including search. The builder's
+**See docs →** links use it automatically in development. In production, set the optional
+`NEXT_PUBLIC_DOCS_URL` in the web configuration to your documentation entry URL ending
+in `/docs`, then rebuild the web app. It can point to your own locally hosted docs;
+no hosted search account or Wrenly cloud account is needed.
+
+If this value is absent in production, the UI says documentation is not connected
+rather than guessing a domain. The rest of the builder continues to work.
+
+If you open the apps through an HTTPS port-forwarding address, forward the docs app's
+port3001 too. Use that forwarded address followed by `/docs` as `NEXT_PUBLIC_DOCS_URL`
+in `apps/web/.env.local`, then restart the web dev server. The browser needs an address
+it can reach; your server's `localhost` is not necessarily the browser's computer.
+
+
+## Updating an existing instance
+
+A source update and a data backup are different things. Git keeps Wrenly’s code; it
+cannot recover your accounts, projects or encryption keys.
+
+1. Record the currently running code revision and read the incoming release notes.
+2. Stop accepting new work. Let active builds, migrations and publishing operations
+   finish or resolve their saved recovery state; then stop the API and web processes.
+3. Back up the control PostgreSQL database with PostgreSQL’s backup tools. Keep a
+   matching copy of `WRENLY_DATA_DIR`, private configuration and stable secrets. A
+   database dump alone cannot decrypt saved provider or application-database credentials.
+4. If you enabled experimental app databases, preserve their data and verified backups
+   separately. The control database contains their records, not their actual app rows.
+   Private Git, registry and deployed applications have their own storage too.
+5. Test the backup in an isolated installation before relying on it. Never restore over
+   your working instance just to see whether a backup is valid.
+6. Update the checkout, run `bun install --frozen-lockfile`, then apply all migrations
+   from `packages/db` with `bun run db:migrate`. Rebuild the apps and restart them with
+   the same configuration and data-directory location.
+7. Confirm sign-in, existing projects, model settings and a small test request. Check
+   optional previews and publishing separately if you enabled them.
+
+If startup refuses a missing migration or key, stop and investigate. Deleting storage,
+creating replacement keys or starting old code against a newer schema is not a safe
+rollback. Recovery needs a compatible code revision and the matching verified backups.

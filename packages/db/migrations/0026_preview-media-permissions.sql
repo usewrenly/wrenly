@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "preview_media_origins" jsonb DEFAULT '[]'::jsonb NOT NULL;

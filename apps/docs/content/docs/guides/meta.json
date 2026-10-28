@@ -1,0 +1,20 @@
+{
+  "title": "Guides",
+  "pages": [
+    "---Get started---",
+    "installation",
+    "instance-setup",
+    "model-provider-setup",
+    "---Your workspace---",
+    "projects",
+    "project-settings",
+    "skills",
+    "local-previews",
+    "private-publishing",
+    "publishing-setup",
+    "app-databases",
+    "---Accounts and teams---",
+    "invitations",
+    "account-settings"
+  ]
+}

@@ -1,0 +1,68 @@
+---
+title: Publish a revision
+description: Turn a saved Next.js or Laravel revision into a running application on your infrastructure.
+---
+
+Publishing makes a selected app revision available as a deployment. It is a separate,
+explicit action: building an app or opening a preview does not publish it.
+
+<ExecutionFlow kind="publishing" />
+
+## Before you publish
+
+- You are the **project owner** and have a successful saved revision.
+- Your instance operator has completed [publishing setup](/docs/guides/publishing-setup).
+- You have reviewed the app in [local preview](/docs/guides/local-previews).
+
+Next.js and Laravel13 are supported. Managed generated-app databases, persistent uploads
+and background-worker lifecycles remain separate capabilities.
+
+## Publish from the workspace
+
+1. Open the project and select the revision you want from history.
+2. In the Preview toolbar, choose **Publish this version**.
+3. Watch its recorded status. You can reload; execution continues independently.
+4. When verified, use **Published app** to open the routed application.
+
+A latest successful publish for this revision replaces the redundant Publish action
+with access to the published app. Publishing again from another revision is an explicit action.
+
+<ProductScreenshot name="preview" />
+
+## Find earlier deployments
+
+Open **Projects → Deployments** to review attempts for projects you can currently read.
+**Open revision** returns to the saved source and workspace; it does not publish again.
+A historical application link is not a live health check.
+
+## If publishing needs attention
+
+| What you see | What to do |
+| --- | --- |
+| Publishing unavailable | Ask the instance operator to review publishing configuration. |
+| Failed | Review the saved diagnostic; fix the cause, then retry deliberately. Your build and preview are retained. |
+| Interrupted or unconfirmed | Ask the operator to verify remote activity and reconcile the saved operation before trying again. |
+| Queued | Wait for the executor, or cancel before the operation is claimed. |
+
+Closing the browser does not cancel a deployment. Wrenly does not automatically repeat
+an uncertain remote operation. [Operator recovery and limits](/docs/reference/publishing-operations)
+explain the next steps for configuration and interrupted work.
+
+## Why these services?
+
+<div className="docs-task-grid">
+  <TaskCard title="Gitea · source" icon="branch" href="/docs/guides/publishing-setup" description="A private repository retains the generated source history." />
+  <TaskCard title="Registry · image" icon="layers" href="/docs/guides/publishing-setup" description="Stores the sandbox-built runtime that passed validation." />
+  <TaskCard title="Coolify · runtime" icon="rocket" href="/docs/guides/publishing-setup" description="Runs the exact image and receives runtime secrets separately." />
+</div>
+
+These are the current adapters. Additional repository and deployment providers are on
+the [roadmap](/docs/roadmap); the current Connections page does not activate them.
+
+## Why publishing keeps the exact image
+
+An image tag can move to different content later. Wrenly verifies the uploaded image's
+content hash (its **digest**) and asks the deployer to run that exact image. This avoids
+rebuilding generated source with different dependencies or settings on the deployment
+server. Registry credentials are used for promotion; application secrets are supplied
+at runtime, rather than committed into source or included as build-time credentials.

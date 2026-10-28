@@ -1,0 +1,80 @@
+---
+title: Account and preferences
+description: Manage your local account, password and browser preferences.
+---
+
+## Update your account
+
+Open **Settings** from your account menu or navigation. **Account** changes your
+local display name. A saved-profile check confirms the change before showing success.
+If a save acknowledgement is uncertain, use **Check saved profile**; your draft stays
+visible while you check. Finish that check before leaving the page.
+
+**Security** changes your password through Better Auth. Enter your current password
+and confirm a new password of 8–128 characters. **Sign out my other sessions** is
+checked initially; when selected, other sessions end and your active browser receives
+a replacement session. Password fields clear after a response. An uncertain change
+provides a sign-in path to verify the credentials rather than automatically repeating
+it. Sensitive sessions may require signing in again before a password change.
+
+**Appearance** controls system, light or dark mode for this browser. **Models** holds
+the existing device-specific model preference and the option to use the instance
+default. These preferences do not change other members' choices.
+
+Instance administrators see separate **Providers** and **Members** links. Existing
+server authorization still protects those routes; ordinary members retain their own
+account settings. Instance membership does not share private projects.
+
+## Profile pictures
+
+In **Account**, choose a PNG, JPEG or WebP up to 2 MiB, review the preview and select
+**Save picture**. Wrenly saves a sanitized 256×256 picture on your instance. Original
+uploads and image metadata are discarded; animated images, SVG and images over
+16 megapixels are rejected. No external image host or new environment setting is needed.
+Apply all checked-in migrations before starting an updated API.
+
+**Remove picture** restores initials. Picture changes refresh your account avatar and
+private-project user-message avatars. The instance owner can see current member pictures;
+ordinary members do not gain access to other accounts' pictures or private projects.
+
+If a change cannot be confirmed, choose **Check saved picture** before another change.
+When that read confirms the saved revision is unchanged, you can explicitly retry the
+same change. A newer revision from another tab requires review rather than being
+overwritten silently. Uploads are never retried automatically.
+
+Sign-in email remains read-only. Email changes, two-factor authentication and personal
+provider credentials are not included in this account slice.
+
+## Skills
+
+**Skills** holds your private, versioned instruction library. Create or import a
+self-contained SKILL.md, preserve attribution and review its saved version. A project
+creator selects exact versions in project settings; saving a library skill alone never
+starts inference or updates a project's selection. See [Project skills](./skills) for
+usage, limits and uncertain-save recovery. Apply all checked-in migrations before upgrading.
+
+## Forgot your password?
+
+Select **Forgot password?** on the sign-in page. Recovery uses a private link issued
+on the same server as your instance; it does not require a Wrenly cloud account.
+
+If you run the instance, open a terminal in the Wrenly repository root and run:
+
+```bash
+bun run recover-password your-email@example.com
+```
+
+Use the email of the existing account. Open the printed link within ten minutes,
+choose a new password and sign in again. Keep the link private: anyone holding it
+can reset that account's password while it is valid. The link is removed from the
+browser address as soon as the form opens.
+
+If someone else runs the instance, ask them to issue the private link for your account.
+This recovery flow does not send email. An instance email-delivery flow is not available yet.
+
+Recovery ends old sessions and preview access, but preserves projects, invitations and
+ownership. It cannot restore a suspended account. Active builds, conversations or
+unresolved external work must finish or be reconciled before the password can change.
+If the result is unconfirmed, choose **Retry same submission**: a completed request
+will be acknowledged without changing the password again. Reloading loses the private
+form state; request a fresh link if necessary.

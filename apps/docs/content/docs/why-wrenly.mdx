@@ -1,0 +1,48 @@
+---
+title: Why Wrenly?
+description: Choose a workflow that fits your team, infrastructure and framework.
+---
+
+Wrenly is a shared AI app-building workspace you operate on your own server. It suits
+developers, agencies and teams who want to choose their inference, inspect generated
+source and control where builds and deployments run.
+
+## Built for your working environment
+
+An agency can run one instance for its developers, invite colleagues and share selected
+projects. Each person signs in with their own account. A project can stay private or
+have explicit Viewer and Editor roles, while its owner controls publishing.
+
+Choose a supported local or hosted model connection, work through changes in a
+conversation and inspect saved source revisions. Validation runs in isolated Docker
+containers; local preview and publishing are separate, explicit steps.
+
+## What ownership gives you
+
+<div className="docs-task-grid">
+  <TaskCard title="Your infrastructure" icon="shield" href="/docs/guides/installation" description="Run a shared instance and decide how people reach it." />
+  <TaskCard title="Your model connections" icon="sparkles" href="/docs/guides/model-provider-setup" description="Choose local Ollama or supported OpenAI-compatible inference." />
+  <TaskCard title="Your project access" icon="users" href="/docs/guides/projects" description="Keep projects private or share Viewer/Editor access deliberately." />
+</div>
+
+## What you take responsibility for
+
+Self-hosting needs an operator. Plan for server capacity, HTTPS, Docker, updates,
+provider credentials and database backups. Model usage and hosting may have costs even
+when the source is available without a software subscription.
+
+Generated code needs review. A passing build establishes compilation and validation
+results; it does not establish that every application behavior meets your requirements.
+
+## Frameworks and integrations
+
+<FrameworkCards />
+
+Vue and Django remain planned.
+Gitea, a private registry and Coolify are the current publishing path. Alternative Git
+and deployment services need additional adapters and project bindings before selection
+is available. Figma/MCP connectors are planned separately from framework MCP servers.
+
+[See current capabilities and what comes next](/docs/roadmap).
+
+The public beta and source release are planned for **28 October 2026**.

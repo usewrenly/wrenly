@@ -1,0 +1,41 @@
+{
+  "name": "@wrenly/db",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    "./app-database-runtime-contract": "./src/application-databases/runtime-contract.ts",
+    "./app-database-build-contract": "./src/application-databases/build-contract.ts",
+    "./app-database-action-contract": "./src/application-databases/action-contract.ts",
+    "./app-database-resource-contract": "./src/application-databases/resource-contract.ts",
+    ".": "./src/index.ts",
+    "./app-database-roles": "./src/application-databases/roles.ts",
+    "./app-database-driver": "./src/application-databases/driver.ts",
+    "./app-database-catalog": "./src/application-databases/catalog.ts",
+    "./app-database-migrations": "./src/application-databases/migrations.ts",
+    "./app-database-viewer-contract": "./src/application-databases/viewer-contract.ts",
+    "./app-database-viewer": "./src/application-databases/viewer.ts",
+    "./schema": "./src/schema/index.ts",
+    "./app-database-binding-contract": "./src/application-databases/binding-contract.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.3",
+    "postgres": "^3.4.9",
+    "@wrenly/inference": "*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "^26.6.3",
+    "dotenv": "^18.0.5",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "*"
+  }
+}

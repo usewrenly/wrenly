@@ -1,0 +1,38 @@
+{
+  "name": "@wrenly/docs",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "bun run docs:check && next build",
+    "start": "next start",
+    "lint": "eslint --max-warnings 0",
+    "check-types": "fumadocs-mdx && next typegen && tsc --noEmit",
+    "docs:generate": "fumadocs-mdx",
+    "postinstall": "fumadocs-mdx",
+    "docs:check": "bun scripts/check-docs.ts"
+  },
+  "dependencies": {
+    "@repo/ui": "*",
+    "fumadocs-core": "^16.17.7",
+    "fumadocs-mdx": "^15.4.9",
+    "fumadocs-ui": "^16.17.7",
+    "next": "16.4.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "eslint": "10.9.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "7.0.2"
+  }
+}

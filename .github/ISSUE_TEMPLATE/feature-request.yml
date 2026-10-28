@@ -1,0 +1,19 @@
+name: Feature request
+description: Explain a problem Wrenly could help solve.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the real task and where the current workflow gets in your way.
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: What would help?
+      description: A proposed approach, example or workaround is welcome. Check the roadmap before requesting an integration.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: How do you handle this today?

@@ -1,0 +1,47 @@
+{
+  "name": "@wrenly/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --no-env-file --env-file=../../.env --watch src/index.ts",
+    "build": "bun build src/index.ts --target=bun --packages=external --env=disable --splitting --outdir=dist && bun build src/modules/previews/gateway/preview-ingress.ts --target=bun --env=disable --outfile=dist/preview-ingress.js && bun build src/modules/auth/profile/pictures/profile-picture-decoder-worker.ts --target=bun --packages=external --env=disable --outfile=dist/profile-picture-decoder-worker.js && bun build src/modules/databases/database-administrator-worker.ts --target=bun --env=disable --outfile=dist/database-administrator-worker.js && bun build src/modules/databases/database-migration-worker.ts --target=bun --env=disable --outfile=dist/database-migration-worker.js && bun build src/modules/databases/database-query-worker.ts --target=bun --env=disable --outfile=dist/database-query-worker.js && bun build src/modules/databases/database-application-worker.ts --target=bun --env=disable --outfile=dist/database-application-worker.js && bun build src/modules/databases/database-preview-worker.ts --target=bun --env=disable --outfile=dist/database-preview-worker.js",
+    "start": "bun --no-env-file --env-file=../../.env dist/index.js",
+    "lint": "eslint . --max-warnings 0",
+    "check-types": "tsc --noEmit",
+    "setup": "bun --no-env-file --env-file=../../.env src/modules/auth/setup/setup-cli.ts",
+    "recover-owner": "bun --no-env-file --env-file=../../.env src/modules/auth/setup/recovery-cli.ts",
+    "catalog:snapshot": "bun --no-env-file --env-file=../../.env src/modules/models/catalog/catalog-snapshot-cli.ts",
+    "recover-password": "bun --no-env-file --env-file=../../.env src/modules/auth/password-recovery/password-recovery-cli.ts",
+    "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts"
+  },
+  "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.7",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@wrenly/db": "*",
+    "@wrenly/deploy": "*",
+    "@wrenly/inference": "*",
+    "@wrenly/sandbox": "*",
+    "better-auth": "^1.7.7",
+    "drizzle-orm": "^0.45.3",
+    "hono": "^4.13.13",
+    "sharp": "0.35.5",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "^20",
+    "eslint": "10.9.1",
+    "@repo/eslint-config": "*",
+    "@babel/preset-typescript": "8.0.1"
+  },
+  "packageManager": "bun@1.3.14",
+  "ignoreScripts": [
+    "sharp",
+    "unrs-resolver"
+  ],
+  "trustedDependencies": [
+    "sharp",
+    "unrs-resolver"
+  ]
+}

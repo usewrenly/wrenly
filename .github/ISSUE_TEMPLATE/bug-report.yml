@@ -1,0 +1,36 @@
+name: Bug report
+description: Something did not work as expected.
+body:
+  - type: markdown
+    attributes:
+      value: "For suspected vulnerabilities, follow SECURITY.md instead. Never include passwords, tokens, private source, database rows or one-time invitation/recovery links."
+  - type: input
+    id: version
+    attributes:
+      label: Wrenly version or commit
+      placeholder: v0.1.0-beta.1 or a commit ID
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What did you try, and how can we reproduce it?
+      description: Include the framework, relevant setup and numbered steps. Keep private project details out.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, browser, Bun/Docker versions and relevant enabled features. Do not paste your .env.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized error or screenshot
+      description: The first meaningful error and selected revision are usually more useful than an entire terminal dump. Remove secrets before attaching anything.

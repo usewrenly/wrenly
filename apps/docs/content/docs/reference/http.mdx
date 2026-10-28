@@ -1,0 +1,93 @@
+---
+title: HTTP contracts
+description: Selected authenticated publishing, account and collaboration contracts.
+---
+
+The browser calls Wrenly through its web origin under `/api`. These contracts require
+current instance sessions and the project authority described below. This is a focused
+reference, not a complete OpenAPI specification.
+
+## Publishing contract
+
+`POST /api/projects/:id/deploy` requires `{ buildId }` and an `Idempotency-Key`
+UUID, admits an owned successful revision and returns `202` with `deploymentId`.
+It never falls back to the latest build or executes deployment inside the request.
+`GET /api/projects/:id/deploy?buildId=...` restores the selected revision's latest
+owned deployment. `GET /api/projects/:id/deployments/:deploymentId` returns an
+allowlisted status projection. `POST .../deployments/:deploymentId/cancel` withdraws
+queued work only; a claimed operation returns conflict.
+
+The opt-in worker builds offline Docker runtime images, verifies private registry
+digests and tells Coolify to run the exact image. Success requires that saved remote
+job plus HTTP deployment identity. Uncertain mutations retain intent and block replay
+until operator reconciliation. See [Private publishing](/docs/guides/private-publishing).
+
+## Account settings
+
+Better Auth remains the account/session authority. Native `/api/auth/update-user`
+accepts the supported strict display-name shape (`name`, trimmed 1–100 characters).
+The existing before hook rejects other profile fields; native session and trusted-origin
+checks and Drizzle persistence remain in place. Native `/api/auth/change-password`
+requires the current password and a sensitive session, validates the configured 8–128
+policy and optionally rotates the active session while revoking other user sessions.
+No custom password hashing, profile table or public signup path is introduced.
+
+## Project collaboration
+
+Projects are private by default. Their creator can share with selected accepted
+instance members, or Everyone in this instance (including future accepted members).
+Membership or instance administration alone never grants access to private projects.
+
+The central policy distinguishes Owner, Editor and Viewer across collections,
+project/source/history reads, conversations/builds, logs and preview access. Editors
+can prompt/build with the owner-managed project model. Viewers can read and open a
+ready preview. Publishing, project details, sharing and the project model remain
+owner-managed. Cancellation is limited to the submitting Editor or project owner.
+
+Owner changes use bounded JSON, trusted-origin checks, expected revisions and audited
+request UUIDs. Access reductions wait for active project work/recovery. Preview grants
+and gateway sessions carry the project access revision and recheck current membership
+and native session validity; sharing changes revoke previous grants. Existing SSE
+subscriptions reauthorize on each poll. Already-delivered content cannot be recalled.
+
+Migration `0020` introduced private policies/grants/audit; `0021` persists real actors
+and actor-scoped replay; `0022` binds an explicit saved connection/model; `0023` binds
+preview access to project revisions. Historical private ownership and user authorship
+are preserved. Assistant messages do not become user-authored.
+
+Shared inference rejects different client selections and unavailable bindings rather
+than substituting a default. Private projects retain browser preferences; owner retries
+retain existing frozen settings. Credentials remain server-side. Environment providers
+must first use the explicit dashboard import to obtain a saved connection identity.
+Saving a model ID is not a live inference availability check.
+
+Project Settings and the workspace Share action use the same reviewed access UI.
+A lost save acknowledgement is reconciled by action identity and current revision;
+newer policy is never confused with an old recorded success. Comments, live presence,
+concurrent text editing and generated-app database tools are separate capabilities.
+
+`GET /api/deployments?offset=0` returns a bounded deployment history page (24 rows,
+maximum offset 10000) and `nextOffset`. It requires a current authenticated active
+account and filters every page through current project permissions, including
+readable archived projects. The response selects only identifiers, project name,
+framework, status, creation time and a validated HTTP(S) URL. Source snapshots,
+credential envelopes, claim tokens and provider mutation data are never returned.
+The endpoint never calls a remote provider or admits work; responses are not cached.
+
+`GET /api/builds/:id/activity` exposes the authorized saved execution prefix at the
+snapshot cursor: build ID, outcome and at most 64 fixed operation/state/attempt/time
+records. It never returns source files, inference text or provider credentials.
+`activity_v1` is an additive durable event kind; existing event sequence/claim/lease
+fences apply. Installation and validation callbacks are awaited at actual sandbox
+command boundaries. Progress persistence failure halts the attempt instead of starting
+unobserved work. Legacy builds have no fabricated activity. No schema change is needed.
+
+
+## Project creation input
+
+`POST /api/projects` creates project metadata after authentication; it does not start a
+build. Send `application/json` containing a name, framework and optional description.
+The API limits the actual streamed body to **8 KiB** and stops a stalled body after
+**5 seconds**, before inserting the project. Oversized bodies return `413`, timed-out
+bodies `408`, and unsupported content types `415`. `Content-Length` does not override
+the byte limit. These limits are separate from the field-level validation rules.

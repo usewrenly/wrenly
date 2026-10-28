@@ -1,0 +1,106 @@
+---
+title: API architecture
+description: Hono on Bun, explicit sessions, and the build service boundary.
+---
+
+The API is Wrenly's server-side coordinator. The browser asks it to do something;
+it checks the signed-in user's access, saves accepted work and returns results.
+
+For example, “Add a booking calendar” must not go straight from the browser to an AI
+provider. The API checks the project, remembers the chosen model/version and starts
+server-owned work. Refreshing the browser then reads saved progress instead of losing it.
+
+Hono is the library that routes HTTP requests; Bun runs the server. A **proxy** forwards
+browser requests from the web app to that server. A **worker** carries out saved work;
+a **subscription** lets the browser watch progress without owning the work itself.
+
+Wrenly's API runs on Hono and Bun. The web and documentation apps continue to use
+Next.js. Browser requests stay on the web origin under `/api`; the web server
+forwards them to the API. Session cookies and Better Auth paths remain unchanged.
+
+The HTTP layer handles requests, sessions, ownership, errors and progress delivery.
+The build service coordinates generation through MCP, Docker validation, repair
+attempts and retained diagnostics. Durable workers own execution independently
+of browser subscriptions. Conversation and publishing have separate durable records.
+
+<ExecutionFlow kind="build" />
+
+## Configuration
+
+`WRENLY_API_HOST` defaults to `127.0.0.1`; `WRENLY_API_PORT` defaults to `3002`.
+Set the host explicitly for container networking and align the web proxy if
+changing the listener. API startup validates required control-plane settings
+with Zod before loading production services. Apply all checked-in migrations before starting a newer API. Startup preflights the
+persistence required by enabled features; a historical migration number is not an
+upgrade target.
+
+## Progress and execution
+
+Generation keeps the SSE event vocabulary, adding stable replay IDs and comment
+keepalives. Bun's generation request disables its socket idle timeout, following
+[Bun's SSE guidance](https://bun.sh/docs/runtime/http/server#server-timeout-request-seconds).
+Execution limits and cancellation still belong to the orchestration/sandbox
+layers. A completed sandbox result is saved even if its stream cannot deliver it.
+Browser disconnect does not cancel execution. After restart, expired execution
+is cleaned and marked interrupted for explicit retry; queued work remains queued.
+See [Build lifecycle](/docs/architecture/build-lifecycle) for the durable HTTP contract.
+
+## Authentication
+
+Hono mounts Better Auth's native handler and passes incoming request headers to
+session lookup. This follows the [Better Auth Hono integration](https://better-auth.com/docs/integrations/hono).
+`GET /api/instance/access` reports whether the current session is authenticated or
+sign-in is required. Every installation requires a verified session, including a
+one-person self-hosted instance. No configuration flag grants anonymous
+access. Preview access is also bound to the control session.
+
+No external Wrenly account is required: credentials belong to the self-hosted
+instance. Fresh browser owner setup requires an expiring operator link from `bun run setup`
+in apps/api. Account creation and ownership are atomic, followed by normal sign-in.
+Unrestricted signup stays disabled. Additional accounts use owner-authorized invitations;
+existing-instance owner recovery requires operator proof and sign-in to the selected account.
+Existing local identities/projects are retained without automatic ownership transfer.
+
+## Conversation is a separate core capability
+
+Plans, clarification, assistant responses, diagnosis and follow-up edits require
+persisted conversation messages and explicit tool/build actions. They do not
+require multi-agent orchestration. Auto can answer, clarify or admit a validated
+build action; Plan collaborates without admitting builds. Follow-up edits preserve
+the explicitly selected revision and unchanged files.
+
+## Source organization
+
+The repository separates deployed applications from shared libraries:
+
+```text title="wrenly/"
+apps/
+├── web/                         # Next.js browser workspace
+├── api/                         # Hono on Bun
+│   └── src/
+│       ├── app.ts               # HTTP route registration
+│       ├── production-app.ts    # Service composition
+│       ├── index.ts             # Listener and worker lifecycle
+│       ├── config/              # Startup configuration validation
+│       ├── lib/                 # Shared API utilities
+│       └── modules/             # Features and colocated tests
+└── docs/                        # Public documentation and launch site
+packages/
+├── agents/                      # Framework-specific MCP servers
+├── sandbox/                     # Isolated Docker execution
+├── deploy/                      # Publishing integrations
+├── db/                          # Drizzle schema and persistence
+└── ui/                          # Shared interface components
+```
+
+The Hono API registers HTTP paths explicitly in `apps/api/src/app.ts`.
+`production-app.ts` wires services, and `index.ts` owns listeners and worker shutdown.
+Feature code and colocated tests live in `src/modules/`: builds, previews, projects,
+auth, models, MCP, conversations and deployments. Startup validation lives in `src/config/`; shared logging is
+in `src/lib/`. The API has no Next.js filesystem routes or active `app/` directory.
+
+## Reference and next steps
+
+Detailed publishing, account, collaboration, deployment-history and activity projections
+live in the [HTTP reference](/docs/reference/http). For the broader execution flow,
+start with [System architecture](/docs/architecture/overview).

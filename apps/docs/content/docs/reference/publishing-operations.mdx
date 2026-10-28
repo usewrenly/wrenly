@@ -1,0 +1,129 @@
+---
+title: Publishing operations
+description: Credential handling, artifact identity, capacity and uncertain-operation recovery for instance operators.
+---
+
+This reference is for the instance operator. For the user workflow, see
+[Publish a revision](/docs/guides/private-publishing). For configuration, follow
+[Publishing setup](/docs/guides/publishing-setup).
+
+## Secret storage
+
+`WRENLY_DEPLOY_ENCRYPTION_KEY` must be 64 hexadecimal digits representing 32 random
+bytes. Back it up separately from PostgreSQL. Do not reuse the authentication secret
+or replace an existing encryption key as a rotation procedure.
+
+Saved secrets use authenticated encryption bound to their project and purpose.
+Runtime values are delivered through Coolify with build-time injection disabled,
+never committed to source or baked into the runtime image. Laravel uses a stable encrypted project key delivered only at runtime, with FrankenPHP serving the packaged application.
+There is not yet an end-user runtime settings editor or build-time variable injection.
+
+## Artifact provenance
+
+Only artifacts produced by the current isolated build pipeline can be promoted.
+Rebuild a saved revision if its artifact is incompatible. Each operation must use its
+own verified workspace; never reuse an unrelated Docker volume.
+
+## Status and recovery
+
+Publish this revision admits one durable operation with an idempotency key. Refreshing
+restores its persisted status. Success requires the exact remote job, image digest,
+HTTP response and trusted deployment marker; an older healthy app cannot satisfy it.
+
+Failed publishing preserves the successful build and local preview. Retry explicitly
+after fixing configuration. Cancel queued publish withdraws unclaimed work only.
+Running remote jobs remain operator-controlled. Closing the browser never cancels them.
+
+Interrupted operations retain unknown mutation intent and block another deployment
+for the project. An administrator must verify remote activity has settled, then use
+the documented operator reconciliation command. Wrenly never silently repeats an
+uncertain create, upload or deployment trigger.
+
+## Reconcile an interrupted attempt
+
+Reconciliation checks and settles the saved attempt. It does **not** mark an unreachable
+app successful or trigger a new deployment. Run it on the Wrenly API host, with Docker
+and the root `.env` containing the same Gitea/Coolify/registry settings used by that attempt.
+
+1. Open **Projects → Deployments**, find the interrupted attempt and copy its Wrenly
+   deployment UUID. This differs from the build UUID and Coolify's job UUID.
+2. In Coolify, inspect that attempt's application and deployment job. Confirm no job
+   or provider mutation is still running. If anything is still running, wait or stop
+   it deliberately in Coolify before confirming settlement.
+3. Fix the underlying cause, such as inaccessible routing, then run from the **repository root**:
+
+```bash
+bun run reconcile-deployment DEPLOYMENT_UUID --confirm-remote-settled
+```
+
+Replace `DEPLOYMENT_UUID` with the value copied in step 1. This command loads the root
+`.env`; do not create another environment file in `apps/api`.
+
+4. A successful command reports that explicit new publishing is permitted. Refresh
+   the workspace, inspect the saved result and choose **Publish** only if you intend
+   another attempt. The previous history remains intact.
+5. If the command reports missing or mismatched remote identities, stop. Do not change
+   the database or guess identifiers. Inspect the exact saved operation and provider
+   resources first. Advanced recovery can supply a lost application UUID and job UUID:
+
+```bash
+bun run reconcile-deployment DEPLOYMENT_UUID --confirm-remote-settled APPLICATION_UUID JOB_UUID
+```
+
+Only use these when the corresponding saved mutation lost its acknowledgement and you
+have verified those exact resources belong to this operation. Use `-` for an omitted
+optional identifier. The command still verifies identities and refuses unrelated resources.
+Do not pass tokens or passwords as arguments.
+
+## Retention and current limits
+
+One executor runs per instance. Each artifact is limited to 1 GiB; admission reserves
+at most 20 retained/uncertain artifact operations. Reaching the budget stops publishing.
+Automatic registry garbage collection and storage expansion are not implemented;
+retain images Coolify still needs. Installation disk usage is not a filesystem quota.
+The initial readiness profile requires a public HTTP page and deployment marker.
+
+Container health checks use `127.0.0.1:3000` explicitly. The packaged Next.js runtime
+listens on IPv4; Alpine's `wget` can select IPv6 for `localhost` without falling back.
+This internal health check is separate from Wrenly verifying the application's routed
+URL and exact deployment marker. A healthy container alone does not establish that
+DNS and proxy routing work.
+
+For local testing, another proxy may already own ports 80 and 443. Coordinate port
+ownership before starting Coolify's proxy, and restore any temporarily stopped service
+after testing. Stopping the existing proxy is not a permanent coexistence setup.
+
+Coolify's Docker-image create and update endpoints use different digest formats.
+Wrenly submits a complete digest reference on creation and the equivalent normalized
+name/digest fields on update, then verifies the returned immutable image identity.
+A configuration HTTP422 is a provider validation failure, separate from runtime or
+public-URL readiness. API diagnostics expose the safe provider code and HTTP status,
+without dumping provider responses or credentials.
+
+## Connections and deployment history
+
+Open **Settings → Connections** to see whether publishing is enabled. This reports
+instance configuration, not Coolify reachability. The page explains the current
+Gitea/private-registry/Coolify setup; browser-based deployer credential configuration
+is not available. Figma/MCP and additional deployers are explicitly planned.
+
+Open **Projects → Deployments** for paginated saved attempts, including failures,
+interrupted attempts and archived projects you can still access. Only currently
+accessible projects appear; being the instance administrator does not grant access
+to private projects. Revoking access removes history on the next read. Publishing
+being disabled does not hide existing history.
+
+**Open revision** returns to the selected build and its existing workspace controls;
+it does not start publishing. Successful historical attempts can link to their
+application, but this is not a live health check. There are no pretend remote
+stop/delete/log controls. An interrupted attempt still requires explicit operator
+reconciliation. Preview notices and recovery controls are available in an expandable
+attention area. A successful latest attempt for the selected revision replaces its
+Publish action with access to the published app.
+
+Repository hosting, deployment and model tools are separate connection categories.
+Gitea and Coolify are the implemented publishing providers. GitHub/GitLab import and
+push, additional deployers and Figma/MCP tool connections are planned; the Connections
+page does not activate them. A GitHub MCP tool is not a replacement for a saved
+project repository connection. Current publishing is not yet selectable per project
+across arbitrary repository/deployment providers.

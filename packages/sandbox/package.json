@@ -1,0 +1,40 @@
+{
+  "name": "@wrenly/sandbox",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./file-paths": "./src/source-policy/file-paths.ts",
+    "./database-administrator": "./src/databases/database-administrator.ts",
+    "./database-application-bootstrap": "./src/databases/application-runtime/bootstrap.ts",
+    "./database-application-check": "./src/databases/application-runtime/runner.ts",
+    "./database-toolchain": "./src/databases/database-toolchain.ts",
+    "./database-backup-runtime": "./src/databases/database-backup-runtime.ts",
+    "./database-manifest": "./src/databases/database-manifest.ts",
+    "./database-resource-policy": "./src/databases/database-resource-policy.ts",
+    "./laravel-migrations": "./src/databases/laravel-migrations.ts",
+    "./database-read-cleanup": "./src/databases/database-read-cleanup.ts",
+    "./database-socket-worker": "./src/databases/database-socket-worker.ts",
+    "./database-validation-cleanup": "./src/databases/database-validation-cleanup.ts",
+    "./runtime-artifact": "./src/artifacts/runtime-artifact.ts",
+    "./runtime-artifact-cleanup": "./src/artifacts/runtime-artifact-cleanup.ts",
+    "./database-preview-runtime": "./src/previews/database-runtime.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "lint": "eslint src/ --max-warnings 0",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@wrenly/db": "workspace:*",
+    "dockerode": "^4.0.2"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "*",
+    "@types/dockerode": "^3.3.31",
+    "eslint": "10.9.1",
+    "typescript": "*"
+  }
+}

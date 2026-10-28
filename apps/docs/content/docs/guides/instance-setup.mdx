@@ -1,0 +1,71 @@
+---
+title: First owner & sign-in
+description: Create your instance owner in the browser, then invite people deliberately.
+---
+
+Every installation requires sign-in, including a one-person instance. Accounts belong
+to your server; you do not need an external Wrenly account. Public signup stays closed.
+
+## Create the first owner
+
+1. Follow [installation](/docs/guides/installation), apply all checked-in migrations and
+   start the API and web app.
+2. From `apps/api`, run:
+
+   ```bash title="Terminal · apps/api"
+   bun run setup
+   ```
+
+3. Open the private link within ten minutes. Choose your name, email and a password
+   of 8–128 characters. Better Auth creates the credentials.
+4. Complete ordinary sign-in. **Get started** opens with account, provider, default-model
+   and first-project steps.
+
+<Callout title="Keep the setup link private">
+The link is a one-time operator proof, not a permanent sign-in link. A replacement
+invalidates the previous one. Remote setup requires HTTPS; loopback development may
+use HTTP. No password belongs in an environment variable.
+</Callout>
+
+## Check that setup worked
+
+Sign out through the account menu and sign back in with the credentials you chose.
+Opening the old setup link must not create a second owner. An unavailable setup check
+is a retry state, never evidence that the database is empty.
+
+If account creation succeeded but its acknowledgement or sign-in failed, use the
+ordinary sign-in page. Do not reset the database or create another identity to recover.
+
+## Recover an existing instance owner
+
+For existing accounts without a recorded instance owner, run:
+
+```bash title="Terminal · apps/api"
+bun run recover-owner your-existing-email@example.com
+```
+
+Sign in to that exact account, open the private recovery link within ten minutes and
+confirm the displayed account. Recovery records ownership and an audit event; it does
+not change credentials or move projects. Another account cannot use the link, and an
+initialized owner cannot be replaced through this recovery flow.
+
+If that account cannot sign in, stop: credential recovery is a separate operation.
+
+## Configure the workspace
+
+**Get started** derives progress from saved account/model/project state. It does not
+call a model or start Docker just by opening. The compact sidebar guidance appears
+while actionable setup remains; revisit `/get-started` whenever needed.
+
+Owners manage shared provider credentials and issue invitations. Members can use
+enabled connections and select models without seeing saved tokens. Instance membership
+alone does not grant access to another person's private projects.
+
+## Next steps
+
+<Cards>
+<Card title="Connect a model" href="/docs/guides/model-provider-setup" description="Set up local or supported hosted inference through Settings." />
+<Card title="Invite your team" href="/docs/guides/invitations" description="Create private invitations and manage member access." />
+<Card title="Projects and drafts" href="/docs/guides/projects" description="Start an app or save an idea before building." />
+<Card title="Account settings" href="/docs/guides/account-settings" description="Update your profile, picture and password." />
+</Cards>

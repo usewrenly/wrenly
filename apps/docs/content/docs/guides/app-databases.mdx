@@ -1,0 +1,218 @@
+---
+title: Generated-app databases
+description: Use a separate Development database for a generated app, with reviewed migrations and role-aware inspection.
+---
+
+<StatusBadge state="development">Experimental · Development only</StatusBadge>
+
+This feature is experimental and off by default. It supports Development with Next.js
+and Laravel. Production databases and publishing database-backed apps are not available
+yet. Try it with test projects and keep verified backups of any data you want to retain.
+
+A notes app needs somewhere to keep its notes. That database is separate from Wrenly's
+accounts, projects and conversation history. Wrenly manages a private PostgreSQL resource
+for Development; it never gives generated code access to the instance's own database.
+
+## Does the AI create the database for me?
+
+**No—not automatically in this beta.** You create one Development database for the
+project, then explicitly select it for a request. The model writes the code and the
+table changes your app needs. You review those changes before Wrenly applies them.
+You do not normally create tables or type database passwords yourself.
+
+For example, a notes app has a form on screen and a `notes` table that keeps the text.
+A page that only puts notes in browser storage has not demonstrated this database flow.
+
+| Who | What they do |
+| --- | --- |
+| You, as project owner | Create/select Development, review backups and table changes, then confirm |
+| The model, through the framework MCP server | Write the app, its database connection code and migration files |
+| Wrenly | Run isolated validation, perform the confirmed database work and connect the preview |
+| The running generated app | Read and save notes when someone uses it |
+
+A **migration** is a saved instruction for changing tables or columns. Next.js uses
+Drizzle migrations; Laravel uses its native migration files. Both use PostgreSQL.
+The framework MCP server does not receive passwords or direct access to your saved
+rows. It receives instructions for the selected database and works from saved source.
+
+```text
+You create and select Development
+  → Model writes app + table changes
+  → Wrenly tests a temporary copy
+  → You create a backup and confirm reviewed changes
+  → Wrenly applies them to Development
+  → Preview app can save real data
+```
+
+**Ready** means the database is running. It does not mean the app's tables already
+exist. **Build succeeded** means validation passed; it does not mean new table changes
+were applied to your saved Development data.
+
+<DatabaseDiagram />
+
+## Prepare your instance
+
+Use the supported Linux host and local Docker setup from [local previews](/docs/guides/local-previews).
+Apply all checked-in migrations, including **0035**, from `packages/db` with `bun run db:migrate`.
+From the repository root, build the database toolchains:
+
+```bash
+docker build -t wrenly/postgres-runtime:17 packages/sandbox/images/postgres
+docker build -t wrenly/database-socket:1 packages/sandbox/images/database-socket
+```
+
+Enable both settings in the API environment, then restart the API and web app:
+
+```dotenv
+WRENLY_PREVIEW_ENABLED=true
+WRENLY_APP_DATABASES_ENABLED=true
+```
+
+Startup checks the installed toolchains, worker bundles, execution locks and stored
+credential key. Keep the configured instance data directory with your backups. Losing
+its original encryption key makes saved database credentials and backups unusable;
+creating a replacement key does not recover them.
+
+The feature stays off by default. Do not connect the app to Wrenly's control database
+or add application passwords to generated source to bypass a failed setup check.
+
+## If the Database tab is missing
+
+Check the API startup log for `developmentDatabases: true`. If it is `false`, the
+running API has not loaded the opt-in setting. Restart that API process after updating
+its environment, then reload an authenticated project workspace. The tab appears beside
+Preview, Code and Logs; it is not a separate main-sidebar page. Opening it creates no
+resource until you explicitly choose setup.
+
+## Build a notes app
+
+1. Open **Database** in a project and explicitly set up **Development**. Wait for **Ready**.
+2. Above the composer, change **No database** to **Development database**.
+3. Describe the app. Wrenly saves that exact resource choice with your request.
+4. Let the build finish. Validation uses a separate temporary database: compiling an
+   app never applies its migrations to your existing Development data.
+
+No resource is selected automatically. A missing or changed resource blocks admission
+rather than silently using a different database. Plan remains a discussion mode.
+
+## Review changes before using saved data
+
+With the successful revision selected:
+
+1. Stop any running preview and wait for other project work to finish. Open
+   **Database → Manage resource** and create a verified backup. Verification restores
+   a separate disposable copy; it does not replace the original database.
+2. Choose **Review database changes**. Read the saved migration files and select a
+   verified backup. For Laravel, review the saved application source too: Artisan
+   starts application bootstrap code while running migrations.
+3. Acknowledge the review and confirm the exact migration request. Wrenly rehearses it
+   against a restored copy before applying changes to Development.
+4. When it succeeds, prepare the same revision in **Preview**.
+
+The preview uses the resource saved with that build and rechecks its current schema.
+Development credentials are delivered only to the isolated runtime through its scoped
+connection. Package installation and compilation have no database access.
+
+## Inspect and manage Development
+
+**Browse data** shows bounded read-only row pages. A project Viewer can inspect allowed
+schema; row access and owner resource controls follow project roles. There is no SQL
+console or browser-side database password.
+
+Stop the preview before stopping its database. Stop preserves saved data; Start reopens
+the same verified resource and does not restart an application or rerun migrations.
+
+## If a request is unconfirmed
+
+An accepted request is a queue receipt, not proof that execution finished. Watch recent
+activity for the result. After a lost response, use **Check saved action** or **Retry same
+request**. The request keeps its original identity so a retry cannot create a second action.
+
+Interrupted work has separate inspection or cleanup controls. Recovery does not repeat
+an uncertain migration or claim it succeeded. Cases that cannot be verified stay blocked
+for operator inspection; reloading the page never resolves them automatically.
+
+## Production is separate
+
+This opt-in enables **Development**, not Production database provisioning or publishing
+a database-backed app. Those workflows remain unavailable. Development data, credentials
+and sockets are never promoted implicitly. Existing stateless Next.js/Laravel publishing
+is independent.
+
+External application-database connectors such as hosted PostgreSQL services are not
+currently selectable. See [the roadmap](/docs/roadmap) for the separate Production work.
+
+
+## Check a real notes app
+
+Use test data while this feature is experimental.
+
+1. If starting from Home, use **+ → Plan mode** to plan a notes app first. Wait for
+   the response, then open **Database** in the project. This gives you a project
+   before requesting database-backed code.
+2. Create Development and wait for Ready. Choose **Development database** above the
+   composer, then turn Plan mode off. Ask for a notes app that stores notes in the
+   selected managed PostgreSQL database, with add, edit and delete controls.
+3. After a successful build, follow the backup/review/confirmation steps above.
+4. Prepare that saved revision's preview. Add `My first database note`. Open
+   **Database → Browse data** and find that row in the app's notes table.
+5. Edit the note, reload the preview, then reopen Browse data. The updated text
+   should persist. Delete a second test note and check that its row disappears.
+6. Reload the workspace. The resource and saved activity should remain. Before
+   sending a new request, check the composer selection: reloading may reset a new
+   prompt to **No database**. Existing saved revisions retain their original binding.
+7. Stop the preview, stop Development, then start Development again. Inspect the
+   saved notes; Stop is not Delete. Preparing a preview again is a separate action.
+8. For an app change, keep the database selected and request a new optional note
+   field. Review the new saved revision and repeat backup/review when required.
+   Existing notes should remain. A review belongs to its exact saved source, so
+   even an edited app may need a fresh review before its preview can open.
+
+A verified backup is checked by restoring a separate disposable copy. It does not
+replace your current notes. There is no general one-click restore-over-current-data
+workflow in this beta.
+
+If a request is unconfirmed, use its saved-action controls. Do not keep submitting
+new requests. Record the step, framework, revision and visible message when reporting
+an issue; omit keys, tokens, passwords and private row contents.
+
+## When a database build fails before validation
+
+A database-backed project includes a `wrenly.app.json` declaration and saved migrations.
+For Next.js, its Drizzle journal must describe the same SQL files. These are part of
+the generated project, so an invalid declaration or journal does not mean PostgreSQL
+is broken. If validation stopped there, it also cannot prove the rest of the app compiles.
+
+Read the specific reason in **Logs → Build**, then ask Wrenly to repair the saved
+manifest and journal in a new request. Journal tags must match migration filenames
+without the folder or `.sql` extension. Do not delete your database to fix a generated
+file mismatch. Existing Development data still requires explicit migration review;
+a repair request does not grant permission to change it automatically.
+
+## Preview opens but the app reports a client-side exception
+
+A responding preview server does not prove every browser request succeeds. For example,
+a notes page can open, receive an API error and crash if it treats that error as a list
+of notes. Read **Logs**, then ask Wrenly to repair the API connection and the page's error
+handling in a new revision.
+
+Managed Next.js apps use Postgres.js with the runtime `PGHOST`, `PGPORT`, `PGDATABASE`,
+`PGUSER` and `PGPASSWORD` settings. `postgres()` reads those settings automatically.
+Wrenly does not supply a `DATABASE_URL` for this connection. An invented localhost URL
+will not connect to the isolated database. Known incompatible URL patterns are rejected
+before database validation and returned to the model as repair guidance.
+
+Keep Development selected when requesting the repair. The page must check HTTP success
+and the response shape before putting data into state, and show a visible retryable error
+when the request fails. This code repair does not require deleting or recreating your data.
+
+### If compilation fails
+
+A normal compiler error can be corrected within the build's remaining attempts. Wrenly
+first confirms that the temporary preparation containers and storage were removed, then
+passes the compiler output back for repair. This does not change your saved application
+data or increase the retry limit.
+
+A timeout, lost response or unconfirmed cleanup is different: Wrenly stops and asks for
+recovery because it cannot prove what finished. Earlier interrupted builds are not
+restarted automatically. Review their recorded operation before starting a new request.

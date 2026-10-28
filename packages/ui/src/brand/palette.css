@@ -1,0 +1,9 @@
+/* Generated from the supplied SVG palettes. */
+.wrenly-brand{--wrenly-light:inline;--wrenly-dark:none;}
+.wrenly-brand [data-artwork="light"]{display:var(--wrenly-light)}
+.wrenly-brand [data-artwork="dark"]{display:var(--wrenly-dark)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not(.light) .wrenly-brand{--wrenly-light:none;--wrenly-dark:inline;}}
+:root[data-theme="dark"] .wrenly-brand,.dark .wrenly-brand{--wrenly-light:none;--wrenly-dark:inline;}
+.wrenly-brand[data-mark-variant="on-primary"]{--wrenly-light:none;--wrenly-dark:inline;}
+:root[data-theme="dark"] .wrenly-brand[data-mark-variant="on-primary"]{--wrenly-light:inline;--wrenly-dark:none;}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .wrenly-brand[data-mark-variant="on-primary"]{--wrenly-light:inline;--wrenly-dark:none;}}

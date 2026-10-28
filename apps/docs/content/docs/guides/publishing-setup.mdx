@@ -1,0 +1,261 @@
+---
+title: Set up publishing
+description: Operator checklist for private source, an authenticated registry and Coolify.
+---
+
+This page is for the instance operator. Team members use the
+[workspace publishing action](/docs/guides/private-publishing) once setup is complete.
+
+## Prerequisites
+
+Before starting, you need:
+
+- A working Wrenly instance with its first owner and one successful saved build.
+- Linux with local Docker Engine, Bun, Git, `timeout` and `flock`.
+- All checked-in Wrenly migrations applied.
+- A Coolify installation and a deployment server it can reach over SSH.
+- Free ports for the services below. Coolify's proxy needs its configured HTTP/HTTPS ports.
+- Private storage for tokens and an independent backup of your encryption key.
+
+The repository's `docker-compose.dev.yml` already includes **Gitea** (port 3030)
+and an optional **private registry** (port 5001). It does **not** install Coolify.
+PostgreSQL in that file stores Wrenly's accounts/projects; the registry stores runnable
+images, and Gitea stores generated source. These are three different kinds of storage.
+
+This walkthrough uses one Linux machine for Wrenly, the registry and Coolify's Docker
+server. For separate hosts, use an authenticated HTTPS registry reachable from both;
+`127.0.0.1` always means the machine making the connection.
+
+## 1. Prepare the runtime
+
+Use Linux with local Docker and the host tools `git`, `timeout` and `flock`. Apply all
+checked-in database migrations. Keep publishing disabled until configuration is ready.
+
+For Next.js, make the trusted Bun base image available locally. For Laravel, build the
+repository-owned toolchain from the repository root:
+
+```bash title="Terminal · repository root"
+docker build -t wrenly/laravel-runtime:13-php8.4 packages/sandbox/images/laravel
+```
+
+## 2. Start Gitea and create its token
+
+From the repository root:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres gitea
+```
+
+1. Open `http://localhost:3030` and create/sign in to your local Gitea account.
+   Keep this installation private while completing its account setup.
+2. Use Gitea's **+ → New organization** to create `wrenly-apps`. The account issuing
+   the token must be allowed to create private repositories in this organization.
+3. Open your Gitea profile **Settings → Applications → Generate new token**.
+   Give it a recognizable name, such as `wrenly-publishing`. Grant repository and
+   organization write access required for private repository creation. Do not restrict
+   it to public repositories. Gitea versions may label these controls differently.
+4. Copy the token once into your private root `.env` as `WRENLY_GIT_TOKEN`.
+   Use the organization name, not its browser URL, for `WRENLY_GIT_ORG`.
+
+```dotenv
+WRENLY_GIT_BASE_URL=http://127.0.0.1:3030
+WRENLY_GIT_ORG=wrenly-apps
+WRENLY_GIT_TOKEN=PASTE_YOUR_PRIVATE_TOKEN
+```
+
+## 3. Create and start the private registry
+
+Create its ignored password-file directory:
+
+```bash
+mkdir -p .local/registry/auth
+chmod 700 .local .local/registry .local/registry/auth
+```
+
+Create a registry password interactively; Docker downloads the utility image if needed:
+
+```bash
+docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,source=$(pwd)/.local/registry/auth,target=/auth" \
+  --entrypoint htpasswd \
+  httpd:2.4-alpine -Bc /auth/htpasswd wrenly
+chmod 600 .local/registry/auth/htpasswd
+```
+
+Enter the new password twice and save it privately. `wrenly` is the registry username;
+this password is not your Gitea password. **Do not rerun `-c` against an existing login:**
+it replaces the password file.
+
+```bash
+docker compose -f docker-compose.dev.yml --profile publishing up -d
+curl -i http://127.0.0.1:5001/v2/
+curl -i -u wrenly http://127.0.0.1:5001/v2/
+```
+
+The first request should return **401** (authentication required). The second prompts
+for your registry password and should return **200**. Keep authentication enabled.
+The profile binds the registry to loopback and keeps images in `wrenly_registry_data`.
+Do not run `down -v`: it deletes persistent data.
+
+Add these to the root `.env`:
+
+```dotenv
+WRENLY_REGISTRY_URL=http://127.0.0.1:5001
+WRENLY_REGISTRY_NAMESPACE=wrenly
+WRENLY_REGISTRY_USERNAME=wrenly
+WRENLY_REGISTRY_PASSWORD=PASTE_YOUR_REGISTRY_PASSWORD
+```
+
+The values to collect are:
+
+
+| Setting | Where its value comes from |
+| --- | --- |
+| `WRENLY_GIT_BASE_URL` | Your Gitea service address |
+| `WRENLY_GIT_ORG` | The organization created for generated repositories |
+| `WRENLY_GIT_TOKEN` | A Gitea token authorized for that organization |
+| `WRENLY_REGISTRY_URL` | Your private OCI registry address |
+| `WRENLY_REGISTRY_NAMESPACE` | The image namespace used for generated apps |
+| `WRENLY_REGISTRY_USERNAME` / `WRENLY_REGISTRY_PASSWORD` | The registry account used for image pushes |
+
+Remote credential-bearing connections require HTTPS. Local loopback development may
+use HTTP. The optional compose `publishing` profile provides an authenticated registry
+on port5001; create its ignored local `htpasswd` file before starting it. The registry
+must not be made public or started without authentication to bypass a setup failure.
+
+## 4. Install and configure Coolify
+
+If Coolify is not installed, follow its [self-hosted installation guide](https://coolify.io/docs/get-started/installation).
+Complete its initial account/server setup before returning here.
+
+1. In Coolify, create a project, for example `wrenly-apps`, with a `production` environment.
+2. Copy that project's UUID from its settings/address into `WRENLY_COOLIFY_PROJECT_UUID`.
+3. Open **Servers**, select the server that will run generated apps, and copy its UUID
+   into `WRENLY_COOLIFY_SERVER_UUID`. This is not the project's UUID.
+4. Create a Coolify API token authorized to manage applications/deployments on that
+   target. Save it privately as `WRENLY_COOLIFY_API_KEY`.
+5. Use your Coolify address plus `/api/v1` as `WRENLY_COOLIFY_API_URL`.
+   Same-host example: `http://127.0.0.1:8000/api/v1`.
+6. On the deployment server, as the operating-system user Coolify uses for Docker, run:
+
+```bash
+docker login 127.0.0.1:5001
+```
+
+Enter `wrenly` and the registry password. This authorizes **pulling** images. Wrenly's
+registry settings authorize **pushing** them; both are needed. Keep registry credentials
+out of the generated app's environment. If Coolify uses another server, loopback will
+point at the wrong machine: use your reachable HTTPS registry address instead.
+
+
+
+| Setting | Where its value comes from |
+| --- | --- |
+| `WRENLY_COOLIFY_API_URL` | Your Coolify API base address, including `/api/v1` |
+| `WRENLY_COOLIFY_API_KEY` | A scoped API token from your Coolify instance |
+| `WRENLY_COOLIFY_PROJECT_UUID` | The target Coolify project's identifier |
+| `WRENLY_COOLIFY_SERVER_UUID` | The selected deployment server's identifier |
+| `WRENLY_COOLIFY_ENVIRONMENT` | The target environment, such as `production` |
+
+Configure registry **pull** credentials on that Coolify server as well. Wrenly's push
+credentials alone do not authorize another server to pull private images. Confirm that
+its proxy, DNS and TLS route to the intended application. If another proxy owns ports
+80/443, plan routing before starting Coolify's proxy.
+
+## 5. Protect secrets and enable publishing
+
+Generate a separate encryption key:
+
+```bash title="Terminal"
+openssl rand -hex 32
+```
+
+Save it privately as `WRENLY_DEPLOY_ENCRYPTION_KEY` and back it up separately from
+PostgreSQL. Do not reuse the auth secret or overwrite an existing key to rotate it.
+Set `WRENLY_PUBLISHING_ENABLED=true` and restart the API after configuration is complete.
+
+Runtime secrets are delivered separately to Coolify. They do not belong in source,
+registry image layers or build-time variables. Laravel receives a stable encrypted
+project key at runtime. A browser runtime-secret editor is not currently available.
+
+## 6. Verify a real deployment
+
+Publish one small successful revision, open its application URL and verify its behavior.
+A healthy container alone does not establish routed readiness. Wrenly confirms the
+remote job, immutable image digest, HTTP response and deployment marker.
+
+Keep the image Coolify needs available. Automatic registry garbage collection and
+persistent upload/worker management are not implemented. See
+[publishing operations](/docs/reference/publishing-operations) for capacity and recovery.
+
+
+## Coolify succeeded but Wrenly is still checking
+
+A successful Coolify job means its container started. Wrenly then shows **Verifying**. Wrenly also checks the app's
+routed URL and a small file identifying this exact deployment. These checks prevent
+an old app, login screen or unrelated proxy page from being reported as your new app.
+
+1. Open the application's **Domains/Links** in Coolify. Use the **application URL**,
+   not the Coolify dashboard address ending in port 8000.
+2. Open that URL in your browser. Then, from the machine running the Wrenly API, run
+   the following with that URL (no provider tokens are needed):
+
+```bash
+curl --max-time 10 -I 'http://YOUR_APPLICATION_HOST/'
+curl --max-time 10 'http://YOUR_APPLICATION_HOST/.well-known/wrenly-deployment'
+```
+
+The app should answer successfully and the second request should return the Wrenly
+deployment UUID. Do not paste a preview hostname or build UUID here.
+
+3. If either request fails, check DNS, firewall, the Coolify server's proxy and its
+   domain route/target port. A generated `sslip.io` name must resolve to a reachable
+   server address. VPNs, DNS rebinding protection and public-IP routing from inside
+   a home network can make browser and API results differ. See Coolify's
+   [domain guide](https://coolify.io/docs/core/networking/domains).
+4. If the app redirects to a sign-in page, provides only a non-200 root page, or blocks
+   the marker, it does not meet the current readiness profile. Fix the route/app;
+   do not weaken authentication or make the private registry public.
+5. After a timeout, inspect the exact job in Coolify and follow
+   [publishing recovery](/docs/reference/publishing-operations). Do not repeatedly
+   trigger new deployments while the previous result is uncertain.
+
+### Local server cannot reach its own public address
+
+On a home or office network, an app's domain may point to the router's public IP.
+Some routers cannot send a request from inside the network back through that public
+address (NAT loopback). The container can be healthy while Wrenly's routed check times out.
+
+For a deployment on the **same machine as the API**, compare the normal URL with the
+local proxy. Replace `YOUR_APPLICATION_HOST` with the app's hostname from Coolify,
+without `http://`, a path or a port:
+
+```bash
+curl --max-time 10 'http://YOUR_APPLICATION_HOST/.well-known/wrenly-deployment'
+curl --max-time 10 --resolve 'YOUR_APPLICATION_HOST:80:127.0.0.1' \
+  'http://YOUR_APPLICATION_HOST/.well-known/wrenly-deployment'
+```
+
+If only the second works and returns the expected Wrenly deployment UUID, the local
+proxy/application route works; investigate the public-address/DNS path. Configure your
+router's loopback or internal DNS. For a **local-only same-machine test**, an exact
+host mapping is another option:
+
+```bash
+sudoedit /etc/hosts
+```
+
+Add a line using the actual hostname:
+
+```text
+127.0.0.1 YOUR_APPLICATION_HOST
+```
+
+Then repeat the first curl command without `--resolve`. Do not map an application to
+loopback if it runs on a different server. This mapping affects this machine only; it
+does not establish internet reachability. Remove/update the entry when moving to real
+public DNS. Do not disable TLS verification or weaken Wrenly's marker check.
+
+Once routing is corrected, follow the interrupted-operation reconciliation steps;
+refreshing a timed-out attempt does not silently restart publishing.

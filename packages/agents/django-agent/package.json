@@ -1,0 +1,10 @@
+{
+  "name": "@wrenly/django-agent",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "echo 'django-agent not yet scaffolded'",
+    "lint": "echo 'django-agent not yet scaffolded'",
+    "check-types": "echo 'django-agent not yet scaffolded'"
+  }
+}

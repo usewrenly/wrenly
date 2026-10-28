@@ -1,0 +1,1 @@
+ALTER TYPE "public"."conversation_mode" ADD VALUE 'plan';

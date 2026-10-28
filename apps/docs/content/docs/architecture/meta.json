@@ -1,0 +1,10 @@
+{
+  "title": "Architecture",
+  "pages": [
+    "overview",
+    "api",
+    "build-lifecycle",
+    "conversations",
+    "project-structure"
+  ]
+}

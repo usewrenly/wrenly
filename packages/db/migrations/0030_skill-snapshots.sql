@@ -1,0 +1,1 @@
+ALTER TABLE "conversation_turns" ADD COLUMN "skills_v1" jsonb DEFAULT '{"version":1,"skills":[]}'::jsonb NOT NULL;

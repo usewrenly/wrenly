@@ -1,0 +1,215 @@
+---
+title: Build lifecycle
+description: Persisted execution, reconnectable progress, and interruption recovery.
+---
+
+A build asks the model to generate or edit code, then checks whether that code builds.
+An **attempt** is one try inside that request. If validation fails, another attempt can
+give the error back to the model so it can correct its code, up to the configured limit.
+
+For example, a missing import can fail the first check. Wrenly keeps the files and error,
+asks for a correction and checks again. If the whole build fails, an explicit Retry
+creates a new build while keeping the previous result available.
+
+In the technical details below, **admission** means accepting and saving work, a
+**claim/lease** identifies its worker for a limited time, and a **cursor** marks how far
+the browser has read through progress events. [How Wrenly works](/docs/architecture/overview)
+introduces these terms together.
+
+A build is one generation-and-validation request with up to three attempts.
+Explicit retry creates a new build and retains previous diagnostics. Successful
+validation means the source builds; preview and deployment are separate.
+
+[Generated-app databases](/docs/guides/app-databases) are a separate module in development.
+Their internal transport tests do not enable a complete database-backed app workflow.
+
+<ExecutionFlow kind="build" />
+
+## Execution
+
+The API saves immutable settings/source and a queued job before acknowledging
+admission. A bounded Bun worker executes one build globally. PostgreSQL claim
+locks, tokens and expiring leases protect execution ownership. Progress snapshots
+and ordered events commit together. Browser disconnects stop subscriptions, not
+execution. Refresh reloads canonical state and reconnects after its event cursor.
+
+Running cancellation is explicit and completes only after resource cleanup.
+Graceful API shutdown aborts execution and records interruption. After a crash,
+expired execution is cleaned and marked interrupted, never automatically requeued.
+Retry is an explicit action using saved settings and diagnostics.
+
+## HTTP contract
+
+- `POST /api/builds`: JSON build settings and UUID `Idempotency-Key`; returns a
+  build ID with 202, or 200 for an identical replay.
+- `GET /api/builds/:id`: owned snapshot, job outcome and replay cursor.
+- `GET /api/builds/:id/events?after=N`: ordered SSE with stable IDs; also accepts
+  `Last-Event-ID`. Invalid/future cursors are rejected.
+- `POST /api/builds/:id/cancel`: explicit owned cancellation request.
+- `POST /api/generate`: compatibility admission/subscription using the same worker.
+  Supply an idempotency key to safely repeat requests. `deploy:true` is rejected;
+  deployment is a separate action.
+
+All build routes enforce current identity and project permissions. The browser repeats ambiguous
+admission with one key and reconnects from saved state rather than regenerating.
+An exhausted reconnection preserves artifacts and labels the outcome unconfirmed.
+
+## Resource boundary
+
+MCP initialization/tool calls share a deadline. Abort closes the server transport
+and confirms process exit; official implemented servers exit on parent pipe EOF.
+Docker installation/build share a five-minute maximum deadline. Claim-labelled
+containers are removed before their workspaces; unsafe/duplicate file paths are
+rejected before writes. Output is bounded and retains partial diagnostics.
+
+Dependency installation has network access; the build container has none.
+Compile-time remote fonts/assets need local alternatives. Installation egress and
+lifecycle scripts remain security work before a public multi-user launch.
+
+## Setup and current limits
+
+Apply migration 0002 before starting this API. Startup checks required persistence
+and validates resource configuration. Stop the old API process during migration;
+never run request-owned and worker-owned generation together.
+
+Automated verification includes PostgreSQL transactions/replay and a controlled
+HTTP-to-worker-to-browser reconnection test, plus separate real MCP/Docker tests.
+Live user-model/browser verification remains required. Decoded Docker output is
+persisted in serialized bounded batches during validation. Final partial lines drain
+before completion; noisy output can carry a truncation notice.
+Conversation, revision-safe editing, previews and deployment hardening are also
+unfinished. Historical nonterminal builds without job records are unconfirmed
+and require inspection rather than assuming they resumed.
+
+
+## Queue waiting and slow generation
+
+One execution slot serves all projects. Queued snapshots include advisory position
+and whether work is waiting behind another build or interruption cleanup. The API
+must remain running to claim/reconcile jobs; browser refresh and sign-out do not
+advance execution. Queue metadata never exposes another user's build identity.
+
+`WRENLY_MODEL_TIMEOUT_SECONDS` controls MCP initialization/generation (default180,
+range30–600). Slow local models may require explicit adjustment. This does not
+change the sandbox's maximum five-minute install/build deadline. Generation timeout,
+API transport loss, and sandbox compilation failure are distinct diagnostics.
+
+## Local preview lifecycle
+
+Local Next.js preview is implemented as an explicit opt-in module. See
+[Local previews](/docs/guides/local-previews) for supported setup and operation.
+Migrations 0003 and 0004 add operation state and hashed access grants/sessions.
+
+A separate worker prepares immutable saved source in a Docker volume, revalidates
+without networking and retains the isolated runtime behind trusted ingress. Kernel
+locks plus expiring claims fence execution and recovery. Stop/expiry revokes access
+and retains capacity until cleanup succeeds; restart/recovery does not regenerate.
+
+The gateway requires owner-authorized one-use bootstrap grants and host-only viewer
+cookies, rechecks control-session validity, and never forwards Wrenly credentials.
+The pane frames only the selected build's ready preview. Published URLs remain separate.
+Preparation/runtime diagnostics do not change build success. Initial support is a
+Linux host API with local Docker/GNU flock; unsupported topologies fail closed.
+
+## Application-database execution status
+
+Internal acceptance also covers role provisioning and a durable database executor:
+application writes, schema migrations and read-only browsing use distinct database
+roles. The executor preserves request identity, leases and interrupted outcomes.
+It is not yet activated at startup or exposed through database routes. Recovery,
+reviewed migrations/backups, the viewer and application runtime bindings remain
+under implementation; these checks do not establish a finished database workflow.
+
+The internal generated-database lifecycle also supports explicit owner recovery for
+interruptions that provably occurred before any Docker effect. Revision checks and
+the resource executor lock prevent clearing uncertain work. A separate saved recovery
+record makes response retries safe; interrupted work with a mutation intent remains
+blocked. Local resource admission currently reserves at most eight database resources,
+including stopped/failed resources. That budget does not establish a volume disk quota.
+These controls remain internal until the remaining recovery, work/access guards,
+backup/migration, viewer and runtime-binding gates are complete.
+
+Internal backup verification now encrypts a bounded PostgreSQL archive before storing
+it and restores it into a separate temporary database. Schema and migration-journal
+checks must match before verification is saved; temporary database identity never
+replaces the source identity. Archive files are private, authenticated and cannot be
+overwritten or opened under another resource/schema context. No application rows or
+passwords are printed in helper logs. Missing keys over saved archive storage require
+restoring the original instance key.
+
+The internal Next.js SQL migration helper validates frozen migration bytes before
+connecting through a Unix-only socket. Its Drizzle-compatible journal adapter uses
+the pre-provisioned public schema without database/schema-creation privileges.
+Post-migration role checks remove runtime/read-only access to migration journals.
+Persistent migration review, Laravel integration and application runtime bindings are
+still being connected; these internals do not enable a user-facing database module.
+
+The internal database query runner uses an authenticated reader-only Unix socket
+inside a container without IP networking. It bounds table, column, row and response
+sizes and excludes framework migration journals. Its output bypasses Docker logs.
+Trusted cancellation can terminate only the resource's reader or migrator sessions
+and verify they have ended after the corresponding client and broker are stopped.
+These adapters remain internal until authorized read/migration admission, recovery,
+application bindings and the database interface are connected.
+
+Frozen Next.js migration rehearsal now restores a verified archive into a separate
+operation-scoped database, applies the exact saved migrations, rechecks role policy and
+removes the disposable resource. The original resource is never a rehearsal target.
+This remains an internal prerequisite: durable owner review and backup binding are
+still required before persistent migrations can be admitted.
+
+The internal persistent Next.js migration executor now requires owner confirmation,
+a successful frozen revision and a restored/verified resource backup. It persists the
+rehearsal fingerprint, compares the current schema before applying SQL, and verifies
+native migration output and role policy afterward. Cleanup has its own durable intent:
+ending migrator sessions never marks uncertain SQL as successful. API startup requires
+migration **0025** for this additive metadata. The database worker, HTTP/UI and application
+bindings remain behind the unfinished module's activation gates.
+
+Project owners can approve specific reviewed HTTPS media hosts under **Preview media**.
+Local assets remain the default. Migration **0026** stores the policy; changes use
+revision-checked audited saves and revoke old preview grants. The workspace refreshes
+its embedded frame. Reload or close standalone preview tabs after changing policy:
+browser content-security rules belong to the document that was loaded.
+
+Media approval permits images/direct video files only. It does not grant external
+scripts, API calls, embedded players or model browsing. Current model inference exposes
+no browser/search/arbitrary-shell tool API; generated builds continue inside Docker
+with their existing network restrictions. Prompt instructions are not a substitute for
+these server/browser boundaries.
+
+The workspace navigation keeps incomplete setup guidance above Settings in the
+sidebar, including its mobile drawer. The account menu groups profile, project and
+security links with Light, Dark and System appearance choices. Projects includes
+Next.js and Laravel framework filters even before both frameworks have saved projects;
+additional frameworks already present in project history remain filterable.
+
+Project settings presents General and project facts before Collaboration. Its access
+summary comes from the confirmed collaboration policy; changing a visibility draft
+alone does not change that summary. Name/description changes retain explicit save,
+conflict review and uncertain-save recovery. Framework changes, archive and deletion
+are separate capabilities rather than controls implied by this page.
+
+General and Collaboration are separate project settings views; switching preserves
+unsaved metadata. Workspace messages offer copying, revision history uses numbered
+labels, and preview viewport controls resize the same authorized frame for desktop,
+tablet or mobile widths. Available pane width caps the simulation. Publishing is a
+separate top-right action. These viewport controls do not change container networking
+or browser media permissions.
+
+Provider setup separates Connect a provider and Choose a model, then links to Models
+for this-browser preferences. Stage changes preserve pending forms; changing a stage
+is not verification of credentials or a successful model request. Account settings
+also offers confirmed Better Auth sign-out.
+
+## Installation and validation are separate
+
+Dependency installation needs network access to fetch packages. Wrenly disables Bun
+installation hooks during that phase, including hooks from explicitly trusted packages.
+Laravel also disables Composer scripts and plugins. The generated build runs afterward
+in a separate Docker container with networking disabled. This keeps generated install
+scripts from using the package-download phase to run application code online.
+
+One deadline covers both phases. Cancellation keeps partial output and removes the
+containers belonging to that exact build attempt. If cleanup cannot be confirmed,
+Wrenly requires recovery instead of assuming the process stopped safely.

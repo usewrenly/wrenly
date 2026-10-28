@@ -1,0 +1,97 @@
+---
+title: How Wrenly works
+description: Follow a prompt from your browser to an AI answer, a checked app and an optional deployment.
+---
+
+Wrenly turns a conversation into an app through several separate steps. Keeping them
+separate lets a build continue when you refresh the browser, and lets you inspect an
+app before deciding to publish it.
+
+For example:
+
+> You ask for a booking app. Wrenly checks your access, asks your chosen model to write
+> code, checks that code inside Docker, then saves the result for you to inspect.
+
+<ArchitectureDiagram />
+
+## Follow your prompt
+
+1. **Your browser** sends the message and selected project version to the API—the
+   server that handles Wrenly requests.
+2. **The API checks access** and saves the request before confirming it. A server
+   worker picks up that saved work; the browser does not keep it alive.
+3. **Wrenly asks the chosen model for an answer.** This step is called **inference**.
+   The answer can be a question, plan or generated code. Framework-specific programs
+   called **MCP servers** provide the tools for generating and editing each stack.
+   API tokens stay on the server.
+4. **Docker checks generated code in isolation.** Dependencies are installed under
+   restrictions, then validation runs with network access blocked. If a check fails,
+   Wrenly can give the error to the model for another bounded attempt.
+5. **Wrenly saves progress and results.** Reloading the browser reads those records
+   again instead of starting the request over. Cancelling work is an explicit action.
+
+## Find each responsibility
+
+| Location | What it does |
+| --- | --- |
+| `apps/web` | Shows conversations, projects, code and preview controls |
+| `apps/api` | Checks access, saves requests and coordinates server work |
+| Framework MCP servers | Provide generation/editing tools for a framework |
+| `packages/inference` | Safely sends model requests and checks saved skill instructions |
+| `packages/sandbox` | Uses Docker to check generated code and run previews |
+| `packages/db` | Defines and manages Wrenly's PostgreSQL records using Drizzle |
+| `packages/deploy` | Talks to the services used to put an app online |
+| `apps/docs` | Serves documentation and the landing page |
+
+## Framework tools and official MCP packages
+
+MCP is a way for programs to expose and call named tools. Two MCP servers can use
+that same protocol while doing different jobs. Wrenly's Laravel server, for example,
+exposes generation and editing tools that return app files; the API handles Docker
+validation separately.
+
+Wrenly does not currently install or call Laravel Boost or the `laravel/mcp` package.
+[Boost](https://laravel.com/framework/docs/boost) helps coding assistants work on an
+existing Laravel application. [Laravel MCP](https://laravel.com/blog/laravel-ai-sdk-boost-or-mcp-which-tool-do-you-need)
+lets a Laravel app expose its own functionality to AI clients. These can complement
+development tooling, but neither replaces Wrenly's saved-build or sandbox lifecycle.
+
+## Preview first; publish when ready
+
+A **preview** runs one saved app version so you can inspect it. **Publishing** puts
+that version at a live address. Neither generation nor opening a preview publishes it.
+
+Wrenly packages the checked app into a Docker **image** and stores it in a private
+**registry**, a service for keeping images. Coolify runs that exact image, identified
+by its content fingerprint, or **digest**. It does not build a different copy from source.
+
+## Words you will see in the code
+
+| Term | Plain meaning |
+| --- | --- |
+| Model provider | The service that runs the model you ask for answers |
+| Admission | Checking and saving a new request before accepting the work |
+| Durable work | Work remembered in the database, rather than only in a browser connection |
+| Worker | A server loop that picks up saved work |
+| Claim / lease | Which worker owns an operation, and how long that ownership lasts without renewal |
+| Replay | Reading already-saved progress again after reconnecting |
+| Frozen snapshot | The saved version of source/settings/instructions chosen for that request |
+| Reconciliation | Checking what actually happened after a result could not be confirmed |
+
+## Keep instance data separate from generated-app data
+
+<DatabaseDiagram />
+
+The **control database** stores Wrenly's own accounts, projects and work history.
+Generated apps must not receive its credentials. The separate
+[generated-app database module](/docs/guides/app-databases) remains in development;
+its internal code does not make that feature available yet.
+
+## Read the next layer
+
+<Cards>
+<Card title="API architecture" href="/docs/architecture/api" description="How the server checks requests and connects the modules." />
+<Card title="Build lifecycle" href="/docs/architecture/build-lifecycle" description="How saved work runs, reports progress and recovers after interruption." />
+<Card title="Repository structure" href="/docs/architecture/project-structure" description="Where to start when changing a feature." />
+<Card title="HTTP reference" href="/docs/reference/http" description="Request formats and access rules for selected endpoints." />
+</Cards>

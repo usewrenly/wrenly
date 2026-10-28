@@ -1,0 +1,2 @@
+/* Public handbook reset; feature styling belongs to documentation.css. */
+body { margin: 0; font-family: var(--font-geist-sans), system-ui, sans-serif; }

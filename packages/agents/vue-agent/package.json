@@ -1,0 +1,10 @@
+{
+  "name": "@wrenly/vue-agent",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "echo 'vue-agent not yet scaffolded'",
+    "lint": "echo 'vue-agent not yet scaffolded'",
+    "check-types": "echo 'vue-agent not yet scaffolded'"
+  }
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "provider_connections" ADD COLUMN "create_request_id" uuid;--> statement-breakpoint
+ALTER TABLE "provider_connections" ADD CONSTRAINT "provider_connections_create_request_id_unique" UNIQUE("create_request_id");

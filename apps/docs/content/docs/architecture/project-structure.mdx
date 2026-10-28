@@ -1,0 +1,175 @@
+---
+title: Repository structure
+description: Find deployed apps, shared libraries and the framework MCP extension points.
+---
+
+This guide helps you find the code for a change. A **monorepo** means the related
+applications and libraries live in one repository.
+
+For example, changing who may publish starts with the API's project permissions;
+changing how Coolify receives a request starts in the deployment library. The folders
+separate those responsibilities so contributors do not need to understand everything
+before making a focused change.
+
+Wrenly is a Bun/Turborepo monorepo. `apps` contains deployed applications; `packages`
+contains shared libraries consumed by those applications. Start with the feature you
+want to change, then follow its contracts across the boundaries below.
+
+```text title="wrenly/"
+apps/
+├── web/                    # Next.js browser workspace
+│   ├── app/                # App Router pages and layouts
+│   └── components/         # Workspace and settings interfaces
+├── api/                    # Hono on Bun
+│   └── src/
+│       ├── app.ts          # HTTP registration
+│       ├── production-app.ts # Service composition
+│       ├── index.ts        # Listener and worker lifecycle
+│       ├── config/         # Validated startup settings
+│       └── modules/        # Features and colocated tests
+└── docs/                   # Public docs and landing
+    ├── content/docs/       # Public MDX guides
+    └── components/documentation/ # Docs presentation
+packages/
+├── agents/                 # Framework MCP servers
+│   ├── nextjs-agent/
+│   ├── laravel-agent/
+│   ├── vue-agent/          # Planned support
+│   └── django-agent/       # Planned support
+├── sandbox/                # Docker isolation and trusted toolchains
+├── deploy/                 # Current publishing integration
+├── db/                     # Drizzle schema, migrations and persistence
+└── ui/                     # Shared components
+```
+
+## Follow a feature
+
+For a project-settings change, start at the web settings interface, find its API
+module, then inspect the shared authorization policy and Drizzle persistence used by
+that module. Tests near the API feature verify its authority and failure states.
+Avoid moving unrelated modules simply because you are already touching a file.
+
+## Understand the MCP names
+
+The existing `*-agent` package names are compatibility identifiers. Technically these
+packages are **MCP servers** exposing framework tools; the orchestration API is their
+**MCP client**. A model provider hosts inference, and a model is its selected identifier.
+These terms carry the same meaning in code, docs and the interface.
+
+## Adding framework support
+
+A framework implementation needs more than a plausible generated file tree:
+
+- A documented MCP input/output contract, structured files and build/start commands.
+- Structured failures, revision-safe edits and repair context.
+- Parent stdio EOF handling so inference subprocesses stop when their caller exits.
+- A trusted Docker toolchain, bounded validation, isolated previews and publishing acceptance.
+- Integration tests covering prompt/context through a valid file tree and real runtime checks.
+- Version/limitations guidance that distinguishes implemented support from plans.
+
+Next.js and Laravel provide current reference implementations. Vue and Django remain
+planned; their package locations do not establish runtime support.
+
+## Package identity and publication
+
+Wrenly has reserved the `@wrenly` npm namespace for future public packages. A scope is
+an identity, not a requirement to publish deployed apps or private workspace libraries.
+The repository continues to use Bun. Public SDKs, CLI distribution and package renames
+need an explicit versioning/release plan; none are introduced by this documentation pass.
+
+## Test tooling
+
+Use Bun for repository tests, lint and type checks. Source-download tests also use
+Python3's standard `zipfile` reader to verify ZIP compatibility independently of the
+encoder; no Python package installation is required. This is contributor test tooling,
+not a Python requirement for running the web workspace. Opt-in Docker/browser acceptance
+needs its corresponding local tools and never executes generated code on the host.
+
+### Publishing library tests
+
+`packages/deploy/src` contains provider adapters. Its `tests/unit` directory uses
+controlled provider responses; `tests/integration` contains opt-in local HTTP/Git
+fixtures. Keeping fixtures separate makes the runtime boundary easier to inspect.
+Both directories participate in the package's strict TypeScript check.
+
+The API's deployment module owns authorization, durable execution and recovery.
+The library owns provider operations. A new deployer should preserve this split:
+changing the remote provider must not bypass saved intent or uncertain-effect recovery.
+
+Within the publishing library, `src/providers/gitea` owns repository administration
+through Gitea's HTTP API; `src/providers/coolify` configures exact-image deployments.
+`src/source-snapshots` commits and pushes files using Git itself. Creating a repository
+and pushing a commit are different operations, so they have separate homes. Shared
+HTTP transport and credential helpers live under `http` and `secrets`. Tests mirror
+these responsibilities. There is no retained direct source-rebuild deployment path.
+
+### Publishing orchestration
+
+The API deployment module separates `http` (requests and history), `persistence`
+(admission, claims and saved effects), `execution` (worker and executor), `recovery`
+(operator reconciliation), and `policy` (source validation). Its unit and browser
+fixtures live under `tests`; database integration fixtures live in the database
+package because they exercise the shared transaction/schema setup.
+
+Follow an admitted request into persistence before looking at provider calls. The
+saved claim and mutation intent explain why a network failure cannot simply trigger
+another deployment.
+
+### Identity and project authority
+
+`apps/api/src/modules/auth/access` resolves Better Auth sessions and carries a verified
+principal through the request. `modules/projects/access` owns project capabilities and
+collection predicates. Authentication establishes who is asking; project policy decides
+whether that person may read, contribute, manage or publish. An instance administrator
+is not automatically authorized to read another person's private project.
+
+Within authentication, `configuration` separates the public Better Auth instance from
+protected transaction-only SDKs. `setup` handles the first owner, `invitations` handles
+authorized membership admission, and `members` handles suspension/restoration. Never
+mount a provisioning SDK's handler: its permissions are safe only inside a caller's
+already-authorized transaction.
+
+Authentication recovery lives in `auth/recovery`, profile input policy in `auth/profile`,
+and bounded image decoding/storage in `auth/profile/pictures`. Operator commands live
+under `auth/setup`; unit and controlled browser fixtures live in `auth/tests`. The native
+image decoder is built as a separate trusted worker, preserving the subprocess boundary
+when the API is bundled.
+
+Project features follow the same convention: `projects/settings` owns metadata writes,
+`projects/sharing` owns access/model changes, `projects/archive` owns reversible retention,
+and `projects/drafts` owns plaintext collaborative ideas. Their validation contracts stay
+with those features; HTTP collection/workspace reads live under `projects/http`.
+
+Model/provider code separates public metadata (`models/catalog`), owner configuration
+(`configuration`), key/token handling (`credentials`), environment import (`environment`),
+frozen admission/execution choices (`selection`) and picker checks (`discovery`).
+`transport` reuses the inference package's destination policy rather than maintaining a
+second address-validation implementation. Catalog and saved credentials remain distinct.
+
+The shared inference package separates `src/network` (destination checks and bounded
+HTTP) from `src/guidance` (pure frozen skill contracts). API probes reuse its destination
+policy; API conversations and framework MCP servers use its inference transport. This
+keeps address rules and skill snapshots consistent across frameworks.
+
+
+Build code follows `builds/admission` (check/save requests), `persistence` (ownership,
+progress and results), `execution` (worker and attempts), and `http` (browser requests
+and observation). The request-owned historical executor has been removed. Production
+uses one saved-work path; closing a browser subscription does not stop that worker.
+
+Conversations separate `contracts` (allowed messages and decisions), `persistence`
+(saved turns and access checks), `execution` (model responses and build actions) and
+`http` (requests and observation). An assistant proposal and its queued build are saved
+together. Reading the result after reconnecting does not ask the model again.
+
+## Database definitions and connections
+
+`packages/db/src/schema` describes Wrenly's control records. API code imports the
+configured connection through `@wrenly/db`; code needing only table definitions can use
+`@wrenly/db/schema` without configuring a connection. The connection pools live under
+`src/connections`.
+
+`src/application-databases` contains pure helpers for separate generated-app databases.
+Those helpers do not connect to the control database, and the unfinished generated-app
+database product module remains disabled. Schema types describe saved records; they do
+not replace the API's authorization checks or safe HTTP response projections.

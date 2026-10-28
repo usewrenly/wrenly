@@ -1,0 +1,12 @@
+{
+  "title": "Wrenly docs",
+  "pages": [
+    "index",
+    "why-wrenly",
+    "guides",
+    "architecture",
+    "reference",
+    "roadmap",
+    "troubleshooting"
+  ]
+}

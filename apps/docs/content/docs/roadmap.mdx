@@ -1,0 +1,57 @@
+---
+title: Capabilities & roadmap
+description: Understand what is implemented, what is in development and what comes next.
+---
+
+Roadmap entries describe direction. They are not controls available in the workspace,
+and individual features do not have promised delivery dates here. The public beta and
+source release are planned for **28 October 2026**.
+
+## Implemented workflows
+
+<StatusBadge state="implemented">Implemented · release checks continue</StatusBadge>
+
+| Capability | What you can do | Learn more |
+| --- | --- | --- |
+| Next.js and Laravel13 | Generate, edit, validate and preview revisions | [Conversations](/docs/architecture/conversations) |
+| Durable execution | Reload and resume viewing saved progress and results | [Build lifecycle](/docs/architecture/build-lifecycle) |
+| Teams and sharing | Invite members and grant per-project Viewer/Editor access | [Projects](/docs/guides/projects) |
+| Models and Skills | Save supported provider connections and pin guidance versions | [Models](/docs/guides/model-provider-setup), [Skills](/docs/guides/skills) |
+| Private publishing | Promote a sandbox-built image through a private registry to Coolify | [Publishing](/docs/guides/private-publishing) |
+| Drafts and archives | Save ideas before building and retain archived project history | [Projects](/docs/guides/projects) |
+
+Implemented means the code path is connected. It does not replace fresh-install,
+upgrade, security or real-provider acceptance for a release.
+
+## In development
+
+<StatusBadge state="development">In development · Production workflow pending</StatusBadge>
+
+**Experimental generated-app databases:** Development has an explicit opt-in workflow for resource
+setup, saved build selection, reviewed backups/migrations, a role-aware viewer and
+isolated previews. Production database provisioning and database-backed publishing
+remain unavailable. Development resources are not promoted implicitly.
+
+[Understand the database boundaries and current status](/docs/guides/app-databases).
+
+## Planned direction
+
+<StatusBadge state="planned">Planned</StatusBadge>
+
+- **More frameworks:** Vue and Django, following the same generation, validation,
+  revision, preview and publishing requirements.
+- **MCP connectors:** Figma and other tools that bring development context into a project.
+- **Provider choice for source and deployment:** additional Git and deployment adapters,
+  beyond the current Gitea/registry/Coolify path.
+- **Richer teamwork:** further collaboration capabilities beyond current invitations,
+  sharing, shared drafts and attributed project conversations.
+- **Explicit tool permissions:** reviewable capabilities for tools such as model browsing.
+  Preview media permissions currently allow exact image/video hosts; they do not enable
+  model browsing or grant sandbox network access.
+
+## Keep the boundaries clear
+
+<DatabaseDiagram />
+
+Instance PostgreSQL stores Wrenly's own records. Generated-app PostgreSQL is a separate
+module in development; it never shares the instance database credentials.
