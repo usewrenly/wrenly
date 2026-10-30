@@ -23,6 +23,8 @@ isolated preview before publishing.
 > Public beta. Check the [release notes](https://github.com/usewrenly/wrenly/releases)
 > and known limitations before relying on it.
 
+![Wrenly home, onboarding, app preview and experimental Development database views](.github/assets/wrenly-screens.png)
+
 ## Built around your choices
 
 - **More than one stack.** Next.js and Laravel workflows, from generation to preview
