@@ -5,19 +5,23 @@
 
 # Wrenly
 
+[![CI](https://github.com/usewrenly/wrenly/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/usewrenly/wrenly/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-93745e)](LICENSE)
+[![Public beta](https://img.shields.io/github/v/release/usewrenly/wrenly?include_prereleases&label=beta)](https://github.com/usewrenly/wrenly/releases)
+
 **An AI app builder you can self-host.**
 
 Build with your team, the models you choose and infrastructure you control.
 Describe an app, refine it through conversation, inspect its source and run it in an
 isolated preview before publishing.
 
-[Get started](apps/docs/content/docs/guides/installation.mdx) ·
-[How it works](apps/docs/content/docs/architecture/overview.mdx) ·
-[Roadmap](apps/docs/content/docs/roadmap.mdx) ·
+[Get started](https://usewrenly.org/docs/guides/installation) ·
+[How it works](https://usewrenly.org/docs/architecture/overview) ·
+[Roadmap](https://usewrenly.org/docs/roadmap) ·
 [Contribute](CONTRIBUTING.md)
 
-> Preparing public beta and source release for **28 October 2026**.
-> This is early software; check the release notes and known limitations before relying on it.
+> Public beta. Check the [release notes](https://github.com/usewrenly/wrenly/releases)
+> and known limitations before relying on it.
 
 ## Built around your choices
 
@@ -41,10 +45,10 @@ The current installation uses a source checkout on a Linux Docker host. You need
 **Bun 1.3.14, Node.js 24+, Git and Docker**. Only the person running the instance installs
 it; invited users open its browser address and sign in.
 
-Follow **[Install Wrenly](apps/docs/content/docs/guides/installation.mdx)** for configuration,
+Follow **[Install Wrenly](https://usewrenly.org/docs/guides/installation)** for configuration,
 migrations and protected first-owner setup. Then connect a model in Settings.
-[Previews](apps/docs/content/docs/guides/local-previews.mdx) and
-[publishing](apps/docs/content/docs/guides/publishing-setup.mdx) have separate setup steps.
+[Previews](https://usewrenly.org/docs/guides/local-previews) and
+[publishing](https://usewrenly.org/docs/guides/publishing-setup) have separate setup steps.
 A packaged installer is not released yet.
 
 Self-hosting requires no external Wrenly account. Prompts and context go to the model
@@ -53,7 +57,7 @@ provider you select; choose a local model for local inference.
 ## Make it better
 
 Start with the [contributor guide](CONTRIBUTING.md) and
-[repository map](apps/docs/content/docs/architecture/project-structure.mdx).
+[repository map](https://usewrenly.org/docs/architecture/project-structure).
 Report reproducible bugs through Issues and suspected vulnerabilities through the
 [private reporting process](SECURITY.md). AI-assisted contributions follow [AGENTS.md](AGENTS.md).
 
