@@ -253,6 +253,13 @@
       "when": 1792877742618,
       "tag": "0035_conversation-database-selection",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794240850798,
+      "tag": "0036_github_source_connections",
+      "breakpoints": true
     }
   ]
 }
