@@ -59,4 +59,7 @@ baseline for later source-change review; they contain no GitHub tokens.
 
 The current internal admission functions live in `imports/import-store.ts`. They
 recheck the active local session, personal connection and instance App version.
-The import browser route/interface and remote push executor are not connected yet.
+The Projects import interface uses authenticated review/confirmation endpoints.
+`imports/import-reader.ts` assesses root framework compatibility without running code;
+`imports/import-service.ts` binds the read to the current personal connection.
+The remote push executor is not connected yet.

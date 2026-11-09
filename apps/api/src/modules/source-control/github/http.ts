@@ -17,6 +17,12 @@ const Start = z.discriminatedUnion("action", [
   z.object({ action: z.literal("connect") }).strict(),
 ]);
 export interface GitHubConnectionService {
+  prepareImport?(
+    principal: AccessPrincipal,
+    raw: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown>;
+  confirmImport?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
   status(principal: AccessPrincipal): Promise<unknown>;
   begin(
     principal: AccessPrincipal,
@@ -36,6 +42,8 @@ export interface GitHubConnectionService {
   ): Promise<unknown>;
 }
 export interface GitHubConnectionHandlers {
+  prepareImport(request: Request): Promise<Response>;
+  confirmImport(request: Request): Promise<Response>;
   status(request: Request): Promise<Response>;
   start(request: Request): Promise<Response>;
   registrationCallback(request: Request): Promise<Response>;
@@ -172,6 +180,22 @@ export function createGitHubConnectionHandlers(options: {
     });
   }
   return {
+    prepareImport: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.prepareImport)
+          throw new SourceConnectionError(503, "Source import is unavailable.");
+        return options.service.prepareImport(
+          principal,
+          await json(request),
+          request.signal,
+        );
+      }),
+    confirmImport: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.confirmImport)
+          throw new SourceConnectionError(503, "Source import is unavailable.");
+        return options.service.confirmImport(principal, await json(request));
+      }),
     status: (request) =>
       boundary(request, false, (p) => options.service.status(p)),
     repositories: (request) =>

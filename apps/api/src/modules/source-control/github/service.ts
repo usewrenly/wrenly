@@ -1,3 +1,4 @@
+import { createSourceImportService } from "../imports/import-service";
 import {
   createGitHubReadClient,
   createGitHubAppManifest,
@@ -55,7 +56,10 @@ export function createGitHubConnectionService(
   options: { webUrl: string; directory: string },
 ): GitHubConnectionService {
   const origin = new URL(options.webUrl).origin;
+  const imports = createSourceImportService(database, options.directory);
   return {
+    prepareImport: imports.prepare,
+    confirmImport: imports.confirm,
     status: (principal) => readSourceConnectionStatus(database, principal),
     begin: async (principal, input) => {
       const purpose =

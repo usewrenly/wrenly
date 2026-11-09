@@ -8,7 +8,7 @@ separate from signing in to Wrenly and from publishing through Gitea and Coolify
 
 ## Before you start
 
-- Apply the current Wrenly database migrations, including `0036`.
+- Apply the current Wrenly database migrations, including `0037`.
 - Sign in to Wrenly. The instance owner registers the GitHub App first.
 - Use HTTPS for an internet-facing installation. Local development may use localhost.
 - Have a GitHub account and internet access for this optional integration.
@@ -40,8 +40,32 @@ connection callbacks. To remove the App's installation permissions as well, mana
 its installation in GitHub's settings. When authorization expires, reconnect your
 account from this page.
 
+## Import a project
+
+1. Open **Projects → Import from GitHub**.
+2. Select **Load repositories**, then choose an accessible repository.
+3. Enter its branch name (for example `main`) or a full commit SHA.
+4. Choose the framework and a name for your private Wrenly project.
+5. Select **Review this source**. Check the exact commit and excluded files.
+6. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
+
+The import never asks a model to rewrite your repository. If compilation fails,
+inspect the saved source/logs and submit a separate prompt to request repairs.
+Do not use an ordinary generation retry to change an exact imported commit.
+
+The first import path supports root Next.js 15 and Laravel 13 applications that
+meet the existing runtime policies. It does not upgrade framework versions or
+accept monorepo subdirectories, binaries, Git LFS pointers, symlinks or submodules.
+Laravel repositories with Composer scripts/plugins or custom repositories require
+policy-compatible source before review. Private environment and credential files
+are excluded. Review the source yourself too: exclusion is not a general secret scan.
+
+If the confirmation reply is lost, **Retry same import** reuses its saved request ID
+and returns the same project. Review expires after ten minutes. Disconnecting GitHub
+or changing authorization requires a new source review before a new import.
+
 ## Current availability
 
-This connection screen checks account and repository access. Project import and
-reviewed branch pushes are still being implemented; connecting an account does not
-start a build or write to a repository. Existing publishing remains unchanged.
+Project import is connected on this feature branch. Reviewed branch pushes are
+still being implemented. Existing Gitea/Coolify publishing is unchanged; this
+connection does not replace your publishing source provider.

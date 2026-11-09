@@ -103,3 +103,17 @@ test("callbacks remove codes from the URL and return only a fixed outcome", asyn
   expect(await failed.text()).not.toContain("private-provider-response");
   expect(failed.headers.get("location")).toEndWith("github=failed");
 });
+
+
+test("import review and confirmation enforce session and origin before reading source or admitting a project", async () => {
+  const f = fixture();
+  f.service.prepareImport = async (_principal, input) => { f.calls.push("review"); return input; };
+  f.service.confirmImport = async (_principal, input) => { f.calls.push("confirm"); return input; };
+  expect((await f.handlers.prepareImport(start("https://evil.example", {}))).status).toBe(403);
+  expect(f.calls).toEqual([]);
+  expect((await f.handlers.prepareImport(start("https://instance.example", { repositoryId: "12" }))).status).toBe(200);
+  expect((await f.handlers.confirmImport(start("https://instance.example", { reviewId: "review" }))).status).toBe(200);
+  expect(f.calls).toEqual(["review", "confirm"]);
+  const anonymous = fixture(false);
+  expect((await anonymous.handlers.confirmImport(start())).status).toBe(401);
+});

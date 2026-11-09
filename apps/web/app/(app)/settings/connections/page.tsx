@@ -106,10 +106,10 @@ export default function ConnectionsPage(): React.JSX.Element {
               "Bring approved tools and project context into your workflow, with scoped permissions.",
           },
           {
-            title: "GitHub & GitLab",
+            title: "More source providers",
             icon: GitBranchIcon,
             description:
-              "Planned repository connections for importing projects and pushing changes. Gitea is the current publishing source provider.",
+              "GitLab and additional Git hosts are planned. GitHub account connection and import are available above; Gitea remains the publishing source provider.",
           },
           {
             title: "More deployers",
