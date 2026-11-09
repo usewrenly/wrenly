@@ -28,6 +28,10 @@ and remain off by default. Production database provisioning and database-backed 
 are unavailable. External MCP connectors such as Figma, alternative Git hosts/deployers,
 a packaged installer and a hosted Wrenly service are separate roadmap work.
 
+GitHub source connections support browser App setup, personal repository import and
+owner-reviewed pushes to new branches. They are separate from app publishing and
+MCP connectors. Real provider acceptance is required before releasing this feature.
+
 The roadmap is honest product scope, not a promise of completion dates. Follow the
 repository’s tagged release notes for the version actually installed.
 
@@ -42,6 +46,7 @@ packages/
   agents/    framework-specific MCP tool servers
   inference/ shared model connection and instruction rules
   sandbox/   isolated validation, runtime images and previews
+  source-control/ GitHub repository identities, bounded source reads and change review
   deploy/    private source snapshots and deployment-provider adapters
   db/        PostgreSQL schema, migrations and shared database contracts
   ui/        shared components, brand artwork and styling foundations

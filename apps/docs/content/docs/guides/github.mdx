@@ -8,7 +8,7 @@ separate from signing in to Wrenly and from publishing through Gitea and Coolify
 
 ## Before you start
 
-- Apply the current Wrenly database migrations, including `0037`.
+- Apply the current Wrenly database migrations, including `0038`.
 - Sign in to Wrenly. The instance owner registers the GitHub App first.
 - Use HTTPS for an internet-facing installation. Local development may use localhost.
 - Have a GitHub account and internet access for this optional integration.
@@ -16,8 +16,11 @@ separate from signing in to Wrenly and from publishing through Gitea and Coolify
 ## Register the instance's App
 
 1. Open **Settings → Connections → GitHub** as the instance owner.
-2. Choose a unique App name and select **Register GitHub App**.
-3. Review GitHub's registration screen and confirm. GitHub returns you to Wrenly.
+2. Choose a unique App name. For members using their own GitHub accounts, enable
+   **Allow members to install this App on their own GitHub accounts**. This makes
+   the App registration installable by other accounts; repositories stay private.
+3. Select **Register on GitHub**.
+4. Review GitHub's registration screen and confirm. GitHub returns you to Wrenly.
 
 The App belongs to your installation. Wrenly stores its credentials encrypted on
 that installation; you do not copy a client secret into an environment file.
@@ -37,12 +40,13 @@ its administrator before repositories appear.
 
 **Disconnect** removes Wrenly's saved personal credentials and cancels pending
 connection callbacks. To remove the App's installation permissions as well, manage
-its installation in GitHub's settings. When authorization expires, reconnect your
-account from this page.
+its installation in GitHub's settings. Expiring tokens refresh on the server when you use the connection. If a refresh
+reply cannot be confirmed, Wrenly stops using that refresh token. Select **Reconnect**
+to authorize again; an uncertain single-use exchange is never automatically repeated.
 
 ## Import a project
 
-1. Open **Projects → Import from GitHub**.
+1. Select **Import from GitHub** on **Home** or **Projects**.
 2. Select **Load repositories**, then choose an accessible repository.
 3. Enter its branch name (for example `main`) or a full commit SHA.
 4. Choose the framework and a name for your private Wrenly project.
@@ -64,8 +68,58 @@ If the confirmation reply is lost, **Retry same import** reuses its saved reques
 and returns the same project. Review expires after ten minutes. Disconnecting GitHub
 or changing authorization requires a new source review before a new import.
 
-## Current availability
+## Connect an existing Wrenly project
 
-Project import is connected on this feature branch. Reviewed branch pushes are
-still being implemented. Existing Gitea/Coolify publishing is unchanged; this
-connection does not replace your publishing source provider.
+Open a finished revision in the workspace and select **GitHub source**, next to
+Download source. Choose **Load repositories**, select a repository and review its
+baseline branch or commit. Confirm **Connect repository**.
+
+This saves the remote comparison baseline. It does not replace the Wrenly project's
+files, run a build or push anything. Imported projects already have this baseline.
+The project owner must use their own GitHub connection; collaborators cannot borrow it.
+
+An empty GitHub repository has no commit to use as a baseline. Add a supported root
+application first. Repository replacement and monorepo selection are not supported yet.
+
+## Review and push a revision
+
+1. Select the finished local revision you want to export.
+2. Open **GitHub source** and choose a new branch under `wrenly/`, for example
+   `wrenly/booking-calendar`.
+3. Select **Review selected revision**. Inspect additions, removals and before/after
+   contents. If there are no changes from the baseline, nothing needs pushing.
+4. Confirm **Push to new branch**. The server saves the request before contacting GitHub.
+5. Watch **Recent source pushes**, then use **Open pushed revision** when it succeeds.
+
+The new branch starts from the reviewed baseline commit. Remote files outside the
+managed source set are preserved. Existing branches, including the default branch,
+are never overwritten or force-pushed. Changes under `.github/workflows` are refused;
+the App does not request Actions/workflow permissions.
+
+The comparison baseline stays pinned. Later pushes use another new branch. Pull
+requests, merging and continuous synchronization remain GitHub-side actions; Wrenly
+does not perform them automatically. Publishing the running app still uses the
+separate Gitea/private-registry/Coolify workflow.
+
+## Check an interrupted push
+
+A **needs review** result means GitHub may have received a request whose reply was
+lost. Do not repeat it as a new push.
+
+1. Open the repository on GitHub and inspect the named branch.
+2. Wait until GitHub has finished processing the request.
+3. In **Recent source pushes**, confirm that you checked GitHub, then select
+   **Check saved push result**.
+
+Recovery only reads GitHub. If the exact saved commit and tree are present, it records
+success. If the branch is confirmed absent, it records a failed attempt and permits a
+new explicit review. A branch pointing elsewhere is recorded as a conflict; it is
+never overwritten. Reconnection may be needed if the old authorization expired.
+
+## Installation visibility for teams
+
+A private GitHub App can only be installed on its owning GitHub account. If an
+existing App needs installations on teammates' accounts, its owner can change its
+visibility in **GitHub → Settings → Developer settings → GitHub Apps → Edit**.
+Keep installations limited to selected repositories. App visibility does not bypass
+Wrenly sign-in or project sharing. See [GitHub's installation visibility guide](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private).
