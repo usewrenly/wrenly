@@ -8,7 +8,7 @@ import { Popover } from "@base-ui/react/popover";
 import { useDeployment } from "@/hooks/use-deployment";
 import { useLocalPreview } from "@/hooks/use-local-preview";
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { BuildStreamState } from "@/hooks/use-build-stream";
 import {
   ArrowUpRightIcon,
@@ -27,6 +27,11 @@ import {
   TerminalIcon,
   DatabaseIcon,
 } from "lucide-react";
+const GitHubSourceButton = lazy(() =>
+  import("@/components/projects/source/github-source").then((module) => ({
+    default: module.GitHubSourceButton,
+  })),
+);
 import { SourceDownload } from "./source-download";
 import { CodeEditor } from "./code-editor";
 
@@ -35,14 +40,20 @@ import { WorkspaceLogs } from "./workspace-logs";
 import { collectWorkspaceDiagnostics } from "@/lib/diagnostics/workspace-diagnostics";
 
 const PREVIEW_HELP = {
-  queued: "Waiting for a preview slot. You can keep working in the conversation.",
-  preparing: "Preparing dependencies and validating this saved app in isolation.",
+  queued:
+    "Waiting for a preview slot. You can keep working in the conversation.",
+  preparing:
+    "Preparing dependencies and validating this saved app in isolation.",
   starting: "Starting your app and waiting for it to respond.",
-  ready: "Opening access to this revision. Refresh preview if its access has expired.",
-  expired: "This preview has expired. Prepare this revision again to reopen it.",
-  stopped: "Prepare this revision again to reopen it. Your saved source is preserved.",
+  ready:
+    "Opening access to this revision. Refresh preview if its access has expired.",
+  expired:
+    "This preview has expired. Prepare this revision again to reopen it.",
+  stopped:
+    "Prepare this revision again to reopen it. Your saved source is preserved.",
   failed: "Preparation failed. Check preview output below before trying again.",
-  interrupted: "Preparation was interrupted. Review output and cleanup before preparing again.",
+  interrupted:
+    "Preparation was interrupted. Review output and cleanup before preparing again.",
 };
 
 type Tab = "preview" | "code" | "logs" | "database";
@@ -94,7 +105,8 @@ export function ArtifactPane({
   );
   const [localTab, setLocalTab] = useState<Tab>("preview");
   const requestedTab = controlledTab ?? localTab;
-  const tab = requestedTab === "database" && !databasePane ? "preview" : requestedTab;
+  const tab =
+    requestedTab === "database" && !databasePane ? "preview" : requestedTab;
   const setTab = (next: Tab): void => {
     setLocalTab(next);
     onTabChange?.(next);
@@ -155,7 +167,9 @@ export function ArtifactPane({
       label: "Logs",
       badge: state.logs.length ? String(state.logs.length) : undefined,
     },
-    ...(databasePane ? [{ id: "database" as const, label: "Database", badge: "Experimental" }] : []),
+    ...(databasePane
+      ? [{ id: "database" as const, label: "Database", badge: "Experimental" }]
+      : []),
   ];
 
   return (
@@ -214,7 +228,10 @@ export function ArtifactPane({
             )}
             {t.label}
             {t.badge && (
-              <span className={`artifact-count-badge artifact-count-${t.id}`} data-state={phase.name}>
+              <span
+                className={`artifact-count-badge artifact-count-${t.id}`}
+                data-state={phase.name}
+              >
                 {t.badge}
               </span>
             )}
@@ -234,15 +251,27 @@ export function ArtifactPane({
               ? `Revision ${state.buildId.slice(0, 8)}`
               : "No selected revision"}
           </span>
-          <SourceDownload
-            buildId={state.buildId}
-            available={Boolean(
+          <div className="flex items-center gap-2">
+            {canPublish &&
               state.buildId &&
-              files?.length &&
-              ["success", "failed"].includes(phase.name) &&
-              !(phase.name === "failed" && phase.outcomeUnknown),
-            )}
-          />
+              ["success", "failed"].includes(phase.name) && (
+                <Suspense fallback={<span>Loading source controls…</span>}>
+                  <GitHubSourceButton
+                    projectId={projectId}
+                    buildId={state.buildId}
+                  />
+                </Suspense>
+              )}
+            <SourceDownload
+              buildId={state.buildId}
+              available={Boolean(
+                state.buildId &&
+                files?.length &&
+                ["success", "failed"].includes(phase.name) &&
+                !(phase.name === "failed" && phase.outcomeUnknown),
+              )}
+            />
+          </div>
         </div>
         {/* Preview */}
         {tab === "preview" && (
@@ -321,7 +350,13 @@ export function ArtifactPane({
                                   ? "Publishing is separate from local preview."
                                   : "Publishing is not enabled for this instance."}
                             </span>
-                            {publishing.state.deployment?.status === "verifying" && <span role="status">Coolify finished. Checking the application URL and this published revision.</span>}
+                            {publishing.state.deployment?.status ===
+                              "verifying" && (
+                              <span role="status">
+                                Coolify finished. Checking the application URL
+                                and this published revision.
+                              </span>
+                            )}
                             {canPublish &&
                               publishing.state.deployment?.status ===
                                 "queued" && (
@@ -374,8 +409,19 @@ export function ArtifactPane({
                 </Popover.Portal>
               </Popover.Root>
               <div className="workspace-preview-actions">
-                <button type="button" aria-label="Refresh preview" title="Refresh preview access" disabled={local.state.loading || !state.buildId || phase.name !== "success"}
-                  onClick={local.reload}><RefreshCwIcon size={14} aria-hidden="true" /></button>
+                <button
+                  type="button"
+                  aria-label="Refresh preview"
+                  title="Refresh preview access"
+                  disabled={
+                    local.state.loading ||
+                    !state.buildId ||
+                    phase.name !== "success"
+                  }
+                  onClick={local.reload}
+                >
+                  <RefreshCwIcon size={14} aria-hidden="true" />
+                </button>
                 {local.state.preview?.status === "ready" && (
                   <>
                     <button
@@ -469,17 +515,20 @@ export function ArtifactPane({
                       ? "Reading the current preview state. Your build and source remain available."
                       : local.state.error
                         ? local.state.error
-                      : !local.state.enabled
-                        ? "Local previews are turned off for this instance. Ask the instance administrator to enable them. Building your app does not require publishing."
-                        : !local.state.supported
-                          ? "Local preview supports Next.js and Laravel 13. Your build and code are preserved."
-                          : local.state.activePreview && local.state.activePreview.buildId !== state.buildId
-                            ? "A preview of another revision is still reserved. Prepare this revision to replace it."
-                            : local.state.preview
-                              ? local.state.preview.error || PREVIEW_HELP[local.state.preview.status]
-                              : phase.name === "success"
-                                ? "Prepare a local preview of this build. Deployment is separate."
-                                : "A successful build is needed for local preview."}
+                        : !local.state.enabled
+                          ? "Local previews are turned off for this instance. Ask the instance administrator to enable them. Building your app does not require publishing."
+                          : !local.state.supported
+                            ? "Local preview supports Next.js and Laravel 13. Your build and code are preserved."
+                            : local.state.activePreview &&
+                                local.state.activePreview.buildId !==
+                                  state.buildId
+                              ? "A preview of another revision is still reserved. Prepare this revision to replace it."
+                              : local.state.preview
+                                ? local.state.preview.error ||
+                                  PREVIEW_HELP[local.state.preview.status]
+                                : phase.name === "success"
+                                  ? "Prepare a local preview of this build. Deployment is separate."
+                                  : "A successful build is needed for local preview."}
                 </p>
                 {state.buildId &&
                   phase.name === "success" &&
@@ -537,7 +586,9 @@ export function ArtifactPane({
         )}
 
         {/* Logs */}
-        {tab === "database" && <div className="database-artifact-pane">{databasePane}</div>}
+        {tab === "database" && (
+          <div className="database-artifact-pane">{databasePane}</div>
+        )}
         {tab === "logs" && (
           <WorkspaceLogs
             key={state.buildId ?? "no-revision"}

@@ -4,6 +4,7 @@
 // Submitting creates the project (POST /api/projects), parks the prompt
 // in sessionStorage for the workspace to pick up, then routes there.
 
+import { GitHubImportButton } from "@/components/projects/source/github-import";
 import type { ConversationMode } from "@/lib/conversations/contracts";
 import {
   draftRequest,
@@ -106,11 +107,22 @@ export function Dashboard(): React.JSX.Element {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: promptToTitle(prompt), stack, skillVersionIds }),
+        body: JSON.stringify({
+          name: promptToTitle(prompt),
+          stack,
+          skillVersionIds,
+        }),
       });
       if (!res.ok) {
         const failure: unknown = await res.json();
-        throw new Error(failure && typeof failure === "object" && "error" in failure && typeof failure.error === "string" ? failure.error : `Could not create project (${res.status})`);
+        throw new Error(
+          failure &&
+            typeof failure === "object" &&
+            "error" in failure &&
+            typeof failure.error === "string"
+            ? failure.error
+            : `Could not create project (${res.status})`,
+        );
       }
       const data: unknown = await res.json();
       if (
@@ -171,6 +183,9 @@ export function Dashboard(): React.JSX.Element {
         <p className="home-description">
           Start with an idea. Shape it together. Make it yours.
         </p>
+        <div className="mt-4 mb-6">
+          <GitHubImportButton />
+        </div>
         {ideaError && (
           <p role="alert" className="home-notice">
             {ideaError}
@@ -211,7 +226,13 @@ export function Dashboard(): React.JSX.Element {
           onSubmit={submit}
           disabled={submitting || Boolean(createdProject)}
           draft={draft}
-          projectTools={<InitialProjectSkills versionIds={skillVersionIds} onChange={setSkillVersionIds} disabled={submitting || Boolean(createdProject)} />}
+          projectTools={
+            <InitialProjectSkills
+              versionIds={skillVersionIds}
+              onChange={setSkillVersionIds}
+              disabled={submitting || Boolean(createdProject)}
+            />
+          }
           variant="home"
         />
         {submissionError && (
@@ -329,7 +350,10 @@ export function Dashboard(): React.JSX.Element {
             </p>
           </div>
         ) : (
-          <div className="home-project-list" data-continuation={projects.length > 4}>
+          <div
+            className="home-project-list"
+            data-continuation={projects.length > 4}
+          >
             {visibleProjects.map((project) => (
               <div key={project.id} className="home-project-row">
                 <Link href={`/p/${project.id}`} className="home-project-main">

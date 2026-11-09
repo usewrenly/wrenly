@@ -41,6 +41,7 @@ function PersonalGitHubConnection({
 }): React.JSX.Element {
   const query = useSearchParams();
   const outcome = query.get("github");
+  const [allowOtherAccounts, setAllowOtherAccounts] = useState(false);
   const [name, setName] = useState("Wrenly studio");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
@@ -85,7 +86,9 @@ function PersonalGitHubConnection({
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(15000),
           body: JSON.stringify(
-            action === "register" ? { action, name } : { action },
+            action === "register"
+              ? { action, name, allowOtherAccounts }
+              : { action },
           ),
         }),
       );
@@ -225,6 +228,19 @@ function PersonalGitHubConnection({
                   disabled={busy}
                 />
               </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={allowOtherAccounts}
+                  onChange={(event) =>
+                    setAllowOtherAccounts(event.target.checked)
+                  }
+                  disabled={busy}
+                />
+                Allow members to install this App on their own GitHub accounts.
+                This makes the App registration public, not your repositories or
+                Wrenly instance.
+              </label>
               <Button
                 disabled={busy || name.trim().length < 3}
                 onClick={() => void begin("register")}
@@ -254,6 +270,15 @@ function PersonalGitHubConnection({
                   onClick={() => void checkRepositories()}
                 >
                   Check repository access
+                </Button>
+              )}
+              {current.connection && !current.connection.needsAuthorization && (
+                <Button
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => void begin("connect")}
+                >
+                  Reconnect
                 </Button>
               )}
               <a
