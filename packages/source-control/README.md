@@ -9,8 +9,10 @@ the remote file list (a Git **tree**) and bounded text files. A commit or tree S
 an identifier for an exact saved Git object, rather than a branch name that can move.
 The read-only GitHub client pins credentials to api.github.com and bounds requests.
 It accepts only server-resolved tokens; it does not authorize a local user. These
-helpers do not connect an account, assemble an import, execute code or push changes.
-GitHub integration is not available in the UI yet.
+helpers do not authorize an account, execute code or push changes. Account connection
+lives in the API and Settings → Connections. Project import and push remain in progress.
+The immutable reader verifies each blob against its Git object identity before
+returning source; a changed branch cannot alter the selected commit.
 
 ```text
 src/contracts/           Provider-neutral repository/file identities and safe errors
