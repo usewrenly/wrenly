@@ -40,3 +40,19 @@ STEPS:
 - Refused SSL, malformed reply, wrong hostname/CA and timeout never fall back to plaintext.
   ERROR STATES:
 - Return one fixed safe error; never authenticate or run SQL during this probe.
+
+COMPONENT: Authenticated private Production inspection
+PURPOSE: Verify the PostgreSQL cluster and setup role before saving an attachment review.
+INPUTS: Rechecked target, in-memory setup credential/CA, trusted control cluster identity and cancellation.
+OUTPUTS: Non-secret cluster/database/role capabilities, never application rows.
+STEPS:
+1. Use the installed Postgres.js client with a pinned TCP socket factory and verified hostname TLS.
+2. Bound the connection, one read-only transaction and total operation; destroy sockets on cancellation.
+3. Read fixed PostgreSQL identity/role metadata through Drizzle, including pg_control_system identity.
+4. Refuse the control cluster even if it is reached through an unrelated network alias.
+5. Require the expected database, primary server and management capabilities; close the pool before return.
+EDGE CASES:
+- Restricted bootstrap roles or unavailable cluster identity are not treated as verified setup.
+- Driver reconnects must repeat destination checks; no mutation or credential fallback is allowed.
+ERROR STATES:
+- Fixed safe errors; raw driver errors and connection credentials never enter results/logs.

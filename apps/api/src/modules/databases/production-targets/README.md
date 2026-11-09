@@ -35,3 +35,28 @@ an actual PostgreSQL account can authenticate, has safe privileges or can be pub
 
 Protocol references: [PostgreSQL SSL negotiation](https://www.postgresql.org/docs/17/protocol-flow.html#PROTOCOL-FLOW-SSL)
 and [TLS certificate verification](https://nodejs.org/docs/latest-v24.x/api/tls.html#tlsconnectoptions-callback).
+
+## Authenticated setup checks
+
+`authenticated-inspection.ts` uses the installed Postgres.js socket hook to connect
+only to a rechecked private address. TLS still verifies the original hostname. The
+credential stays in memory; the pool and sockets close before successful verification
+returns. No role creation, migration or application query runs during inspection.
+
+The shared `production-inspection.ts` query reads the PostgreSQL 17 cluster identifier,
+selected database, primary/replica state and management-role capabilities through
+Drizzle in a read-only transaction. A second hostname/IP cannot disguise the control
+cluster: its immutable cluster identifier must differ too. A successful TLS probe alone
+does not establish this. Managed setup requires the ability to read cluster identity
+and create roles/databases; restricted hosted service credentials may not satisfy that
+contract and must not be silently treated as full management access.
+
+A verified connection is not yet a provisioned Production resource. It still needs
+owner-reviewed durable credential storage, provider-owned isolation, role provisioning,
+recovery and publishing bindings. Existing Development provisioning changes cluster-wide
+PUBLIC grants and must never be reused against an arbitrary shared external cluster.
+
+The opt-in authenticated fixture uses `WRENLY_TEST_PRODUCTION_DATABASE_ADDRESS` and
+`WRENLY_TEST_PRODUCTION_DATABASE_CA`, pointing only at the disposable PostgreSQL 17
+TLS fixture with database `app` and the fixture-only setup password. These are test
+inputs, not configuration variables for a Wrenly installation.
