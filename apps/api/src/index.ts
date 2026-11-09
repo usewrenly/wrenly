@@ -47,6 +47,8 @@ try {
   await verifyDraftSchema(db)
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
+  const { verifySourceControlSchema } = await import("./modules/source-control/schema")
+  await verifySourceControlSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
   const app = createProductionApp(environment)
   let acceptingRequests = false

@@ -4,9 +4,9 @@ A connection lets a signed-in person choose GitHub repositories that Wrenly may 
 or update on their behalf. For example, a developer will import an exact saved app,
 edit it in Wrenly, review the changes and push a new branch.
 
-The current implementation is the internal authorization foundation. It does not yet
-expose routes or a working browser connection, import or push. Existing Gitea/Coolify
-publishing is unaffected.
+The browser connection supports instance App registration, personal authorization,
+repository-access checks and disconnect. Project import and reviewed pushes remain
+separate work. Existing Gitea/Coolify publishing is unaffected.
 
 ## Where the code lives
 
@@ -15,6 +15,10 @@ publishing is unaffected.
   adds a separate secret so an intercepted authorization code is not enough to exchange it.
 - `github/authorization-store.ts` saves the state fingerprint and consumes it once for
   the same live Better Auth session. Only the instance owner may start App registration.
+- `github/http.ts` authenticates requests and returns callbacks to Connections without codes.
+- `github/exchange.ts` bounds credential exchanges to GitHub, without automatic retries.
+- `github/connection-store.ts` completes connections and invalidates pending callbacks on disconnect.
+- `github/service.ts` coordinates account setup and bounded repository discovery.
 - `github/credentials.ts` encrypts source credentials with a separate instance-local key.
   It reuses the existing provider-envelope primitive, not the model configuration service.
   Envelopes are bound to purpose, local user and connection version; swapping them fails.

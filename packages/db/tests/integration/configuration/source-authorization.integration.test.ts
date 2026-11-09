@@ -1,3 +1,11 @@
+import {
+  saveSourceGitHubApp,
+  readSourceAppForExchange,
+  saveSourcePersonalConnection,
+  readSourceConnectionStatus,
+  readSourcePersonalToken,
+  disconnectSourceConnection,
+} from "../../../../../apps/api/src/modules/source-control/github/connection-store";
 /** Uses only a named disposable local database; no GitHub calls or operator credentials. */
 import {
   afterAll,
@@ -55,27 +63,23 @@ integration("session-bound GitHub authorization persistence", () => {
     await database.delete(schema.instanceSetup);
     await database.delete(schema.session);
     await database.delete(schema.user);
-    await database
-      .insert(schema.user)
-      .values(
-        ["owner", "member"].map((id) => ({
-          id,
-          name: id,
-          email: `${id}@example.test`,
-          accessRevision: revision,
-        })),
-      );
-    await database
-      .insert(schema.session)
-      .values(
-        [owner, member].map((p) => ({
-          id: p.sessionId,
-          token: `${p.userId}-fixture-token`,
-          userId: p.userId,
-          accessRevision: revision,
-          expiresAt: new Date(Date.now() + 60000),
-        })),
-      );
+    await database.insert(schema.user).values(
+      ["owner", "member"].map((id) => ({
+        id,
+        name: id,
+        email: `${id}@example.test`,
+        accessRevision: revision,
+      })),
+    );
+    await database.insert(schema.session).values(
+      [owner, member].map((p) => ({
+        id: p.sessionId,
+        token: `${p.userId}-fixture-token`,
+        userId: p.userId,
+        accessRevision: revision,
+        expiresAt: new Date(Date.now() + 60000),
+      })),
+    );
     await database
       .insert(schema.instanceSetup)
       .values({ id: 1, ownerId: owner.userId });
@@ -182,17 +186,15 @@ integration("session-bound GitHub authorization persistence", () => {
       key,
       { kind: "app", id: version, userId: owner.userId },
     );
-    await database
-      .insert(schema.sourceGitHubApp)
-      .values({
-        id: 1,
-        version,
-        appId: "42",
-        slug: "fixture",
-        clientId: "Iv1.fixture",
-        credential,
-        configuredBy: owner.userId,
-      });
+    await database.insert(schema.sourceGitHubApp).values({
+      id: 1,
+      version,
+      appId: "42",
+      slug: "fixture",
+      clientId: "Iv1.fixture",
+      credential,
+      configuredBy: owner.userId,
+    });
     const pending = await beginSourceAuthorization(
       database,
       member,
@@ -234,5 +236,112 @@ integration("session-bound GitHub authorization persistence", () => {
         directory,
       ),
     ).rejects.toThrow("expired");
+  });
+  test("completion stores only encrypted personal credentials and disconnect fences pending callbacks", async () => {
+    const registration = await beginSourceAuthorization(
+      database,
+      owner,
+      "register-app",
+      "http://localhost:3000",
+      directory,
+    );
+    const appClaim = await consumeSourceAuthorization(
+      database,
+      owner,
+      "register-app",
+      registration.state,
+      "http://localhost:3000",
+      directory,
+    );
+    await saveSourceGitHubApp(
+      database,
+      owner,
+      appClaim.id,
+      {
+        id: 42,
+        slug: "fixture",
+        client_id: "Iv1.fixture",
+        client_secret: "app-secret",
+        pem: "fixture-key",
+        permissions: { contents: "write", metadata: "read" },
+      },
+      directory,
+    );
+    const pending = await beginSourceAuthorization(
+      database,
+      member,
+      "connect-account",
+      "http://localhost:3000",
+      directory,
+    );
+    const claim = await consumeSourceAuthorization(
+      database,
+      member,
+      "connect-account",
+      pending.state,
+      "http://localhost:3000",
+      directory,
+    );
+    expect(
+      (await readSourceAppForExchange(database, member, claim.id, directory))
+        .clientId,
+    ).toBe("Iv1.fixture");
+    await saveSourcePersonalConnection(
+      database,
+      member,
+      claim.id,
+      {
+        access_token: "access-secret",
+        refresh_token: "refresh-secret",
+        token_type: "bearer",
+        expires_in: 28800,
+        refresh_token_expires_in: 15552000,
+      },
+      { id: 73, login: "member-github" },
+      directory,
+    );
+    const status = await readSourceConnectionStatus(database, member);
+    expect(status.connection?.login).toBe("member-github");
+    expect(JSON.stringify(status)).not.toContain("credential");
+    expect(
+      (await readSourceConnectionStatus(database, owner)).connection,
+    ).toBeNull();
+    expect(
+      (await readSourcePersonalToken(database, member, directory)).token,
+    ).toBe("access-secret");
+    expect(
+      JSON.stringify(await database.select().from(schema.sourceConnections)),
+    ).not.toContain("access-secret");
+    const later = await beginSourceAuthorization(
+      database,
+      member,
+      "connect-account",
+      "http://localhost:3000",
+      directory,
+    );
+    await disconnectSourceConnection(
+      database,
+      member,
+      status.connection!.version,
+    );
+    expect(
+      (await readSourceConnectionStatus(database, member)).connection,
+    ).toBeNull();
+    await expect(
+      readSourcePersonalToken(database, member, directory),
+    ).rejects.toThrow("Authorize");
+    await expect(
+      consumeSourceAuthorization(
+        database,
+        member,
+        "connect-account",
+        later.state,
+        "http://localhost:3000",
+        directory,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      readSourceAppForExchange(database, member, claim.id, directory),
+    ).rejects.toThrow();
   });
 });

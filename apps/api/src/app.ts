@@ -1,3 +1,4 @@
+import type { GitHubConnectionHandlers } from "./modules/source-control/github/http"
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
 import type { ProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
 import type { DraftHandlers } from "./modules/projects/drafts/draft-http"
@@ -35,6 +36,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  sourceGitHub?: GitHubConnectionHandlers
   projectDatabases?: { status: ProjectHandler; view: ProjectHandler; actions?: DatabaseCommandHandlers; migrationReview?: ProjectHandler; recoveryReview?: ProjectHandler; recovery?: DatabaseCommandHandlers }
   skills?: SkillHandlers
   projectSkills?: ProjectSkillHandlers
@@ -109,6 +111,15 @@ export function createApp(
       timestamp: new Date().toISOString(),
     }),
   )
+  if (handlers.sourceGitHub) {
+    const source = handlers.sourceGitHub
+    app.get('/api/source/github', c => source.status(c.req.raw))
+    app.post('/api/source/github/start', c => source.start(c.req.raw))
+    app.post('/api/source/github/disconnect', c => source.disconnect(c.req.raw))
+    app.get('/api/source/github/repositories', c => source.repositories(c.req.raw))
+    app.get('/api/source/github/registration/callback', c => source.registrationCallback(c.req.raw))
+    app.get('/api/source/github/authorization/callback', c => source.authorizationCallback(c.req.raw))
+  }
   if (handlers.profilePictures) {
     const pictures = handlers.profilePictures
     app.get('/api/account/profile-picture', c => pictures.metadata(c.req.raw))

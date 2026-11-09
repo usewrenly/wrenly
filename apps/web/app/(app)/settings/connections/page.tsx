@@ -1,4 +1,6 @@
 "use client";
+import { Suspense } from "react";
+import { GitHubConnectionCard } from "@/components/settings/connections/github-connection-card";
 import { DocumentationLink } from "@/components/documentation-link";
 // Configuration is not health.
 import Link from "next/link";
@@ -27,6 +29,7 @@ export default function ConnectionsPage(): React.JSX.Element {
           <button onClick={() => void summary.refetch()}>Try again</button>
         </div>
       ) : null}
+      <Suspense fallback={<p>Loading GitHub connection…</p>}><GitHubConnectionCard /></Suspense>
       <div className="connection-roadmap-grid">
         <article className="connection-card"><GitBranchIcon size={24} aria-hidden="true" /><div>
           <h2>Source control · Gitea</h2><span className="connection-state">Publishing source provider</span>

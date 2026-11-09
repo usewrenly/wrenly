@@ -2,3 +2,7 @@
 export * from "./contracts/source";
 export * from "./policy/import-policy";
 export * from "./providers/github/repository";
+
+export * from "./contracts/connection";
+export * from "./providers/github/http-client";
+export * from "./providers/github/app-manifest";
