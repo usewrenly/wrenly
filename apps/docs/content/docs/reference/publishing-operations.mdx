@@ -127,3 +127,25 @@ push, additional deployers and Figma/MCP tool connections are planned; the Conne
 page does not activate them. A GitHub MCP tool is not a replacement for a saved
 project repository connection. Current publishing is not yet selectable per project
 across arbitrary repository/deployment providers.
+
+## Interrupted creation with no application in Coolify
+
+First restore Coolify access and wait until the original request has settled. If
+creation was interrupted before Wrenly saved an application UUID, check the correct
+Coolify project for an existing `wrenly-PROJECT_UUID` application. If one exists,
+use its exact UUID with the normal reconciliation command above; do not delete it.
+
+Only when no application was created, run from the repository root:
+
+```bash
+bun run reconcile-deployment DEPLOYMENT_UUID --confirm-remote-settled --confirm-no-remote-application
+```
+
+The extra flag explicitly confirms absence. Wrenly checks access to the pinned
+Coolify project and its complete application collection, then refuses reconciliation
+if a matching app exists or the provider response cannot be verified. It accepts
+this path only for interrupted application creation with no saved app or deploy-job
+identity. It never creates an application or automatically retries publishing.
+
+Use the `bun run` wrapper: it loads the repository root `.env`. Running the underlying
+TypeScript file directly from `apps/api` does not load that root configuration.

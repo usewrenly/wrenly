@@ -4,6 +4,7 @@
  * It does not retry publishing or provide an HTTP administrative bypass.
  */
 
+import { verifyImageApplicationAbsent } from "../../../../../../packages/deploy/src/providers/coolify/application-absence";
 import { z } from "zod";
 import { parseApiEnvironment } from "../../../config/api-environment";
 import { logger } from "../../../lib/logger";
@@ -25,13 +26,22 @@ if (import.meta.main) {
   let lock:
     Awaited<ReturnType<typeof acquireDeploymentExecutorLock>> | undefined;
   try {
-    const [id, confirmation, applicationId, suppliedJobId] = Bun.argv.slice(2);
+    const args = Bun.argv.slice(2);
+    const absenceFlag = "--confirm-no-remote-application";
+    const absent = args.includes(absenceFlag);
+    const positional = args.filter((value) => value !== absenceFlag);
+    if (
+      args.filter((value) => value === absenceFlag).length > 1 ||
+      positional.length > 4
+    )
+      throw new Error("Invalid reconciliation arguments.");
+    const [id, confirmation, applicationId, suppliedJobId] = positional;
     if (
       !z.string().uuid().safeParse(id).success ||
       confirmation !== "--confirm-remote-settled"
     )
       throw new Error(
-        "Usage: bun run reconcile-deployment DEPLOYMENT_UUID --confirm-remote-settled [LOST_APPLICATION_UUID|-] [LOST_JOB_UUID|-]",
+        "Usage: bun run reconcile-deployment DEPLOYMENT_UUID --confirm-remote-settled [LOST_APPLICATION_UUID|-] [LOST_JOB_UUID|-] [--confirm-no-remote-application]",
       );
     const environment = parseApiEnvironment({
       ...process.env,
@@ -52,6 +62,17 @@ if (import.meta.main) {
       token: crypto.randomUUID(),
     });
     const { deployment, resources } = original;
+    if (
+      absent &&
+      (deployment.mutationIntent?.kind !== "create_application" ||
+        resources.coolifyApplicationUuid ||
+        deployment.remoteDeploymentUuid ||
+        applicationId ||
+        suppliedJobId)
+    )
+      throw new Error(
+        "Absence confirmation is only valid for interrupted creation without application or job identity.",
+      );
     if (
       resources.gitInstanceUrl !==
         new URL(environment.WRENLY_GIT_BASE_URL!).origin ||
@@ -101,7 +122,11 @@ if (import.meta.main) {
     const appId =
       resources.coolifyApplicationUuid ??
       (applicationId && applicationId !== "-" ? applicationId : null);
-    if (deployment.mutationIntent?.kind === "create_application" && !appId)
+    if (
+      deployment.mutationIntent?.kind === "create_application" &&
+      !appId &&
+      !absent
+    )
       throw new Error(
         "Supply the exact application UUID created by the interrupted operation.",
       );
@@ -111,6 +136,15 @@ if (import.meta.main) {
       deployment.mutationIntent?.kind !== "create_application"
     )
       throw new Error("Cannot adopt an application for this operation.");
+    if (absent) {
+      await verifyImageApplicationAbsent(
+        coolify,
+        resources.coolifyProjectUuid,
+        `wrenly-${deployment.projectId}`,
+        signal,
+      );
+      lock.assertHeld();
+    }
     if (appId) {
       const application = await readImageApplication(
         coolify,
@@ -171,6 +205,7 @@ if (import.meta.main) {
     }
     if (!deployment.artifactImageId)
       await cleanupUnacknowledgedArtifactImages(id!);
+    lock.assertHeld();
     await finishInterruptedReconciliation(db, original, {
       repositoryId: repository?.id ?? null,
       applicationId: appId,
