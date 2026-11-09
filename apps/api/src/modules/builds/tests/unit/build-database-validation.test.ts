@@ -1,3 +1,4 @@
+import { MigrationHistoryError } from "../../../databases/migration-history";
 import { expect, test } from "bun:test";
 import type { db } from "@wrenly/db";
 import type { BuildClaim } from "../../persistence/build-job-store";
@@ -176,4 +177,13 @@ test("managed connection fallback fails before disposable execution and yields a
   expect(executions).toBe(0);
   await validate(files.map(file => file.path === "db/index.ts" ? { ...file, content: "import postgres from 'postgres'; const sql=postgres();" } : file), claim("nextjs"), signal, 2);
   expect(executions).toBe(1);
+});
+
+test("known applied-history rewrites return repair guidance rather than interruption", async () => {
+  const validate = createDatabaseBuildValidator(database, async () => { throw new Error("No fallback"); },
+    async () => { throw new MigrationHistoryError("Applied file changed", "Restore the exact original bytes; keep the current interface."); });
+  expect(await validate(appDatabaseSource("nextjs"), claim("nextjs"), signal, 1)).toEqual({
+    success: false, output: "Restore the exact original bytes; keep the current interface.",
+    error: "Restore the exact original bytes; keep the current interface.",
+  });
 });

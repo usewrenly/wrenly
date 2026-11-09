@@ -1,3 +1,4 @@
+import { assertAppliedMigrationHistory } from "./migration-history";
 /** Reads owner-reviewed source and verified backup choices without executing application code. */
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { appDatabases, appDatabaseBackups, appDatabaseOperations, builds, type db } from "@wrenly/db";
@@ -25,6 +26,7 @@ export async function readDatabaseMigrationReview(database: typeof db, projectId
       const files = readDatabaseApplicationSource(build.files);
       const manifest = readAppDatabaseManifest(files, build.stack);
       if (!manifest) throw new AppDatabaseError(409, "This revision does not declare database migrations.");
+      await assertAppliedMigrationHistory(tx, projectId, resourceId, files, build.stack);
       const backups = await tx.select({ id: appDatabaseBackups.id, verifiedAt: appDatabaseBackups.verifiedAt,
         schemaDigest: appDatabaseBackups.schemaDigest }).from(appDatabaseBackups)
         .innerJoin(appDatabaseOperations, eq(appDatabaseOperations.id, appDatabaseBackups.operationId))

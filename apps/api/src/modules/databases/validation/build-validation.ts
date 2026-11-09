@@ -14,6 +14,7 @@ import { buildJobs, builds, type db } from "@wrenly/db";
 import { BuildDatabaseSelection } from "@wrenly/db/app-database-build-contract";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import type { BuildClaim } from "../../builds/persistence/build-job-store";
+import { assertAppliedMigrationHistory } from "../migration-history";
 import { AppDatabaseError } from "../database-contract";
 import {
   readDatabaseApplicationSource,
@@ -118,6 +119,9 @@ export async function executeDatabaseBuildValidation(
         "This saved revision does not declare a supported application database.",
       );
     readFrozenMigrationSource(files, manifest.digest, saved.framework);
+    signal.throwIfAborted();
+    // Refuse rewritten applied history before claiming preparation or creating Docker resources.
+    await assertAppliedMigrationHistory(database, parent.projectId, input.data.resourceId, files, saved.framework);
     signal.throwIfAborted();
     const claim = await beginDatabaseValidationPreparation(
       database,

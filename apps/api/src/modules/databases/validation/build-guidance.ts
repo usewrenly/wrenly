@@ -33,6 +33,7 @@ export function databaseBuildGuidance(
       : "",
     connection,
     migrations,
+    "For a visual or application-only edit, omit existing migration SQL/PHP files and drizzle/meta/_journal.json from edit operations entirely. Never reformat them, change whitespace, add a final newline or regenerate the journal as a side effect of a UI repair. Preserve every unrelated interface file as well.",
     "For every browser fetch, check response.ok before reading successful data and validate its shape (for list responses, Array.isArray). Show a visible, retryable error state on API failure. Never put an error object into array state or hide a failed database request as an empty list.",
     "Package installation and compilation have no database access. Validation uses a separate empty disposable database. Applying migrations to existing Development data requires owner review; generated code must not run migrations or seed destructive data at application startup.",
     "Never hardcode connection values, use TCP fallback, open external database connections or request additional network permissions. Use only the supplied runtime role and Unix socket.",

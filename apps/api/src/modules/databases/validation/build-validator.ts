@@ -9,6 +9,7 @@
  * ERROR STATES: Missing manifest is repairable; uncertain external work throws a fixed interruption.
  * Activation is explicit: ordinary production worker wiring does not install this factory yet.
  */
+import { MigrationHistoryError } from "../migration-history";
 import type { db } from "@wrenly/db";
 import { BuildDatabaseSelection } from "@wrenly/db/app-database-build-contract";
 import {
@@ -78,7 +79,9 @@ export function createDatabaseBuildValidator(
               result.outcome.diagnostics ??
               "Check the saved framework migrations and database-dependent page behavior.",
           };
-    } catch {
+    } catch (error) {
+      if (error instanceof MigrationHistoryError)
+        return { success: false, output: error.repairGuidance, error: error.repairGuidance };
       throw new BuildExecutionInterruptedError();
     }
   };

@@ -1,3 +1,4 @@
+import { assertAppliedMigrationHistory } from "./migration-history";
 // Binds an owner-reviewed successful revision to an exact verified resource backup.
 import { and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
@@ -72,6 +73,7 @@ export async function prepareDatabaseMigrationReview(
       input.migrationDigest,
       build.stack,
     );
+    await assertAppliedMigrationHistory(tx, input.projectId, input.resourceId, source.files, build.stack);
     const [backup] = await tx
       .select({ backup: appDatabaseBackups })
       .from(appDatabaseBackups)
@@ -99,7 +101,8 @@ export async function prepareDatabaseMigrationReview(
       beforeSchemaDigest: backup.backup.schemaDigest,
       manifest: source.manifest,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof AppDatabaseError) throw error;
     throw new AppDatabaseError(
       409,
       "Review a successful supported revision and a verified backup of this database before confirming migrations.",
