@@ -322,7 +322,8 @@ export async function recoverDatabaseValidation(
     }
     await assertHeld();
     await database.transaction(async (tx) => {
-      await lockDatabaseQueues(tx);
+      // Completion is a worker receipt, not a new HTTP admission.
+      await lockDatabaseQueues(tx, { wait: true });
       await requireProjectCapability(tx, projectId, actorId, "manage");
       await requireDatabaseProjectIdle(tx, projectId);
       const [resource] = await tx

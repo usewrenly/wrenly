@@ -150,6 +150,7 @@ export async function executeDatabaseValidation(
         signal: controller.signal,
         beforeEffect: held,
       });
+      stage = "artifact acknowledgement";
       await held();
       await acknowledgeValidationArtifact(database, claim, artifact.imageId);
       input = await loadDatabaseValidation(database, claim);

@@ -25,7 +25,9 @@ export async function acknowledgeValidationArtifact(
     if (!/^sha256:[a-f0-9]{64}$/.test(imageId))
       throw new Error("Invalid immutable image");
     await database.transaction(async (tx) => {
-      await lockDatabaseQueues(tx);
+      // Saving a worker receipt must tolerate a short scheduler transaction.
+      // Ownership and deadlines are checked again after these ordered locks.
+      await lockDatabaseQueues(tx, { wait: true });
       const [actor] = await tx
         .select({ id: appDatabaseOperations.actorId })
         .from(appDatabaseOperations)
@@ -96,7 +98,9 @@ export async function acknowledgeFailedValidationArtifact(
     )
       throw new Error("Confirmed compiler exit required");
     await database.transaction(async (tx) => {
-      await lockDatabaseQueues(tx);
+      // Saving a worker receipt must tolerate a short scheduler transaction.
+      // Ownership and deadlines are checked again after these ordered locks.
+      await lockDatabaseQueues(tx, { wait: true });
       const [actor] = await tx
         .select({ id: appDatabaseOperations.actorId })
         .from(appDatabaseOperations)

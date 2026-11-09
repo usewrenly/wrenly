@@ -160,7 +160,9 @@ export async function finishDatabaseValidation(
     const result = outcome.success ? Result.parse(outcome.result) : undefined;
     await assertValidationCleanupLease(database, claim);
     await database.transaction(async (tx) => {
-      await lockDatabaseQueues(tx);
+      // Saving a worker receipt must tolerate a short scheduler transaction.
+      // Ownership and deadlines are checked again after these ordered locks.
+      await lockDatabaseQueues(tx, { wait: true });
       const [actor] = await tx
         .select({ actorId: appDatabaseOperations.actorId })
         .from(appDatabaseOperations)

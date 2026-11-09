@@ -84,7 +84,9 @@ async function registerDatabaseValidation(
       );
     const input = parsed.data;
     return await database.transaction(async (tx) => {
-      await lockDatabaseQueues(tx);
+      // This handoff belongs to an already-claimed build, rather than a new HTTP
+      // request. Wait for scheduler contention, then recheck its parent lease.
+      await lockDatabaseQueues(tx, { wait: true });
       await requireProjectCapability(tx, projectId, actorId, "contribute");
       const [replay] = await tx
         .select({ id: appDatabaseOperations.id })
