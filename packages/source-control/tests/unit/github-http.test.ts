@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createGitHubReadClient } from "../../src/providers/github/http-client";
+import { createGitHubReadClient, createGitHubObjectClient } from "../../src/providers/github/http-client";
 test("GitHub GET pins origin and credentials without redirects or cookies", async () => {
   const client = createGitHubReadClient("test-token", async (url, init) => {
     expect(String(url)).toBe("https://api.github.com/repos/team/studio");
@@ -62,4 +62,28 @@ test("cancellation bounds a transport or body that ignores its signal", async ()
     controller.abort();
     await expect(pending).rejects.toThrow("request_failed");
   }
+});
+
+test("Git object writes cannot update refs, force-push, or send credentials to another route", async () => {
+  const requests: RequestInit[] = [];
+  const client = createGitHubObjectClient(
+    "fixture-token",
+    async (_url, init) => {
+      requests.push(init);
+      return Response.json({ sha: "a".repeat(40) });
+    },
+  );
+  await client.post("/repos/studio/notes/git/refs", {
+    ref: "refs/heads/wrenly/test",
+    sha: "a".repeat(40),
+  });
+  expect(requests[0]?.method).toBe("POST");
+  expect(requests[0]?.redirect).toBe("error");
+  await expect(
+    client.post("/repos/studio/notes/git/refs/heads/main", {}),
+  ).rejects.toThrow("invalid_request");
+  await expect(client.post("/repos/studio/notes/issues", {})).rejects.toThrow(
+    "invalid_request",
+  );
+  expect(requests).toHaveLength(1);
 });

@@ -10,6 +10,7 @@
 const API_ORIGIN = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 3 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 const MAX_TOKEN_CHARACTERS = 8192;
 export class GitHubRequestError extends Error {
@@ -30,10 +31,17 @@ export interface GitHubReadClient {
   get(path: string, signal?: AbortSignal): Promise<unknown>;
 }
 /** The API must resolve current personal authority before supplying a token to this server-only client. */
-export function createGitHubReadClient(
+function createGitHubTransport(
   token: string,
   transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
-): GitHubReadClient {
+): {
+  request(
+    method: "GET" | "POST",
+    path: string,
+    body: unknown,
+    signal?: AbortSignal,
+  ): Promise<unknown>;
+} {
   if (
     !token ||
     token.length > MAX_TOKEN_CHARACTERS ||
@@ -41,7 +49,7 @@ export function createGitHubReadClient(
   )
     throw new GitHubRequestError("invalid_request");
   return {
-    async get(path, externalSignal): Promise<unknown> {
+    async request(method, path, body, externalSignal): Promise<unknown> {
       if (
         !/^\/(?:user(?:\/|\?|$)|repos\/|repositories\/|user\/installations)/.test(
           path,
@@ -69,6 +77,19 @@ export function createGitHubReadClient(
       } catch {
         throw new GitHubRequestError("invalid_request");
       }
+      if (
+        method === "POST" &&
+        !/^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/git\/(trees|commits|refs)$/.test(
+          path,
+        )
+      )
+        throw new GitHubRequestError("invalid_request");
+      const serialized = method === "POST" ? JSON.stringify(body) : undefined;
+      if (
+        method === "POST" &&
+        (!serialized || Buffer.byteLength(serialized) > MAX_REQUEST_BYTES)
+      )
+        throw new GitHubRequestError("invalid_request");
       const signal = AbortSignal.any([
         AbortSignal.timeout(TIMEOUT_MS),
         ...(externalSignal ? [externalSignal] : []),
@@ -85,10 +106,14 @@ export function createGitHubReadClient(
         signal.throwIfAborted();
         const response = await Promise.race([
           transport(url, {
-            method: "GET",
+            method,
+            body: serialized,
             headers: {
               Authorization: `Bearer ${token}`,
               Accept: "application/vnd.github+json",
+              ...(method === "POST"
+                ? { "Content-Type": "application/json" }
+                : {}),
               "X-GitHub-Api-Version": API_VERSION,
             },
             redirect: "error",
@@ -142,5 +167,30 @@ export function createGitHubReadClient(
         }
       }
     },
+  };
+}
+
+/** Read-only callers never receive a remote mutation method. */
+export function createGitHubReadClient(
+  token: string,
+  transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
+): GitHubReadClient {
+  const client = createGitHubTransport(token, transport);
+  return {
+    get: (path, signal) => client.request("GET", path, undefined, signal),
+  };
+}
+export interface GitHubObjectClient extends GitHubReadClient {
+  post(path: string, body: unknown, signal?: AbortSignal): Promise<unknown>;
+}
+/** Only immutable Git objects and new refs can be created; no ref-update or force-push method exists. */
+export function createGitHubObjectClient(
+  token: string,
+  transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
+): GitHubObjectClient {
+  const client = createGitHubTransport(token, transport);
+  return {
+    get: (path, signal) => client.request("GET", path, undefined, signal),
+    post: (path, body, signal) => client.request("POST", path, body, signal),
   };
 }
