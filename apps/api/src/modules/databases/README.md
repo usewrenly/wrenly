@@ -112,3 +112,21 @@ existing attempts. That receipt cannot establish a prepared image or successful 
 intent, absent image, absence of later effects and every cleanup receipt before recording
 failure. Timeout, signal exits, lost responses, cancellation and cleanup uncertainty still
 require recovery. Old interrupted operations do not acquire this evidence retrospectively.
+
+### A failed rehearsal is not a completed migration
+
+A migration is tested on a disposable restored database before it touches application
+data. `rehearsal-recovery-policy.ts` recognises one exact interrupted rehearsal effect
+sequence; unknown or persistent effects stay blocked. `rehearsal-recovery.ts` records
+an owner-confirmed recovery, cleans only that disposable scope and uses the trusted
+schema inspector to compare the original schema and native migration journals. It
+retains the original failed action and advances the resource revision only after
+verification. Cleanup and inspection receipts are independent of the old SQL intent.
+Unconfirmed recovery effects remain blocked; receipt lookup never repeats work.
+
+If a rehearsal recovery itself stops, the next explicit owner review follows its saved
+link to the original migration. Only recognized cleanup/start/inspection receipts are
+eligible. A new recovery cleans exact labelled prior inspectors and can start the
+preserved runtime before hashing its schema and migration journal. Each step has its
+own saved intent and acknowledgement; old unknown receipts remain in history. Missing
+or mismatched resources never trigger initialization or an automatic backup restore.

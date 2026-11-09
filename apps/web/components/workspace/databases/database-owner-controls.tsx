@@ -477,8 +477,9 @@ export function DatabaseOwnerControls({
           ) : null}
           {!pending && recovery ? (
             <p>
-              Confirm inspection or cleanup of this exact interrupted operation.
-              The old action will not run again.
+              {recovery.choices[0] === "recover-rehearsal"
+                ? "Confirm recovery of this failed rehearsal. This may start your preserved Development database to verify its schema; it does not replay migrations or restore data."
+                : "Confirm inspection or cleanup of this exact interrupted operation. The old action will not run again."}
             </p>
           ) : null}
           {!pending && migration ? (

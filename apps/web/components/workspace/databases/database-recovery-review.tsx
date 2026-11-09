@@ -9,6 +9,7 @@ export const DATABASE_RECOVERY_LABELS = {
   "recover-runtime-state": "Inspect the saved runtime state",
   "recover-read": "Clean up an interrupted table read",
   "recover-validation": "Clean up an interrupted application check",
+  "recover-rehearsal": "Verify and recover a failed rehearsal",
 } as const;
 /** Server review chooses the recovery path from durable evidence; callers cannot infer it from a label. */
 export function DatabaseRecoveryReviewPanel({ projectId, resourceId, revision, operationId, onConfirm }: {
@@ -28,6 +29,6 @@ export function DatabaseRecoveryReviewPanel({ projectId, resourceId, revision, o
   const kind = review.choices[0];
   if (!kind) return <p>This operation cannot be recovered automatically from its saved evidence. Its database remains protected. Operator inspection is required; do not repeat the old action.</p>;
   return <div><p>{DATABASE_RECOVERY_LABELS[kind]}</p>
-    <p>This checks owned resources without repeating the old request. Recovery can still be refused if an executor is active or external resource checks fail. It does not prove the interrupted action succeeded.</p>
+    <p>{kind === "recover-rehearsal" ? "This may start the preserved Development database to verify its schema. It never reruns the migration or restores a backup. " : ""}This checks owned resources without repeating the old request. Recovery can still be refused if an executor is active or external resource checks fail. It does not prove the interrupted action succeeded.</p>
     <Button variant="outline" onClick={() => onConfirm(review)}>Review this recovery action</Button></div>;
 }

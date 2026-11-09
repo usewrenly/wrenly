@@ -26,6 +26,7 @@ import {
   enforceManagedDatabaseRolePolicy,
   terminateManagedDatabaseSessions,
   inspectManagedDatabaseSchema,
+  cleanupManagedDatabaseInspector,
   provisionManagedDatabaseRoles,
 } from "../src/databases/database-administrator";
 import { tmpdir } from "node:os";
@@ -44,6 +45,7 @@ import {
 } from "../src/databases/database-runtime";
 import {
   managedDatabaseNames,
+  managedDatabaseLabels,
   type ManagedDatabaseScope,
 } from "../src/databases/database-resource-policy";
 const integration =
@@ -512,6 +514,35 @@ integration("managed PostgreSQL runtime", () => {
           "SELECT count(*) FROM notes;",
         ),
       ).toContain("1");
+      const inspector = { scope: input.scope, database, credentials, administratorBundle,
+        operationId: crypto.randomUUID(), fence: fence([]), signal };
+      const originalDigest = await inspectManagedDatabaseSchema(inspector);
+      await setManagedDatabaseRunning(input.scope, database, false, fence([]), signal);
+      const rejectedEvents: string[] = [];
+      await expect(inspectManagedDatabaseSchema({ ...inspector, operationId: crypto.randomUUID(), fence: fence(rejectedEvents) })).rejects.toThrow();
+      expect(rejectedEvents).toEqual([]);
+      await setManagedDatabaseRunning(input.scope, database, true, fence([]), signal);
+      expect(await inspectManagedDatabaseSchema({ ...inspector, operationId: crypto.randomUUID() })).toBe(originalDigest);
+      expect(await query(database.containerId, credentials.reader, "SELECT count(*) FROM notes;")).toContain("1");
+      const priorId = crypto.randomUUID(), name = `wrenly-database-administrator-${priorId}`;
+      const makeInspector = async (projectId: string): Promise<Docker.Container> => docker.createContainer({ name,
+        Image: "wrenly/database-socket:1", Labels: { ...managedDatabaseLabels({ ...input.scope, projectId }, "database-administrator"),
+          "io.wrenly.database-operation-id": priorId }, HostConfig: { NetworkMode: "none" } });
+      const foreign = await makeInspector(crypto.randomUUID());
+      try {
+        await expect(cleanupManagedDatabaseInspector(input.scope, priorId, async () => {})).rejects.toThrow();
+        expect((await foreign.inspect()).Id).toBe(foreign.id);
+      } finally { await foreign.remove({ force: true, v: true }); }
+      const owned = await makeInspector(input.scope.projectId);
+      try {
+        await expect(cleanupManagedDatabaseInspector(input.scope, priorId, async () => { throw new Error("Lease lost"); })).rejects.toThrow();
+        expect((await owned.inspect()).Id).toBe(owned.id);
+        await cleanupManagedDatabaseInspector(input.scope, priorId, async () => {});
+        await expect(owned.inspect()).rejects.toMatchObject({ statusCode: 404 });
+        await cleanupManagedDatabaseInspector(input.scope, priorId, async () => {});
+      } finally {
+        await owned.remove({ force: true, v: true }).catch(error => { if (error.statusCode !== 404) throw error; });
+      }
       await query(
         database.containerId,
         credentials.runtime,

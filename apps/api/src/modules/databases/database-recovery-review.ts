@@ -1,6 +1,7 @@
+import { isFailedDisposableRehearsal, isInterruptedRehearsalRecovery } from "./rehearsal-recovery-policy";
 /** Review projects recovery choices from durable evidence; it never inspects Docker or resolves an interruption. */
 import { and, eq } from "drizzle-orm";
-import { appDatabases, appDatabaseOperations, appDatabaseValidations, type db } from "@wrenly/db";
+import { appDatabases, appDatabaseOperations, appDatabaseValidations, appDatabaseMigrations, appDatabaseBackups, type db } from "@wrenly/db";
 import { DatabaseRecoveryReview } from "@wrenly/db/app-database-resource-contract";
 import { requireProjectCapability, ProjectAccessError } from "../projects/access/project-access";
 import { AccessDeniedError } from "../auth/access/access-policy";
@@ -44,6 +45,17 @@ export async function readDatabaseRecoveryReview(database: typeof db, projectId:
         eq(appDatabaseOperations.databaseId, resourceId), eq(appDatabaseOperations.projectId, projectId)));
       if (!resource || !operation) throw new AppDatabaseError(404, "Database operation not found.");
       let choices = databaseRecoveryChoices(resource, operation);
+      const [original] = operation.kind === "recover-rehearsal" && operation.effect?.kind === "inspect-rehearsal-operation"
+        ? await tx.select().from(appDatabaseOperations).where(and(eq(appDatabaseOperations.id, operation.effect.id),
+            eq(appDatabaseOperations.databaseId, resourceId), eq(appDatabaseOperations.projectId, projectId))).limit(1)
+        : [operation];
+      const migration = original && (original.id === operation.id || isInterruptedRehearsalRecovery(resource, operation, original.id)) ? original : null;
+      const [review] = await tx.select().from(appDatabaseMigrations).where(eq(appDatabaseMigrations.operationId, migration?.id ?? operationId));
+      if (migration && review && isFailedDisposableRehearsal(resource, migration, review) && review.backupId) {
+        const [backup] = await tx.select().from(appDatabaseBackups).where(eq(appDatabaseBackups.id, review.backupId));
+        if (backup?.verifiedAt && backup.databaseId === resource.id && backup.schemaDigest === review.beforeSchemaDigest)
+          choices = ["recover-rehearsal"];
+      }
       if (choices[0] === "recover-validation") {
         const [validation] = await tx.select({ id: appDatabaseValidations.operationId }).from(appDatabaseValidations)
           .where(eq(appDatabaseValidations.operationId, operationId)).limit(1);

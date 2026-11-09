@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   inspectManagedDatabase,
+  inspectManagedDatabaseState,
   DatabaseRuntimeError,
   type ManagedDatabaseIdentity,
   type DatabaseRuntimeFence,
@@ -81,6 +82,10 @@ async function runDatabaseAdministrator(input: {
       throw new Error("Invalid administrator bundle");
     await input.fence.assertHeld();
     input.signal.throwIfAborted();
+    // Saved handles remain valid while stopped, but a trusted helper needs a ready
+    // server. Refuse before recording an effect or creating the helper container.
+    if (await inspectManagedDatabaseState(input.scope, input.database) !== "ready")
+      throw new DatabaseRuntimeError("database must be running for administration");
     const upstream = await inspectManagedDatabase(input.scope, input.database);
     const request = JSON.stringify({
       resourceId: input.scope.resourceId,
@@ -300,4 +305,28 @@ export async function terminateManagedDatabaseSessions(
     ...input,
     mode: input.target === "reader" ? "terminate-reader" : input.target === "migrator" ? "terminate-migrator" : "terminate-runtime",
   });
+}
+
+/** Removes only a prior trusted inspector after exact resource/project/operation label checks. */
+export async function cleanupManagedDatabaseInspector(
+  scope: ManagedDatabaseScope, operationId: string, assertHeld: () => Promise<void>,
+): Promise<void> {
+  if (!UUID.test(operationId) || !UUID.test(scope.resourceId) || !UUID.test(scope.projectId))
+    throw new DatabaseRuntimeError("invalid inspector cleanup scope");
+  await assertHeld();
+  const container = docker.getContainer(`wrenly-database-administrator-${operationId}`);
+  try {
+    const info = await container.inspect();
+    const expected = { ...managedDatabaseLabels(scope, "database-administrator"),
+      "io.wrenly.database-operation-id": operationId };
+    if (Object.entries(expected).some(([key, value]) => info.Config.Labels?.[key] !== value))
+      throw new DatabaseRuntimeError("inspector identity mismatch");
+    await assertHeld();
+    // Remove the inspected immutable ID; a reused name must never select a replacement.
+    await docker.getContainer(info.Id).remove({ force: true, v: true });
+  } catch (error) {
+    if (!(typeof error === "object" && error !== null && "statusCode" in error && error.statusCode === 404))
+      throw new DatabaseRuntimeError("inspector cleanup");
+  }
+  await assertHeld();
 }

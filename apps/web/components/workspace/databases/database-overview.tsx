@@ -26,6 +26,7 @@ const OPERATIONS: Record<DatabaseResourceStatus["operations"][number]["kind"], s
   migrate: "Apply reviewed changes", read: "Inspect database", "recover-read": "Resolve inspection",
   "recover-before-effect": "Resolve interrupted work", "recover-runtime-state": "Check runtime state",
   "validate-application": "Validate application", "recover-validation": "Resolve validation",
+  "recover-rehearsal": "Resolve rehearsal",
 };
 const OUTCOMES = { queued: "Queued", running: "In progress", success: "Completed", failed: "Failed", interrupted: "Needs review" } as const;
 

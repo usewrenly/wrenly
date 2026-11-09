@@ -16,7 +16,7 @@ export const DatabaseResourceStatus = z.object({
   }).strict()).max(DATABASE_STATUS_LIMITS.resources),
   operations: z.array(z.object({
     id: Identifier, databaseId: Identifier,
-    kind: z.enum(["create", "start", "stop", "backup", "migrate", "read", "recover-read", "recover-before-effect", "recover-runtime-state", "validate-application", "recover-validation"]),
+    kind: z.enum(["create", "start", "stop", "backup", "migrate", "read", "recover-read", "recover-before-effect", "recover-runtime-state", "validate-application", "recover-validation", "recover-rehearsal"]),
     status: z.enum(["queued", "running", "success", "failed", "interrupted"]),
     errorCode: ErrorCode, createdAt: Time, completedAt: Time.nullable(),
   }).strict()).max(DATABASE_STATUS_LIMITS.operations),
@@ -53,6 +53,6 @@ export type DatabaseMigrationReview = z.infer<typeof DatabaseMigrationReview>;
 /** Only server-reviewed recovery choices cross into the browser; external effect details remain private. */
 export const DatabaseRecoveryReview = z.object({
   projectId: Identifier, resourceId: Identifier, revision: Identifier, operationId: Identifier,
-  choices: z.array(z.enum(["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation"])).max(1),
+  choices: z.array(z.enum(["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation", "recover-rehearsal"])).max(1),
 }).strict();
 export type DatabaseRecoveryReview = z.infer<typeof DatabaseRecoveryReview>;

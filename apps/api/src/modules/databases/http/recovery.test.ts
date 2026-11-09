@@ -22,10 +22,10 @@ test("recovery requires explicit confirmation and exact safe recovery input befo
   }
   expect((await handlers.submit(request(review, "https://hostile.example"), project)).status).toBe(403);
   expect(calls).toBe(0);
-  for (const kind of ["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation"]) {
+  for (const kind of ["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation", "recover-rehearsal"]) {
     expect((await handlers.submit(request({ ...review, kind }), project)).status).toBe(202);
   }
-  expect(calls).toBe(4);
+  expect(calls).toBe(5);
 });
 test("recovery retains unknown outcomes and receipt lookup cannot execute recovery", async () => {
   let calls = 0;

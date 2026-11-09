@@ -216,3 +216,37 @@ data or increase the retry limit.
 A timeout, lost response or unconfirmed cleanup is different: Wrenly stops and asks for
 recovery because it cannot prove what finished. Earlier interrupted builds are not
 restarted automatically. Review their recorded operation before starting a new request.
+
+## Recover a failed migration rehearsal
+
+Before applying reviewed changes, Wrenly restores a backup to a separate disposable
+database and tests the migrations there. If that rehearsal fails, the original
+database stays blocked until its saved evidence can be checked.
+
+1. As the project owner, open **Database → Manage resource**.
+2. Inspect the interrupted **Apply reviewed changes** action, or **Resolve rehearsal** if a previous recovery was interrupted.
+3. When offered, choose **Verify and recover a failed rehearsal**, then confirm.
+4. Wait for the recovery receipt and refresh the resource status. Recovery checks
+   disposable cleanup and compares the original schema and migration history. If the
+   preserved Development database is stopped, confirmation also authorizes starting
+   that exact saved runtime. It does not create a replacement or restore a backup.
+5. A successful recovery marks the old migration **failed** and makes the unchanged
+   database ready again. It never reruns the failed SQL or reports it as applied.
+
+If the option is unavailable, or inspection cannot confirm the original state, keep
+the resource blocked and retain the diagnostics for investigation. Do not erase
+records or retry an unknown migration to clear the warning.
+
+Already-applied migrations must remain unchanged. If generated code changed an old
+SQL migration, restore that file from the earlier successful revision; put genuine
+schema changes in a new migration. Rebuild, validate and review the corrected revision
+before opening a new database-capable preview. Recovery alone does not repair source.
+
+### A visual edit changed migration history
+
+Changing colors, contrast or layout should leave existing migration files untouched.
+Wrenly checks already-applied history before starting database build validation. A
+known rewrite, including reformatting an otherwise unchanged journal, returns to the
+build's existing repair attempts with the original files as guidance. It does not run
+SQL against saved data. If repair attempts are exhausted, review the recorded failure;
+do not apply a rewritten initial migration to make the preview open.

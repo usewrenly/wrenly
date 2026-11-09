@@ -27,7 +27,7 @@ export function createProductionDatabaseHandlers(database: typeof db, options: {
     actions: createDatabaseActionHandlers({ userId, lookup, admit: (project, actor, action) =>
       admitDatabaseAction(database, project, actor, action, options.directory) }, options.webUrl),
     recovery: createDatabaseRecoveryHandlers({ userId, lookup, admit: (project, actor, action) =>
-      admitDatabaseRecovery(database, project, actor, action) }, options.webUrl),
+      admitDatabaseRecovery(database, project, actor, action, options.directory) }, options.webUrl),
     migrationReview: createDatabaseMigrationReviewHandler({ userId, read: (project, actor, resource, build) =>
       readDatabaseMigrationReview(database, project, actor, resource, build) }),
     recoveryReview: createDatabaseRecoveryReviewHandler({ userId, read: (project, actor, resource, operation) =>

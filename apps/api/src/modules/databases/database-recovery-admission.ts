@@ -14,11 +14,12 @@ import { ProjectAccessError } from "../projects/access/project-access";
 import { AppDatabaseError } from "./database-contract";
 import { recoverInspectedDatabaseAction, recoverUnstartedDatabaseAction } from "./database-recovery";
 import { recoverDatabaseValidation } from "./validation/validation-recovery";
+import { recoverDatabaseRehearsal } from "./rehearsal-recovery";
 import { recoverDatabaseRead } from "./viewing/view-recovery";
 
 /** Confirmation authorizes inspection only; it cannot waive the interrupted operation's fences. */
 export async function admitDatabaseRecovery(
-  database: typeof db, projectId: string, actorId: string, body: unknown,
+  database: typeof db, projectId: string, actorId: string, body: unknown, directory?: string,
 ): Promise<DatabaseActionAcknowledgement> {
   try {
     const parsed = DatabaseRecoveryAction.safeParse(body);
@@ -29,6 +30,10 @@ export async function admitDatabaseRecovery(
       case "recover-before-effect": return await recoverUnstartedDatabaseAction(database, projectId, actorId, review);
       case "recover-runtime-state": return await recoverInspectedDatabaseAction(database, projectId, actorId, review);
       case "recover-validation": return await recoverDatabaseValidation(database, projectId, actorId, review);
+      case "recover-rehearsal": {
+        if (!directory) throw new AppDatabaseError(503, "Instance data directory unavailable.");
+        return await recoverDatabaseRehearsal(database, projectId, actorId, review, directory);
+      }
       case "recover-read": return await recoverDatabaseRead(database, projectId, actorId, review);
     }
   } catch (error) {

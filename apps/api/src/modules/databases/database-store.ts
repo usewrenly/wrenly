@@ -774,7 +774,7 @@ export async function interruptExpiredDatabaseActions(
         .returning({ id: appDatabaseOperations.databaseId, kind: appDatabaseOperations.kind });
       // Disposable validation never touched the real database. Its interrupted
       // operation still blocks work, without falsely changing the resource state.
-      const persistent = expired.filter(row => !["validate-application", "recover-validation"].includes(row.kind));
+      const persistent = expired.filter(row => !["validate-application", "recover-validation", "recover-rehearsal"].includes(row.kind));
       if (persistent.length)
         await transaction
           .update(appDatabases)
@@ -990,7 +990,7 @@ export async function acknowledgeDatabaseEffect(
         operation.cleanupEffect
       )
         throw new Error("Effect is not held");
-      if (runtimeIdentity && ["validate-application", "recover-validation"].includes(operation.kind))
+      if (runtimeIdentity && ["validate-application", "recover-validation", "recover-rehearsal"].includes(operation.kind))
         throw new Error("Disposable validation cannot replace the real database identity");
       if (runtimeIdentity)
         await transaction
@@ -1102,7 +1102,7 @@ export async function finishDatabaseAction(
             "A restored, verified backup is required before reporting success",
           );
       }
-      if (["validate-application", "recover-validation"].includes(operation.kind))
+      if (["validate-application", "recover-validation", "recover-rehearsal"].includes(operation.kind))
         throw new Error("Disposable validation requires its separate completion protocol");
       let migrationSchemaDigest: string | undefined;
       if (operation.kind === "migrate") {
@@ -1198,7 +1198,7 @@ export async function interruptDatabaseAction(
           ),
         )
         .returning({ id: appDatabaseOperations.databaseId, kind: appDatabaseOperations.kind });
-      if (rows.length && !["validate-application", "recover-validation"].includes(rows[0]?.kind ?? ""))
+      if (rows.length && !["validate-application", "recover-validation", "recover-rehearsal"].includes(rows[0]?.kind ?? ""))
         await transaction
           .update(appDatabases)
           .set({
