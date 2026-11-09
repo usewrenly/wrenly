@@ -13,6 +13,9 @@ The Development workflow is explicitly enabled with `WRENLY_APP_DATABASES_ENABLE
 and requires local previews. The default is off. Production database provisioning and
 database-backed publishing remain unavailable; Development is never promoted implicitly.
 
+In filenames, `production-*` means the real server adapter, as opposed to a test
+adapter. It does **not** mean support for the Production database environment.
+
 ## Find the code
 
 | Path | Responsibility |
