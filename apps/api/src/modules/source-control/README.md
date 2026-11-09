@@ -47,3 +47,16 @@ For database acceptance, supply `WRENLY_TEST_SOURCE_DATABASE_URL` pointing only 
 disposable local database named `wrenly_source_test`, then run
 `packages/db/tests/integration/configuration/source-authorization.integration.test.ts`.
 That suite migrates and clears its fixture tables. Never point it at an installation.
+
+## Import confirmation storage
+
+An import review saves the exact server-fetched commit for ten minutes. Confirming it
+creates a private project, its source revision and one validation job in the same
+PostgreSQL transaction. A lost response can replay the same request UUID to recover
+that project's acknowledgement. It cannot create a second project from the same review.
+Migration `0037` adds these review and origin records. They preserve the imported
+baseline for later source-change review; they contain no GitHub tokens.
+
+The current internal admission functions live in `imports/import-store.ts`. They
+recheck the active local session, personal connection and instance App version.
+The import browser route/interface and remote push executor are not connected yet.

@@ -1,4 +1,8 @@
 import {
+  saveSourceImportReview,
+  admitSourceImport,
+} from "../../../../../apps/api/src/modules/source-control/imports/import-store";
+import {
   saveSourceGitHubApp,
   readSourceAppForExchange,
   saveSourcePersonalConnection,
@@ -57,6 +61,9 @@ integration("session-bound GitHub authorization persistence", () => {
     directory = await mkdtemp(join(tmpdir(), "wrenly-source-test-"));
   });
   beforeEach(async () => {
+    await database.delete(schema.sourceProjectOrigins);
+    await database.delete(schema.sourceImportReviews);
+    await database.delete(schema.projects);
     await database.delete(schema.sourceAuthorizationRequests);
     await database.delete(schema.sourceConnections);
     await database.delete(schema.sourceGitHubApp);
@@ -343,5 +350,104 @@ integration("session-bound GitHub authorization persistence", () => {
     await expect(
       readSourceAppForExchange(database, member, claim.id, directory),
     ).rejects.toThrow();
+  });
+
+  test("import confirmation is private, atomic and replayable without generating different source", async () => {
+    const connectionVersion = crypto.randomUUID();
+    const appVersion = crypto.randomUUID();
+    await database
+      .insert(schema.sourceGitHubApp)
+      .values({
+        id: 1,
+        version: appVersion,
+        appId: "42",
+        slug: "fixture",
+        clientId: "fixture",
+        credential: {},
+        configuredBy: owner.userId,
+      });
+    await database.insert(schema.sourceConnections).values({
+      userId: owner.userId,
+      provider: "github",
+      version: connectionVersion,
+      appVersion,
+      remoteUserId: "73",
+      remoteLogin: "fixture",
+      credential: {},
+      accessExpiresAt: new Date(Date.now() + 60000),
+      refreshExpiresAt: new Date(Date.now() + 60000),
+    });
+    const snapshot = {
+      repository: {
+        provider: "github" as const,
+        id: "12",
+        owner: "studio",
+        name: "notes",
+        private: true,
+      },
+      commitId: "a".repeat(40),
+      treeId: "b".repeat(40),
+      files: [
+        {
+          path: "package.json",
+          content: '{"dependencies":{"next":"15.5.28"}}',
+        },
+      ],
+      excludedPaths: [".env"],
+    };
+    const review = await saveSourceImportReview(
+      database,
+      owner,
+      connectionVersion,
+      snapshot,
+      "nextjs",
+    );
+    const command = {
+      requestId: crypto.randomUUID(),
+      reviewId: review.reviewId,
+      name: "Imported notes",
+    };
+    await expect(admitSourceImport(database, member, command)).rejects.toThrow(
+      "review",
+    );
+    const results = await Promise.all([
+      admitSourceImport(database, owner, command),
+      admitSourceImport(database, owner, command),
+    ]);
+    expect(results[0]!.projectId).toBe(results[1]!.projectId);
+    expect(results.filter((result) => result.replayed)).toHaveLength(1);
+    const [project] = await database.select().from(schema.projects);
+    expect(project?.userId).toBe(owner.userId);
+    expect(project?.accessMode).toBe("private");
+    const [job] = await database.select().from(schema.buildJobs);
+    expect(job?.input.previousFiles).toEqual(snapshot.files);
+    expect(job?.input.sourceValidationV1?.commitId).toBe(snapshot.commitId);
+    await expect(
+      admitSourceImport(database, owner, { ...command, name: "Another" }),
+    ).rejects.toThrow("request ID");
+    await expect(
+      admitSourceImport(database, owner, {
+        ...command,
+        requestId: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow("already created");
+    const later = await saveSourceImportReview(
+      database,
+      owner,
+      connectionVersion,
+      snapshot,
+      "nextjs",
+    );
+    await database
+      .update(schema.sourceConnections)
+      .set({ disconnectedAt: new Date() });
+    await expect(
+      admitSourceImport(database, owner, {
+        ...command,
+        requestId: crypto.randomUUID(),
+        reviewId: later.reviewId,
+      }),
+    ).rejects.toThrow("connection changed");
+    expect(await database.select().from(schema.projects)).toHaveLength(1);
   });
 });

@@ -6,3 +6,6 @@ export * from "./providers/github/repository";
 export * from "./contracts/connection";
 export * from "./providers/github/http-client";
 export * from "./providers/github/app-manifest";
+
+export * from "./providers/github/snapshot";
+export * from "./policy/change-review";

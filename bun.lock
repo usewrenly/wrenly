@@ -141,6 +141,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@wrenly/inference": "*",
+        "@wrenly/source-control": "*",
         "drizzle-orm": "^0.45.3",
         "postgres": "^3.4.9",
         "zod": "^4.6.7",
