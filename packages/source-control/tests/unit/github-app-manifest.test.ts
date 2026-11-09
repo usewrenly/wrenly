@@ -34,3 +34,10 @@ test("App manifest cannot redirect credentials to a browser-selected host or rou
   ])
     expect(() => createGitHubAppManifest({ ...input, ...change })).toThrow();
 });
+
+test("installation on other accounts requires an explicit owner visibility choice", () => {
+  expect(
+    createGitHubAppManifest({ ...input, allowOtherAccounts: true }).public,
+  ).toBe(true);
+  expect(createGitHubAppManifest(input).public).toBe(false);
+});

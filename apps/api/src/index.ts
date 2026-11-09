@@ -16,6 +16,7 @@ try {
   const environment = parseApiEnvironment(process.env)
   const { createProductionApp } = await import('./production-app')
   const { db } = await import('@wrenly/db')
+  const { startSourcePushWorker } = await import('./modules/source-control/pushes/push-worker')
   const { startProductionBuildWorker, verifyBuildWorkerSchema } = await import('./modules/builds/execution/production-build-worker')
   const { verifyConversationSchema, startProductionConversationWorker } = await import('./modules/conversations/execution/production-conversation-worker')
   const { verifySkillsSchema } = await import("./modules/skills/skill-store")
@@ -66,6 +67,7 @@ try {
   let databaseModule: PreviewLifecycle | undefined
   let previews: PreviewLifecycle | undefined
   let gateway: ReturnType<typeof Bun.serve> | undefined
+  let sourceWorker: ReturnType<typeof startSourcePushWorker> | undefined
   let worker: Awaited<ReturnType<typeof startProductionBuildWorker>> | undefined
   try {
     if (environment.WRENLY_PREVIEW_ENABLED === 'true') {
@@ -102,8 +104,9 @@ try {
     }
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
+    sourceWorker = startSourcePushWorker(db, environment.WRENLY_DATA_DIR)
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), sourceWorker?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -114,7 +117,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop(), sourceWorker?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {

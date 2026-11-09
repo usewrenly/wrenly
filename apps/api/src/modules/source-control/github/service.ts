@@ -1,10 +1,17 @@
+import {
+  readSourceProject,
+  bindSourceRepository,
+  createSourcePushReview,
+  admitSourcePush,
+} from "../pushes/push-store";
+import { reconcileSourcePush } from "../pushes/push-recovery";
 import { createSourceImportService } from "../imports/import-service";
 import {
   createGitHubReadClient,
   createGitHubAppManifest,
   readGitHubRepository,
 } from "@wrenly/source-control";
-/** Coordinates browser connection with fixed GitHub APIs; it never imports or pushes project code. */
+/** Coordinates browser connection with fixed GitHub APIs; workers own all remote writes. */
 import type { db } from "@wrenly/db";
 import { z } from "zod";
 
@@ -58,6 +65,27 @@ export function createGitHubConnectionService(
   const origin = new URL(options.webUrl).origin;
   const imports = createSourceImportService(database, options.directory);
   return {
+    sourceProject: (principal, projectId) =>
+      readSourceProject(database, principal, projectId),
+    bindRepository: (principal, raw) =>
+      bindSourceRepository(database, principal, raw),
+    reviewPush: async (principal, raw) => {
+      const personal = await readSourcePersonalToken(
+        database,
+        principal,
+        options.directory,
+      );
+      return createSourcePushReview(database, principal, personal.version, raw);
+    },
+    confirmPush: (principal, raw) => admitSourcePush(database, principal, raw),
+    recoverPush: (principal, raw, signal) =>
+      reconcileSourcePush(
+        database,
+        principal,
+        raw,
+        AbortSignal.any([signal, AbortSignal.timeout(30000)]),
+        options.directory,
+      ),
     prepareImport: imports.prepare,
     confirmImport: imports.confirm,
     status: (principal) => readSourceConnectionStatus(database, principal),
@@ -74,6 +102,7 @@ export function createGitHubConnectionService(
       if (input.action === "register") {
         const manifest = createGitHubAppManifest({
           name: input.name,
+          allowOtherAccounts: input.allowOtherAccounts,
           homepage: origin,
           registrationCallback: pending.callbackUrl,
           authorizationCallback: sourceCallbackUrl(origin, "connect-account"),

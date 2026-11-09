@@ -98,3 +98,33 @@ test("cancellation bounds an unresponsive code exchange", async () => {
   controller.abort();
   await expect(pending).rejects.toThrow("Start a new connection");
 });
+
+test("refresh exchange is pinned and sends the single-use refresh grant only", async () => {
+  const { exchangeGitHubRefresh } = await import("../exchange");
+  let body: unknown;
+  const tokens = await exchangeGitHubRefresh(
+    {
+      clientId: "Iv1.fixture",
+      clientSecret: "private-secret",
+      refreshToken: "refresh-once",
+    },
+    async (url, init) => {
+      expect(url.href).toBe("https://github.com/login/oauth/access_token");
+      body = JSON.parse(String(init.body));
+      return Response.json({
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        token_type: "bearer",
+        expires_in: 28800,
+        refresh_token_expires_in: 15552000,
+      });
+    },
+  );
+  expect(body).toEqual({
+    client_id: "Iv1.fixture",
+    client_secret: "private-secret",
+    refresh_token: "refresh-once",
+    grant_type: "refresh_token",
+  });
+  expect(tokens.access_token).toBe("new-access");
+});

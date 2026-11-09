@@ -24,3 +24,5 @@ export * from './resources/preview-databases'
 export * from "./configuration/source-connections"
 
 export * from "./configuration/source-imports"
+
+export * from "./configuration/source-pushes"

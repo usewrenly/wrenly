@@ -50,7 +50,7 @@ const ImportCommand = z
   })
   .strict();
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-async function assertConnection(
+export async function assertSourceImportConnection(
   tx: Transaction,
   principal: AccessPrincipal,
   version: string,
@@ -107,7 +107,7 @@ export async function saveSourceImportReview(
     );
   return database.transaction(async (tx) => {
     await assertSourcePrincipal(tx, principal);
-    await assertConnection(tx, principal, connectionVersion);
+    await assertSourceImportConnection(tx, principal, connectionVersion);
     await tx
       .delete(sourceImportReviews)
       .where(
@@ -214,7 +214,7 @@ export async function admitSourceImport(
         409,
         "The import review expired or is unavailable. Review the repository again.",
       );
-    await assertConnection(tx, principal, review.connectionVersion);
+    await assertSourceImportConnection(tx, principal, review.connectionVersion);
     const [consumed] = await tx
       .select({ id: sourceProjectOrigins.projectId })
       .from(sourceProjectOrigins)

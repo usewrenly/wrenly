@@ -179,3 +179,35 @@ export async function exchangeGitHubAuthorization(
     throw new GitHubExchangeError();
   }
 }
+
+/** Refresh tokens are single-use. Call only after a durable refresh intent has been committed. */
+export async function exchangeGitHubRefresh(
+  input: { clientId: string; clientSecret: string; refreshToken: string },
+  transport: Transport = fetch,
+  signal?: AbortSignal,
+): Promise<GitHubTokenExchange> {
+  try {
+    if (
+      !/^[A-Za-z0-9_.-]{1,100}$/.test(input.clientId) ||
+      !input.clientSecret ||
+      input.clientSecret.length > 1024 ||
+      !/^[\x21-\x7e]{1,2048}$/.test(input.refreshToken)
+    )
+      throw new GitHubExchangeError();
+    return Token.parse(
+      await exchange(
+        new URL("https://github.com/login/oauth/access_token"),
+        {
+          client_id: input.clientId,
+          client_secret: input.clientSecret,
+          grant_type: "refresh_token",
+          refresh_token: input.refreshToken,
+        },
+        transport,
+        signal,
+      ),
+    );
+  } catch {
+    throw new GitHubExchangeError();
+  }
+}

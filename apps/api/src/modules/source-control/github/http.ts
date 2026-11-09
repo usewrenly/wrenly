@@ -1,4 +1,5 @@
 /** Authenticated source connection endpoints. Callback state replaces Origin checks only on GitHub's browser return. */
+import { ProjectAccessError } from "../../projects/access/project-access";
 import { z } from "zod";
 import type { AccessPrincipal } from "../../auth/access/access-context";
 import { SourceConnectionError } from "./authorization-store";
@@ -12,11 +13,27 @@ const PRIVATE = {
 };
 const Start = z.discriminatedUnion("action", [
   z
-    .object({ action: z.literal("register"), name: z.string().min(3).max(80) })
+    .object({
+      action: z.literal("register"),
+      name: z.string().min(3).max(80),
+      allowOtherAccounts: z.boolean().optional(),
+    })
     .strict(),
   z.object({ action: z.literal("connect") }).strict(),
 ]);
 export interface GitHubConnectionService {
+  sourceProject?(
+    principal: AccessPrincipal,
+    projectId: string,
+  ): Promise<unknown>;
+  bindRepository?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
+  reviewPush?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
+  confirmPush?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
+  recoverPush?(
+    principal: AccessPrincipal,
+    raw: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown>;
   prepareImport?(
     principal: AccessPrincipal,
     raw: unknown,
@@ -42,6 +59,11 @@ export interface GitHubConnectionService {
   ): Promise<unknown>;
 }
 export interface GitHubConnectionHandlers {
+  sourceProject(request: Request): Promise<Response>;
+  bindRepository(request: Request): Promise<Response>;
+  reviewPush(request: Request): Promise<Response>;
+  confirmPush(request: Request): Promise<Response>;
+  recoverPush(request: Request): Promise<Response>;
   prepareImport(request: Request): Promise<Response>;
   confirmImport(request: Request): Promise<Response>;
   status(request: Request): Promise<Response>;
@@ -120,7 +142,8 @@ export function createGitHubConnectionHandlers(options: {
     } catch (error) {
       const denied = error instanceof AccessDeniedError;
       const status =
-        error instanceof SourceConnectionError
+        error instanceof SourceConnectionError ||
+        error instanceof ProjectAccessError
           ? error.status
           : denied
             ? 403
@@ -128,7 +151,8 @@ export function createGitHubConnectionHandlers(options: {
       return Response.json(
         {
           error:
-            error instanceof SourceConnectionError
+            error instanceof SourceConnectionError ||
+            error instanceof ProjectAccessError
               ? error.message
               : denied
                 ? "Your access changed. Sign in again."
@@ -180,6 +204,52 @@ export function createGitHubConnectionHandlers(options: {
     });
   }
   return {
+    sourceProject: (request) =>
+      boundary(request, false, async (principal) => {
+        if (!options.service.sourceProject)
+          throw new SourceConnectionError(
+            503,
+            "Project source is unavailable.",
+          );
+        return options.service.sourceProject(
+          principal,
+          new URL(request.url).searchParams.get("projectId") ?? "",
+        );
+      }),
+    bindRepository: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.bindRepository)
+          throw new SourceConnectionError(
+            503,
+            "Repository binding is unavailable.",
+          );
+        return options.service.bindRepository(principal, await json(request));
+      }),
+    reviewPush: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.reviewPush)
+          throw new SourceConnectionError(503, "Source review is unavailable.");
+        return options.service.reviewPush(principal, await json(request));
+      }),
+    confirmPush: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.confirmPush)
+          throw new SourceConnectionError(503, "Source push is unavailable.");
+        return options.service.confirmPush(principal, await json(request));
+      }),
+    recoverPush: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.recoverPush)
+          throw new SourceConnectionError(
+            503,
+            "Source recovery is unavailable.",
+          );
+        return options.service.recoverPush(
+          principal,
+          await json(request),
+          request.signal,
+        );
+      }),
     prepareImport: (request) =>
       boundary(request, true, async (principal) => {
         if (!options.service.prepareImport)

@@ -4,13 +4,14 @@ export interface GitHubAppManifest {
   url: string;
   redirect_url: string;
   callback_urls: string[];
-  public: false;
+  public: boolean;
   hook_attributes: { active: false };
   default_permissions: { contents: "write"; metadata: "read" };
   default_events: [];
 }
 /** The instance owner registers their own App, avoiding any central Wrenly credential or service. */
 export function createGitHubAppManifest(input: {
+  allowOtherAccounts?: boolean;
   name: string;
   homepage: string;
   registrationCallback: string;
@@ -51,7 +52,7 @@ export function createGitHubAppManifest(input: {
     url: home.href,
     redirect_url: registration.href,
     callback_urls: [authorization.href],
-    public: false,
+    public: input.allowOtherAccounts === true,
     hook_attributes: { active: false },
     default_permissions: { contents: "write", metadata: "read" },
     default_events: [],

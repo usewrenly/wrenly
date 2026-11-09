@@ -113,6 +113,11 @@ export function createApp(
   )
   if (handlers.sourceGitHub) {
     const source = handlers.sourceGitHub
+    app.get('/api/source/github/project', c => source.sourceProject(c.req.raw))
+    app.post('/api/source/github/bind', c => source.bindRepository(c.req.raw))
+    app.post('/api/source/github/push/review', c => source.reviewPush(c.req.raw))
+    app.post('/api/source/github/push/confirm', c => source.confirmPush(c.req.raw))
+    app.post('/api/source/github/push/recover', c => source.recoverPush(c.req.raw))
     app.post('/api/source/github/import/review', c => source.prepareImport(c.req.raw))
     app.post('/api/source/github/import/confirm', c => source.confirmImport(c.req.raw))
     app.get('/api/source/github', c => source.status(c.req.raw))

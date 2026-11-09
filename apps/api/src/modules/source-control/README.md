@@ -5,8 +5,7 @@ or update on their behalf. For example, a developer will import an exact saved a
 edit it in Wrenly, review the changes and push a new branch.
 
 The browser connection supports instance App registration, personal authorization,
-repository-access checks and disconnect. Project import and reviewed pushes remain
-separate work. Existing Gitea/Coolify publishing is unaffected.
+repository-access checks and disconnect. Project import and reviewed new-branch pushes are connected. Existing Gitea/Coolify publishing is unaffected.
 
 ## Where the code lives
 
@@ -31,7 +30,7 @@ exchange must start a fresh authorization; it cannot replay the old callback.
 
 The private `source-control/provider-key` under the configured instance data directory
 must be backed up with PostgreSQL. Missing keys cannot be regenerated while encrypted
-source credentials exist. No new environment credential is required by this foundation.
+source credentials exist. No GitHub credential needs to be copied into an environment file.
 
 ## Verification
 
@@ -59,7 +58,32 @@ baseline for later source-change review; they contain no GitHub tokens.
 
 The current internal admission functions live in `imports/import-store.ts`. They
 recheck the active local session, personal connection and instance App version.
-The Projects import interface uses authenticated review/confirmation endpoints.
+The Home and Projects import interface uses authenticated review/confirmation endpoints.
 `imports/import-reader.ts` assesses root framework compatibility without running code;
 `imports/import-service.ts` binds the read to the current personal connection.
-The remote push executor is not connected yet.
+The source push worker starts with the API and stops with its lifecycle.
+
+
+## Reviewed pushes
+
+For example: select a saved booking-app revision → review its changes against the
+pinned GitHub baseline → confirm a new `wrenly/` branch. A chat never pushes by itself.
+
+`pushes/push-store.ts` handles owner access, saved reviews, exactly replayable admission
+and worker claims. `pushes/push-worker.ts` commits each phase intent before creating a
+Git tree, commit and new ref. It checks current session/project/connection authority
+before each mutation. Account/project row locks fence each bounded remote call against
+concurrent revocation; calls can briefly delay changes to that same account/project.
+
+A missing receipt remains `needs_review`. `pushes/push-recovery.ts` checks the exact
+saved repository, branch, parent and tree without any remote POST. Expired worker leases
+never requeue remote writes. Queued work can be stopped by changed access; an already
+sent remote request cannot be retroactively recalled. No ref-update method exists.
+
+Migration `0038` adds push review/operation records. Credentials never enter those
+records, build inputs or Git commits. `github/refresh.ts` persists a one-use refresh
+intent before exchanging an expiring token. Lost refresh replies require browser
+reauthorization; they never cause reuse of the same refresh token.
+
+Tests use controlled GitHub replies and a disposable PostgreSQL database. They prove
+local authorization, persistence, replay and recovery, not real GitHub acceptance.

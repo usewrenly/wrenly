@@ -1,4 +1,17 @@
 import {
+  createSourcePushReview,
+  admitSourcePush,
+  claimSourcePush,
+  bindSourceRepository,
+} from "../../../../../apps/api/src/modules/source-control/pushes/push-store";
+import { executeSourcePush } from "../../../../../apps/api/src/modules/source-control/pushes/push-worker";
+import { reconcileSourcePush } from "../../../../../apps/api/src/modules/source-control/pushes/push-recovery";
+import { refreshSourceAccessIfNeeded } from "../../../../../apps/api/src/modules/source-control/github/refresh";
+import {
+  GitHubRequestError,
+  type GitHubObjectClient,
+} from "@wrenly/source-control";
+import {
   saveSourceImportReview,
   admitSourceImport,
 } from "../../../../../apps/api/src/modules/source-control/imports/import-store";
@@ -61,6 +74,8 @@ integration("session-bound GitHub authorization persistence", () => {
     directory = await mkdtemp(join(tmpdir(), "wrenly-source-test-"));
   });
   beforeEach(async () => {
+    await database.delete(schema.sourcePushOperations);
+    await database.delete(schema.sourcePushReviews);
     await database.delete(schema.sourceProjectOrigins);
     await database.delete(schema.sourceImportReviews);
     await database.delete(schema.projects);
@@ -355,17 +370,15 @@ integration("session-bound GitHub authorization persistence", () => {
   test("import confirmation is private, atomic and replayable without generating different source", async () => {
     const connectionVersion = crypto.randomUUID();
     const appVersion = crypto.randomUUID();
-    await database
-      .insert(schema.sourceGitHubApp)
-      .values({
-        id: 1,
-        version: appVersion,
-        appId: "42",
-        slug: "fixture",
-        clientId: "fixture",
-        credential: {},
-        configuredBy: owner.userId,
-      });
+    await database.insert(schema.sourceGitHubApp).values({
+      id: 1,
+      version: appVersion,
+      appId: "42",
+      slug: "fixture",
+      clientId: "fixture",
+      credential: {},
+      configuredBy: owner.userId,
+    });
     await database.insert(schema.sourceConnections).values({
       userId: owner.userId,
       provider: "github",
@@ -449,5 +462,424 @@ integration("session-bound GitHub authorization persistence", () => {
       }),
     ).rejects.toThrow("connection changed");
     expect(await database.select().from(schema.projects)).toHaveLength(1);
+  });
+
+  async function pushFixture() {
+    const appVersion = crypto.randomUUID(),
+      connectionVersion = crypto.randomUUID();
+    await database.insert(schema.sourceGitHubApp).values({
+      id: 1,
+      version: appVersion,
+      appId: "42",
+      slug: "fixture",
+      clientId: "fixture",
+      credential: {},
+      configuredBy: owner.userId,
+    });
+    await database.insert(schema.sourceConnections).values({
+      userId: owner.userId,
+      provider: "github",
+      version: connectionVersion,
+      appVersion,
+      remoteUserId: "73",
+      remoteLogin: "fixture",
+      credential: {},
+      accessExpiresAt: new Date(Date.now() + 3600000),
+      refreshExpiresAt: new Date(Date.now() + 3600000),
+    });
+    const snapshot = {
+      repository: {
+        provider: "github" as const,
+        id: "12",
+        owner: "studio",
+        name: "notes",
+        private: true,
+      },
+      commitId: "a".repeat(40),
+      treeId: "b".repeat(40),
+      files: [
+        {
+          path: "package.json",
+          content: '{"dependencies":{"next":"15.5.28"}}',
+        },
+      ],
+      excludedPaths: [],
+    };
+    const review = await saveSourceImportReview(
+      database,
+      owner,
+      connectionVersion,
+      snapshot,
+      "nextjs",
+    );
+    const imported = await admitSourceImport(database, owner, {
+      requestId: crypto.randomUUID(),
+      reviewId: review.reviewId,
+      name: "Notes",
+    });
+    await database
+      .update(schema.builds)
+      .set({
+        status: "success",
+        files: [
+          ...snapshot.files,
+          {
+            path: "app/page.tsx",
+            content: "export default function Page() { return <p>Notes</p> }",
+          },
+        ],
+      })
+      .where(eq(schema.builds.id, imported.buildId));
+    await database
+      .update(schema.buildJobs)
+      .set({ status: "success" })
+      .where(eq(schema.buildJobs.buildId, imported.buildId));
+    const [project] = await database
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, imported.projectId));
+    const input = {
+      projectId: imported.projectId,
+      buildId: imported.buildId,
+      expectedRevision: project!.accessRevision,
+      branch: "wrenly/notes-update",
+    };
+    const prepared = (await createSourcePushReview(
+      database,
+      owner,
+      connectionVersion,
+      input,
+    )) as { reviewId: string };
+    return { imported, input, prepared, snapshot, connectionVersion };
+  }
+  function remoteFixture(loseRefReply = false) {
+    const posts: Array<{ path: string; body: unknown }> = [];
+    let published = false;
+    const commit = {
+      sha: "e".repeat(40),
+      tree: { sha: "d".repeat(40) },
+      parents: [{ sha: "a".repeat(40) }],
+    };
+    const client: GitHubObjectClient = {
+      async get(path) {
+        if (path === "/repositories/12")
+          return {
+            id: 12,
+            owner: { login: "studio" },
+            name: "notes",
+            private: true,
+            archived: false,
+            disabled: false,
+          };
+        if (path.includes("/git/ref/")) {
+          if (!published) throw new GitHubRequestError("http_error", 404);
+          return {
+            ref: "refs/heads/wrenly/notes-update",
+            object: { type: "commit", sha: commit.sha },
+          };
+        }
+        if (path.endsWith("/git/commits/" + "a".repeat(40)))
+          return { sha: "a".repeat(40), tree: { sha: "b".repeat(40) } };
+        if (path.endsWith("?recursive=1"))
+          return {
+            sha: "b".repeat(40),
+            truncated: false,
+            tree: [
+              {
+                path: "package.json",
+                mode: "100644",
+                type: "blob",
+                sha: "c".repeat(40),
+                size: 40,
+              },
+            ],
+          };
+        if (path.endsWith("/git/commits/" + commit.sha)) return commit;
+        throw new Error("Unexpected source read");
+      },
+      async post(path, body) {
+        posts.push({ path, body });
+        if (path.endsWith("/git/trees")) return { sha: "d".repeat(40) };
+        if (path.endsWith("/git/commits")) return commit;
+        if (path.endsWith("/git/refs")) {
+          published = true;
+          if (loseRefReply) throw new GitHubRequestError("request_failed");
+          return {
+            ref: "refs/heads/wrenly/notes-update",
+            object: { sha: commit.sha },
+          };
+        }
+        throw new Error("Unexpected source write");
+      },
+    };
+    return { client, posts };
+  }
+  test("push confirmation replays exactly once and creates only a new reviewed branch", async () => {
+    const f = await pushFixture();
+    await expect(
+      createSourcePushReview(database, member, f.connectionVersion, f.input),
+    ).rejects.toThrow();
+    const command = {
+      requestId: crypto.randomUUID(),
+      reviewId: f.prepared.reviewId,
+    };
+    const accepted = await Promise.all([
+      admitSourcePush(database, owner, command),
+      admitSourcePush(database, owner, command),
+    ]);
+    expect(accepted[0]!.operationId).toBe(accepted[1]!.operationId);
+    expect(accepted.filter((item) => item.replayed)).toHaveLength(1);
+    const claim = await claimSourcePush(database);
+    expect(claim).not.toBeNull();
+    const remote = remoteFixture();
+    await executeSourcePush(
+      database,
+      claim!,
+      remote.client,
+      new AbortController().signal,
+    );
+    const [operation] = await database
+      .select()
+      .from(schema.sourcePushOperations);
+    expect(operation?.status).toBe("success");
+    expect(remote.posts.map((post) => post.path.split("/").at(-1))).toEqual([
+      "trees",
+      "commits",
+      "refs",
+    ]);
+    expect(remote.posts[0]?.body).toEqual({
+      base_tree: f.snapshot.treeId,
+      tree: [
+        {
+          path: "app/page.tsx",
+          mode: "100644",
+          type: "blob",
+          content: "export default function Page() { return <p>Notes</p> }",
+        },
+      ],
+    });
+    expect(remote.posts[2]?.body).toEqual({
+      ref: "refs/heads/wrenly/notes-update",
+      sha: "e".repeat(40),
+    });
+    expect(await claimSourcePush(database)).toBeNull();
+  });
+  test("lost branch acknowledgement requires read-only recovery and never repeats a POST", async () => {
+    const f = await pushFixture();
+    const operation = await admitSourcePush(database, owner, {
+      requestId: crypto.randomUUID(),
+      reviewId: f.prepared.reviewId,
+    });
+    const claim = await claimSourcePush(database);
+    const remote = remoteFixture(true);
+    await executeSourcePush(
+      database,
+      claim!,
+      remote.client,
+      new AbortController().signal,
+    );
+    const [saved] = await database.select().from(schema.sourcePushOperations);
+    expect(saved?.status).toBe("needs_review");
+    expect(saved?.phase).toBe("ref");
+    expect(await claimSourcePush(database)).toBeNull();
+    const result = await reconcileSourcePush(
+      database,
+      owner,
+      { operationId: operation.operationId, confirmRemoteSettled: true },
+      new AbortController().signal,
+      directory,
+      remote.client,
+    );
+    expect(result.status).toBe("success");
+    expect(remote.posts).toHaveLength(3);
+  });
+  test("access changes after admission stop the worker before any remote mutation", async () => {
+    const f = await pushFixture();
+    await admitSourcePush(database, owner, {
+      requestId: crypto.randomUUID(),
+      reviewId: f.prepared.reviewId,
+    });
+    const claim = await claimSourcePush(database);
+    await database
+      .update(schema.projects)
+      .set({ accessRevision: crypto.randomUUID() })
+      .where(eq(schema.projects.id, f.imported.projectId));
+    const remote = remoteFixture();
+    await executeSourcePush(
+      database,
+      claim!,
+      remote.client,
+      new AbortController().signal,
+    );
+    expect(remote.posts).toHaveLength(0);
+    const [saved] = await database.select().from(schema.sourcePushOperations);
+    expect(saved?.status).toBe("needs_review");
+  });
+  test("an unknown single-use refresh is fenced rather than exchanged twice", async () => {
+    const appVersion = crypto.randomUUID(),
+      connectionVersion = crypto.randomUUID();
+    const key = await loadSourceCredentialKey(directory, false);
+    await database.insert(schema.sourceGitHubApp).values({
+      id: 1,
+      version: appVersion,
+      appId: "42",
+      slug: "fixture",
+      clientId: "fixture",
+      credential: encryptSourceCredential(
+        { clientSecret: "secret", privateKey: "fixture" },
+        key,
+        { kind: "app", id: appVersion, userId: owner.userId },
+      ),
+      configuredBy: owner.userId,
+    });
+    await database.insert(schema.sourceConnections).values({
+      userId: owner.userId,
+      provider: "github",
+      version: connectionVersion,
+      appVersion,
+      remoteUserId: "73",
+      remoteLogin: "fixture",
+      credential: encryptSourceCredential(
+        { accessToken: "old-access", refreshToken: "once-only" },
+        key,
+        { kind: "user", id: connectionVersion, userId: owner.userId },
+      ),
+      accessExpiresAt: new Date(Date.now() + 1000),
+      refreshExpiresAt: new Date(Date.now() + 3600000),
+    });
+    let exchanges = 0;
+    await expect(
+      refreshSourceAccessIfNeeded(database, owner, directory, async () => {
+        exchanges++;
+        throw new Error("Lost reply");
+      }),
+    ).rejects.toThrow("Reconnect");
+    await expect(
+      refreshSourceAccessIfNeeded(database, owner, directory, async () => {
+        exchanges++;
+        throw new Error("Must not run");
+      }),
+    ).rejects.toThrow("earlier token refresh");
+    expect(exchanges).toBe(1);
+  });
+
+  test("successful refresh preserves connection identity and prevents redundant exchanges", async () => {
+    const appVersion = crypto.randomUUID(),
+      connectionVersion = crypto.randomUUID();
+    const key = await loadSourceCredentialKey(directory, false);
+    await database
+      .insert(schema.sourceGitHubApp)
+      .values({
+        id: 1,
+        version: appVersion,
+        appId: "42",
+        slug: "fixture",
+        clientId: "fixture",
+        credential: encryptSourceCredential(
+          { clientSecret: "secret", privateKey: "fixture" },
+          key,
+          { kind: "app", id: appVersion, userId: owner.userId },
+        ),
+        configuredBy: owner.userId,
+      });
+    await database
+      .insert(schema.sourceConnections)
+      .values({
+        userId: owner.userId,
+        provider: "github",
+        version: connectionVersion,
+        appVersion,
+        remoteUserId: "73",
+        remoteLogin: "fixture",
+        credential: encryptSourceCredential(
+          { accessToken: "old-access", refreshToken: "once-only" },
+          key,
+          { kind: "user", id: connectionVersion, userId: owner.userId },
+        ),
+        accessExpiresAt: new Date(Date.now() + 1000),
+        refreshExpiresAt: new Date(Date.now() + 3600000),
+      });
+    let exchanges = 0;
+    await refreshSourceAccessIfNeeded(database, owner, directory, async () => {
+      exchanges++;
+      return {
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        token_type: "bearer",
+        expires_in: 28800,
+        refresh_token_expires_in: 15552000,
+      };
+    });
+    await refreshSourceAccessIfNeeded(database, owner, directory, async () => {
+      exchanges++;
+      throw new Error("Must not run");
+    });
+    expect(exchanges).toBe(1);
+    const personal = await readSourcePersonalToken(database, owner, directory);
+    expect(personal.version).toBe(connectionVersion);
+    expect(personal.token).toBe("new-access");
+    expect(
+      JSON.stringify(await database.select().from(schema.sourceConnections)),
+    ).not.toContain("new-refresh");
+  });
+  test("connecting existing project source preserves its local revision and replays binding acknowledgement", async () => {
+    const f = await pushFixture();
+    const projectId = crypto.randomUUID(),
+      buildId = crypto.randomUUID();
+    const original = [
+      { path: "package.json", content: '{"dependencies":{"next":"15.5.28"}}' },
+      { path: "app/page.tsx", content: "export default 1" },
+    ];
+    await database
+      .insert(schema.projects)
+      .values({
+        id: projectId,
+        userId: owner.userId,
+        name: "Existing app",
+        stack: "nextjs",
+      });
+    await database
+      .insert(schema.builds)
+      .values({
+        id: buildId,
+        projectId,
+        prompt: "Original",
+        status: "success",
+        files: original,
+      });
+    const [project] = await database
+      .select()
+      .from(schema.projects)
+      .where(eq(schema.projects.id, projectId));
+    const review = await saveSourceImportReview(
+      database,
+      owner,
+      f.connectionVersion,
+      f.snapshot,
+      "nextjs",
+    );
+    const command = {
+      projectId,
+      buildId,
+      expectedRevision: project!.accessRevision,
+      reviewId: review.reviewId,
+      requestId: crypto.randomUUID(),
+    };
+    expect(await bindSourceRepository(database, owner, command)).toEqual({
+      bound: true,
+      replayed: false,
+    });
+    expect(await bindSourceRepository(database, owner, command)).toEqual({
+      bound: true,
+      replayed: true,
+    });
+    const [build] = await database
+      .select()
+      .from(schema.builds)
+      .where(eq(schema.builds.id, buildId));
+    expect(build?.files).toEqual(original);
+    await expect(
+      bindSourceRepository(database, member, command),
+    ).rejects.toThrow();
   });
 });

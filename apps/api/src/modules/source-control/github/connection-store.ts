@@ -1,3 +1,4 @@
+import { refreshSourceAccessIfNeeded } from "./refresh";
 import type { SourceConnectionStatus } from "@wrenly/source-control";
 /** GitHub App/personal connection persistence. Only safe metadata leaves this server module. */
 import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
@@ -323,12 +324,13 @@ export async function disconnectSourceConnection(
       );
   });
 }
-/** Resolve only the current user's unexpired connection. Expired credentials require a fresh browser authorization. */
+/** Resolve the current user's token after a durable, single-use refresh when needed. */
 export async function readSourcePersonalToken(
   database: typeof db,
   principal: AccessPrincipal,
   directory: string,
 ): Promise<{ token: string; appId: string; version: string }> {
+  await refreshSourceAccessIfNeeded(database, principal, directory);
   return await database.transaction(async (tx) => {
     await assertSourcePrincipal(tx, principal);
     const [app] = await tx
