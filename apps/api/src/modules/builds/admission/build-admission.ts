@@ -366,6 +366,12 @@ export async function admitBuild(
           );
         parent = { ...parent, files: savedSource.data };
       }
+      if (input.retryBuildId) {
+        const [sourceJob] = await transaction.select({ input: buildJobs.input }).from(buildJobs)
+          .where(eq(buildJobs.buildId, input.retryBuildId));
+        if (sourceJob?.input.sourceValidationV1 !== undefined)
+          throw new BuildAdmissionError(409, "Imported files are preserved. Submit a new prompt from this revision to request repairs; ordinary Retry must not rewrite an imported commit.");
+      }
       let settings: { provider: string; model: string } | undefined;
       if (dependencies.resolveSelection || project.accessMode !== "private") {
         try {

@@ -97,3 +97,13 @@ still replayable after new admission is disabled. Production startup currently l
 activation off. Its worker also refuses to execute saved database jobs while inactive,
 before inference or validation begins. Explicitly enabled worker composition uses the
 existing disposable database validator; stateless jobs retain their original sandbox.
+
+
+### Checking imported source
+
+An imported GitHub commit must stay the commit the person selected. A server-created
+`sourceValidationV1` job therefore checks its saved files once in Docker and never
+calls a model. Failed validation keeps the source and diagnostics. A separate prompt
+can request changes afterward; the ordinary Retry action cannot silently turn an
+exact-source check into generation. This internal execution path is not yet an import
+button: source review, project admission and repository binding are separate steps.

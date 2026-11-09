@@ -15,6 +15,8 @@ export const buildJobStatusEnum = pgEnum('build_job_status', [
 ])
 
 export interface BuildJobInput {
+  /** Exact imported source is validated once, without model generation or automatic repair. */
+  sourceValidationV1?: { version: 1; commitId: string }
   databaseV1?: BuildDatabaseSelection
   skillsV1?: SkillGuidance
   prompt: string
