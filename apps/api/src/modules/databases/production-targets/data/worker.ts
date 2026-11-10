@@ -10,6 +10,7 @@ import {
 } from "../../database-store";
 import { executeProductionResourceCreation } from "../project-provisioning/resource-worker";
 import { loadProductionResourceExecution } from "../project-provisioning/resource-store";
+import { executeProductionResourceAvailability } from "./availability";
 import { executeProductionResourceMigrations } from "./migrations";
 import { executeProductionResourceBackup } from "./backup";
 /** The host must own/await stop; construction is deliberately separate from module startup activation. */
@@ -37,6 +38,8 @@ export function createProductionClusterResourceWorker(input: {
         return executeProductionResourceBackup(context);
       if (saved.operation.kind === "migrate")
         return executeProductionResourceMigrations(context);
+      if (saved.operation.kind === "start" || saved.operation.kind === "stop")
+        return executeProductionResourceAvailability(context);
       throw new Error(
         "This saved Production action requires its own verified adapter.",
       );

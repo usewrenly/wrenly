@@ -38,7 +38,7 @@ export async function admitProductionDatabaseAction(
   const action = DatabaseAction.parse(raw);
   if (
     action.environment !== "production" ||
-    (action.kind !== "backup" && action.kind !== "migrate")
+    !["backup", "migrate", "start", "stop"].includes(action.kind)
   )
     throw new AppDatabaseError(
       409,
@@ -110,7 +110,7 @@ export async function admitProductionDatabaseAction(
       if (
         !resource ||
         resource.provider !== "postgres-cluster" ||
-        resource.status !== "ready" ||
+        resource.status !== (action.kind === "start" ? "stopped" : "ready") ||
         resource.revision !== action.expectedRevision
       )
         throw new AppDatabaseError(
@@ -154,15 +154,13 @@ export async function admitProductionDatabaseAction(
         migrationDigest: action.migrationDigest,
       });
       if (migrationReview && action.buildId && action.migrationDigest)
-        await tx
-          .insert(appDatabaseMigrations)
-          .values({
-            databaseId: resource.id,
-            operationId: id,
-            buildId: action.buildId,
-            digest: action.migrationDigest,
-            ...migrationReview,
-          });
+        await tx.insert(appDatabaseMigrations).values({
+          databaseId: resource.id,
+          operationId: id,
+          buildId: action.buildId,
+          digest: action.migrationDigest,
+          ...migrationReview,
+        });
       return { operationId: id, resourceId: resource.id, replayed: false };
     }),
   );

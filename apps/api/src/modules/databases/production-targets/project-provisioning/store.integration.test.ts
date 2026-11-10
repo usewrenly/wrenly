@@ -1,3 +1,4 @@
+import { executeProductionResourceAvailability } from "../data/availability";
 import { executeProductionResourceMigrations } from "../data/migrations";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import type { DatabaseClaim } from "../../database-store";
@@ -926,16 +927,14 @@ nativeReadiness(
       if (!manifest || !backup)
         throw new Error("Missing reviewed fixture migration");
       const buildId = crypto.randomUUID();
-      await database
-        .insert(schema.builds)
-        .values({
-          id: buildId,
-          projectId: project.id,
-          prompt: "Fixture booking schema",
-          stack: "nextjs",
-          status: "success",
-          files,
-        });
+      await database.insert(schema.builds).values({
+        id: buildId,
+        projectId: project.id,
+        prompt: "Fixture booking schema",
+        stack: "nextjs",
+        status: "success",
+        files,
+      });
       const [latest] = await database
         .select()
         .from(schema.appDatabases)
@@ -984,6 +983,49 @@ nativeReadiness(
         .where(eq(schema.appDatabases.id, resource!.id));
       expect(migrated?.schemaDigest).toBe(migration?.rehearsedSchemaDigest);
       expect(migrated?.schemaDigest).not.toBe(backup.schemaDigest);
+      for (const kind of ["stop", "start"] as const) {
+        const [beforeAvailability] = await database
+          .select()
+          .from(schema.appDatabases)
+          .where(eq(schema.appDatabases.id, resource!.id));
+        await admitProductionDatabaseAction(
+          database,
+          currentPrincipal,
+          project.id,
+          {
+            requestId: crypto.randomUUID(),
+            environment: "production",
+            kind,
+            expectedRevision: beforeAvailability!.revision,
+          },
+        );
+        const availabilityClaim = await claimDatabaseAction(
+          database,
+          "postgres-cluster",
+        );
+        if (!availabilityClaim)
+          throw new Error("Missing Production availability claim");
+        expect(
+          await withRenewedClaim(availabilityClaim, () =>
+            executeProductionResourceAvailability({
+              database,
+              claim: availabilityClaim,
+              directory,
+              controlDatabaseUrl: url!,
+              signal,
+              lookup,
+            }),
+          ),
+        ).toBe("success");
+        const [afterAvailability] = await database
+          .select()
+          .from(schema.appDatabases)
+          .where(eq(schema.appDatabases.id, resource!.id));
+        expect(afterAvailability?.status).toBe(
+          kind === "stop" ? "stopped" : "ready",
+        );
+        expect(afterAvailability?.schemaDigest).toBe(migrated?.schemaDigest);
+      }
     } finally {
       const [resource] = await database
         .select()

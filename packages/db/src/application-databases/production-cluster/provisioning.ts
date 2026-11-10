@@ -171,3 +171,53 @@ export async function initializeProductionProjectSchema(
     );
   }
 }
+
+/** Pauses only the exact project database; the app-only server and other projects stay running. */
+export async function setProductionProjectAvailability(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  input: unknown,
+  available: boolean,
+): Promise<void> {
+  const credentials = validateProductionProjectCredentials(resourceId, input);
+  await database.transaction(async (tx) => {
+    await verifyProductionClusterAuthority(tx, identity);
+    const rows =
+      await tx.execute(sql`select current_database() as connected_database,
+      d.datallowconn as available, r.rolname as owner
+      from pg_catalog.pg_database d join pg_catalog.pg_roles r on r.oid=d.datdba
+      where d.datname=${credentials.database}`);
+    if (
+      rows.length !== 1 ||
+      rows[0]?.connected_database === credentials.database ||
+      rows[0]?.owner !== credentials.migrator.user ||
+      rows[0]?.available !== !available
+    )
+      throw new Error("Production database availability requires inspection.");
+    const roles = await tx.execute(sql`select rolname from pg_catalog.pg_roles
+      where rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user})
+      and rolcanlogin and not rolsuper and not rolcreatedb and not rolcreaterole
+      and not rolreplication and not rolbypassrls and not rolinherit and rolconnlimit=8`);
+    if (roles.length !== 3) throw new Error("Production role policy changed.");
+    await tx.execute(
+      available
+        ? sql`alter database ${sql.identifier(credentials.database)} allow_connections true`
+        : sql`alter database ${sql.identifier(credentials.database)} allow_connections false`,
+    );
+    if (!available) {
+      const stopped =
+        await tx.execute(sql`select pg_catalog.pg_terminate_backend(pid,1000) as stopped
+        from pg_catalog.pg_stat_activity where datname=${credentials.database}
+        and pid <> pg_catalog.pg_backend_pid()`);
+      if (stopped.some((row) => row.stopped !== true))
+        throw new Error("Production sessions did not stop.");
+      await tx.execute(sql`select pg_catalog.pg_stat_clear_snapshot()`);
+      const remaining =
+        await tx.execute(sql`select exists(select 1 from pg_catalog.pg_stat_activity
+        where datname=${credentials.database} and pid <> pg_catalog.pg_backend_pid()) as active`);
+      if (remaining[0]?.active !== false)
+        throw new Error("Production sessions remain active.");
+    }
+  });
+}

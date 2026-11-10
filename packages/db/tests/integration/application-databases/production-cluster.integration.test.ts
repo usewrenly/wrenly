@@ -9,6 +9,7 @@ import {
   createProductionProjectDatabase,
   enableProductionProjectConnections,
   initializeProductionProjectSchema,
+  setProductionProjectAvailability,
 } from "../../../src/application-databases/production-cluster/provisioning";
 import {
   enforceProductionDatabaseRolePolicy,
@@ -292,5 +293,59 @@ check(
         "migrator",
       ),
     ).rejects.toThrow();
+  },
+);
+
+check(
+  "pausing one project preserves its data and another project's connections",
+  async () => {
+    const first = projects[0]!,
+      second = projects[1]!;
+    await setProductionProjectAvailability(
+      database,
+      identity(),
+      first.id,
+      first.credentials,
+      false,
+    );
+    await expect(
+      Promise.resolve(
+        connect(first.credentials.database, first.credentials.reader).execute(
+          sql`select 1`,
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(
+      (
+        await connect(
+          second.credentials.database,
+          second.credentials.runtime,
+        ).execute(sql`select count(*)::integer as total from public.notes`)
+      )[0]?.total,
+    ).toBe(0);
+    await expect(
+      setProductionProjectAvailability(
+        database,
+        identity(),
+        first.id,
+        first.credentials,
+        false,
+      ),
+    ).rejects.toThrow();
+    await setProductionProjectAvailability(
+      database,
+      identity(),
+      first.id,
+      first.credentials,
+      true,
+    );
+    expect(
+      (
+        await connect(
+          first.credentials.database,
+          first.credentials.reader,
+        ).execute(sql`select body from public.notes`)
+      )[0]?.body,
+    ).toBe("preserved after policy");
   },
 );
