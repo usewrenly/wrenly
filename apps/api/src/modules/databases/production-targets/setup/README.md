@@ -38,3 +38,14 @@ the encrypted store and the private TLS inspector. It obtains the control cluste
 identity directly from PostgreSQL; browser input cannot supply or override it.
 The control database role must be allowed to read `pg_control_system()`; a denied
 identity read refuses verification rather than weakening cluster separation.
+
+`http.ts` provides authenticated submit, receipt lookup and interrupted-check
+acknowledgement handlers. It checks the instance origin for writes, bounds actual
+streamed bytes and returns only a validated receipt after rechecking the session.
+Constructing these handlers does not register routes. They remain unmounted until
+the complete provisioning flow is available.
+
+The owner may explicitly close an interrupted read-only check after its worker lease
+expires. This preserves the original request as failed; it does not repeat the
+connection check or apply SQL. A new attempt requires a new confirmed request.
+A live worker cannot be displaced, and a stale worker cannot complete a closed request.

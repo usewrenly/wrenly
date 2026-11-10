@@ -421,3 +421,37 @@ export async function finishProductionSetupCheck(
     }),
   );
 }
+
+const InterruptedCheckAcknowledgement = z.object({
+  requestId: z.uuid(),
+  expectedRevision: z.uuid(),
+  confirmInterruptedCheck: z.literal(true),
+}).strict();
+/** Closes only read-only verification uncertainty; a fresh request requires a fresh explicit confirmation. */
+export async function acknowledgeInterruptedProductionCheck(
+  database: Connection,
+  principal: AccessPrincipal,
+  projectId: string,
+  raw: unknown,
+): Promise<ProductionSetupReceipt> {
+  const input = InterruptedCheckAcknowledgement.parse(raw);
+  z.uuid().parse(projectId);
+  return context(principal, () => database.transaction(async (tx) => {
+    await lockDatabaseQueues(tx);
+    await owner(tx, projectId, principal, input.expectedRevision);
+    const [saved] = await tx.select().from(productionDatabaseSetups).where(and(
+      eq(productionDatabaseSetups.projectId, projectId),
+      eq(productionDatabaseSetups.actorId, principal.userId),
+      eq(productionDatabaseSetups.requestId, input.requestId),
+    )).for("update");
+    if (!saved) throw new AppDatabaseError(404, "Production setup not found.");
+    if (saved.status === "failed" && saved.errorCode === "verification_acknowledged") return receipt(saved, true);
+    const expired = saved.status === "checking" && saved.leaseExpiresAt !== null && saved.leaseExpiresAt.getTime() <= Date.now();
+    if (saved.status !== "needs_review" && !expired) throw new AppDatabaseError(409, "Only an interrupted connection check can be closed. Wait for an active check to finish.");
+    const [updated] = await tx.update(productionDatabaseSetups).set({
+      status: "failed", errorCode: "verification_acknowledged", completedAt: new Date(), claimToken: null, leaseExpiresAt: null,
+    }).where(eq(productionDatabaseSetups.id, saved.id)).returning();
+    if (!updated) throw new AppDatabaseError(503, "Connection check acknowledgement could not be confirmed.");
+    return receipt(updated, false);
+  }));
+}

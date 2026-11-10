@@ -35,3 +35,23 @@ STEPS:
 4. Recheck the original claim/session while saving safe facts. Never reinterpret a failed save as a refused remote check.
 EDGE CASES: Cancellation records an interrupted check when the claim still permits it; expired claims remain reviewable.
 ERROR STATES: No raw driver errors or credentials leave the executor. No retry, role creation, migration or ready-resource transition occurs.
+
+## Closing an interrupted connection check
+
+COMPONENT: Owner acknowledgement of interrupted verification
+PURPOSE: Let the same current project owner close a read-only failed check before submitting a fresh reviewed request.
+INPUTS: Project/request identity, current project revision and literal interrupted-check confirmation.
+OUTPUTS: A failed receipt retaining the original request and encrypted credential history.
+STEPS: Lock queues/account/project, verify the same actor and access revision, reject a live worker lease, then close only a needs-review verification. Exact acknowledgement replay returns the existing receipt.
+EDGE CASES: A previous worker cannot complete after closure; provisioning is never authorized or repeated.
+ERROR STATES: Changed access, an active check or a non-recovery status is refused. No remote database call occurs.
+
+## Private HTTP handlers
+
+COMPONENT: Production setup request/receipt transport
+PURPOSE: Validate dashboard requests without exposing saved secrets or owning execution.
+INPUTS: Current principal, exact project/request UUID, trusted-origin bounded JSON.
+OUTPUTS: Strict receipt only, safe errors and private no-store responses.
+STEPS: Authenticate, validate method/origin/path and streamed body, invoke transactional store, validate projection, recheck session.
+EDGE CASES: Lost POST acknowledgement is resolved through GET; GET never executes work. Session changes withhold response.
+ERROR STATES: Provider errors, encrypted fields and stack traces never enter responses. Handler factories are not mounted until provisioning is complete.

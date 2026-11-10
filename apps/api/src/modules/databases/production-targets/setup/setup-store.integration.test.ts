@@ -8,7 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as schema from "@wrenly/db/schema";
-import { admitProductionSetup, claimProductionSetup, loadProductionSetup, finishProductionSetupCheck, readProductionSetupReceipt } from "./setup-store";
+import { acknowledgeInterruptedProductionCheck, admitProductionSetup, claimProductionSetup, loadProductionSetup, finishProductionSetupCheck, readProductionSetupReceipt } from "./setup-store";
 const url = process.env.WRENLY_TEST_PRODUCTION_SETUP_DATABASE_URL;
 const enabled = Boolean(url);
 if (url) {
@@ -73,6 +73,7 @@ check("revoked sessions cannot decrypt or finish a saved claim", async () => {
     await expect(finishProductionSetupCheck(database, claim, { status: "refused" })).rejects.toThrow();
   } finally {
     await database.update(schema.session).set({ expiresAt: new Date(Date.now() + 600000) }).where(eq(schema.session.id, principal.sessionId));
+    await finishProductionSetupCheck(database, claim, { status: "refused" });
   }
 });
 check("another signed-in account cannot confirm or read the owner's setup", async () => {
@@ -82,4 +83,19 @@ check("another signed-in account cannot confirm or read the owner's setup", asyn
   await database.insert(schema.session).values({ id: other.sessionId, token: crypto.randomUUID(), userId: other.userId, accessRevision: other.revision, expiresAt: new Date(Date.now() + 600000) });
   await expect(admitProductionSetup(database, other, project.id, input, directory)).rejects.toThrow();
   await expect(readProductionSetupReceipt(database, other, project.id, input.requestId)).rejects.toThrow();
+});
+
+check("owner closes interrupted verification without replaying it and stale workers stay fenced", async () => {
+  const { project, input } = await fixture();
+  const saved = await admitProductionSetup(database, principal, project.id, input, directory);
+  const claim = await claimProductionSetup(database);
+  if (!claim) throw new Error("Claim missing");
+  const acknowledgement = { requestId: input.requestId, expectedRevision: input.expectedRevision, confirmInterruptedCheck: true };
+  await expect(acknowledgeInterruptedProductionCheck(database, principal, project.id, acknowledgement)).rejects.toThrow();
+  await database.update(schema.productionDatabaseSetups).set({ leaseExpiresAt: new Date(Date.now() - 1000) }).where(eq(schema.productionDatabaseSetups.id, saved.setupId));
+  expect((await acknowledgeInterruptedProductionCheck(database, principal, project.id, acknowledgement)).status).toBe("failed");
+  expect((await acknowledgeInterruptedProductionCheck(database, principal, project.id, acknowledgement)).replayed).toBe(true);
+  await expect(finishProductionSetupCheck(database, claim, { status: "refused" })).rejects.toThrow();
+  const next = await admitProductionSetup(database, principal, project.id, { ...input, requestId: crypto.randomUUID() }, directory);
+  expect(next.setupId).not.toBe(saved.setupId);
 });
