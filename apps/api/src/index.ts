@@ -21,6 +21,8 @@ try {
   const { verifySkillsSchema } = await import("./modules/skills/skill-store")
   const { verifyProductionProvisionSchema } = await import('./modules/databases/production-targets/provisioning/store')
   await verifyProductionProvisionSchema(db)
+  const { verifyInstanceProductionConnectionSchema } = await import('./modules/databases/production-targets/instance/store')
+  await verifyInstanceProductionConnectionSchema(db)
   await verifySkillsSchema(db)
   await verifyBuildWorkerSchema(db)
   await verifyConversationSchema(db)

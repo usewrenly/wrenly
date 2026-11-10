@@ -1,7 +1,12 @@
 // Shared access/admission checks preserve queued and uncertain database effects as blockers.
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { db } from "@wrenly/db";
-import { appDatabaseOperations, productionDatabaseProvisions, projects } from "@wrenly/db";
+import {
+  appDatabaseOperations,
+  productionDatabaseConnections,
+  productionDatabaseProvisions,
+  projects,
+} from "@wrenly/db";
 import { AppDatabaseError } from "./database-contract";
 const BLOCKING = ["queued", "running", "interrupted"] as const;
 /** Call under a project-work queue lock; interrupted operations retain the fence. */
@@ -21,10 +26,21 @@ export async function hasDatabaseWork(
       )
       .limit(1);
     if (row) return true;
-    const [provision] = await database.select({ id: productionDatabaseProvisions.id })
+    const [provision] = await database
+      .select({ id: productionDatabaseProvisions.id })
       .from(productionDatabaseProvisions)
-      .where(and(eq(productionDatabaseProvisions.projectId, projectId),
-        inArray(productionDatabaseProvisions.status, ["queued", "creating", "created", "needs_review"]))).limit(1);
+      .where(
+        and(
+          eq(productionDatabaseProvisions.projectId, projectId),
+          inArray(productionDatabaseProvisions.status, [
+            "queued",
+            "creating",
+            "created",
+            "needs_review",
+          ]),
+        ),
+      )
+      .limit(1);
     return Boolean(provision);
   } catch {
     throw new AppDatabaseError(
@@ -54,11 +70,44 @@ export async function hasMemberDatabaseWork(
       )
       .limit(1);
     if (row) return true;
-    const [provision] = await database.select({ id: productionDatabaseProvisions.id })
-      .from(productionDatabaseProvisions).innerJoin(projects, eq(projects.id, productionDatabaseProvisions.projectId))
-      .where(and(inArray(productionDatabaseProvisions.status, ["queued", "creating", "created", "needs_review"]),
-        or(eq(productionDatabaseProvisions.actorId, actorId), eq(projects.userId, actorId)))).limit(1);
-    return Boolean(provision);
+    const [provision] = await database
+      .select({ id: productionDatabaseProvisions.id })
+      .from(productionDatabaseProvisions)
+      .innerJoin(
+        projects,
+        eq(projects.id, productionDatabaseProvisions.projectId),
+      )
+      .where(
+        and(
+          inArray(productionDatabaseProvisions.status, [
+            "queued",
+            "creating",
+            "created",
+            "needs_review",
+          ]),
+          or(
+            eq(productionDatabaseProvisions.actorId, actorId),
+            eq(projects.userId, actorId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (provision) return true;
+    const [connection] = await database
+      .select({ id: productionDatabaseConnections.id })
+      .from(productionDatabaseConnections)
+      .where(
+        and(
+          eq(productionDatabaseConnections.actorId, actorId),
+          inArray(productionDatabaseConnections.status, [
+            "queued",
+            "checking",
+            "needs_review",
+          ]),
+        ),
+      )
+      .limit(1);
+    return Boolean(connection);
   } catch {
     throw new AppDatabaseError(
       503,

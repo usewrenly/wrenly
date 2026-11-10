@@ -8,7 +8,7 @@ import { claimProductionSetup, loadProductionSetup, finishProductionSetupCheck, 
 import { executeProductionVerification } from "./verification-executor";
 const ControlIdentity = z.object({ cluster_id: z.string().regex(/^[0-9]{1,20}$/) });
 /** Reads the control server's own immutable identity, never accepting that identity from the browser. */
-async function readControlIdentity(database: typeof db): Promise<string> {
+export async function readControlIdentity(database: typeof db): Promise<string> {
   try {
     return await database.transaction(async (tx) => {
       await tx.execute(sql`set transaction read only`);

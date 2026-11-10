@@ -53,7 +53,9 @@ were applied to your saved Development data.
 ## Prepare your instance
 
 Use the supported Linux host and local Docker setup from [local previews](/docs/guides/local-previews).
-Apply all checked-in migrations, including **0035**, from `packages/db` with `bun run db:migrate`.
+Apply all checked-in migrations from `packages/db` with `bun run db:migrate`.
+Use the migrations supplied with your checkout; database features must not start
+against an older schema.
 From the repository root, build the database toolchains:
 
 ```bash
