@@ -21,3 +21,17 @@ STEPS:
 
 No routes or workers are activated by this storage module. Mutation-capable provisioning
 will need its own saved phase intent and independent recovery before this flow is enabled.
+
+## Executing a saved connection check
+
+COMPONENT: Production setup verification executor
+PURPOSE: Connect an exact saved worker claim to the private TLS inspector without provisioning.
+INPUTS: Claimed setup, trusted control connection identity, instance key directory and cancellation signal.
+OUTPUTS: Saved verified/refused/interrupted receipt, or an explicit unconfirmed completion error.
+STEPS:
+1. Load and decrypt only the live claim; read the control cluster identifier using a fixed read-only query.
+2. Resolve and pin the private destination, excluding control-cluster addresses.
+3. Authenticate with verified TLS and inspect fixed management metadata; await connection cleanup.
+4. Recheck the original claim/session while saving safe facts. Never reinterpret a failed save as a refused remote check.
+EDGE CASES: Cancellation records an interrupted check when the claim still permits it; expired claims remain reviewable.
+ERROR STATES: No raw driver errors or credentials leave the executor. No retry, role creation, migration or ready-resource transition occurs.

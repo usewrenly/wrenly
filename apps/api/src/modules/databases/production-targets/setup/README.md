@@ -7,8 +7,8 @@ lost browser response does not create another request.
 
 A successful connection check is **not** a ready application database. Creating
 roles, applying migrations and publishing an app require separate confirmed work.
-This module provides storage functions; it does not activate HTTP routes or
-start a worker.
+This module provides storage functions and a single-request verification worker.
+It does not activate HTTP routes or register that worker at API startup.
 
 - `credentials.ts` validates bounded input and encrypts credentials. Encryption
   binds the project, owner, access revision and destination together, so moving
@@ -20,7 +20,7 @@ start a worker.
 
 A claim is temporary permission for one worker to process one saved request.
 Expired claims become `needs_review`; they do not restart automatically. Reading
- a receipt only reads the saved result and never contacts the remote database.
+a receipt only reads the saved result and never contacts the remote database.
 Browser receipts contain no passwords, certificates or encrypted credentials.
 
 Setup keys live in `production-setup-keys` under the instance data directory.
@@ -31,3 +31,10 @@ those requests.
 Integration tests require an explicitly supplied loopback PostgreSQL URL whose
 database name is `wrenly_production_setup_test`. They create schema and clear
 setup records in that disposable database; never use an installation database.
+
+`verification-executor.ts` sequences one claimed check and keeps remote failures
+separate from an unconfirmed result save. `verification-worker.ts` connects it to
+the encrypted store and the private TLS inspector. It obtains the control cluster
+identity directly from PostgreSQL; browser input cannot supply or override it.
+The control database role must be allowed to read `pg_control_system()`; a denied
+identity read refuses verification rather than weakening cluster separation.

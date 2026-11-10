@@ -4,8 +4,10 @@ Before Wrenly sends a database password, it must check the destination. For exam
 a booking app's Production database must not accidentally point at the PostgreSQL
 server that holds Wrenly accounts and projects.
 
-This folder contains the first connection checks. It does not yet attach a resource,
-store credentials, expose a dashboard action or enable database-backed publishing.
+This folder checks connections and saves encrypted, owner-confirmed setup requests.
+A single-request worker can verify those saved requests. API startup does not run it
+yet; dashboard actions, resource provisioning and database-backed publishing remain
+unavailable. See `setup/README.md` for saved requests and worker responsibilities.
 
 - `target-policy.ts` accepts a strict host/port/database description, requires a TLS
   hostname and `verify-full`, and resolves every address. Only private unicast addresses
@@ -52,7 +54,7 @@ and create roles/databases; restricted hosted service credentials may not satisf
 contract and must not be silently treated as full management access.
 
 A verified connection is not yet a provisioned Production resource. It still needs
-owner-reviewed durable credential storage, provider-owned isolation, role provisioning,
+provider-owned isolation, role provisioning,
 recovery and publishing bindings. Existing Development provisioning changes cluster-wide
 PUBLIC grants and must never be reused against an arbitrary shared external cluster.
 
