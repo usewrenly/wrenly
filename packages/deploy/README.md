@@ -17,7 +17,8 @@ Gitea and Coolify API calls. The sandbox package builds the app inside Docker.
 ```text
 src/
   providers/gitea/           Creates and checks private source repositories
-  providers/coolify/         Configures the running app and checks deployment status
+  providers/coolify/         Configures apps and checks deployment status
+    databases/              Private PostgreSQL provider contract (not activated)
   source-snapshots/          Uses Git to commit and push generated source
   http/                     Sends limited, authenticated provider requests
   secrets/                  Encrypts secrets and checks runtime settings
@@ -72,3 +73,24 @@ WRENLY_TEST_DEPLOY_HTTP=true bun test packages/deploy/tests/integration
 
 Local integration checks need Git, GNU timeout and local sockets. They use temporary
 repositories and fake credentials; they do not verify your real publishing services.
+
+## Private Production database provider work
+
+`providers/coolify/databases/` creates a private, stopped PostgreSQL 17 record
+from a previously saved creation intent. An **intent** is the API's durable record
+of the exact operation it is about to attempt. A response containing a UUID is
+not proof that the database is running, secured with TLS or ready for app data.
+
+The adapter uses a deterministic resource name and operation marker. Read-only
+recovery checks the pinned project, the bounded complete database collection and
+the exact remote details. It rejects collisions, public ports, changed images and
+server/destination substitution. Recovery never creates or starts a database, and
+a missing record never causes an automatic retry. Provider replies can contain
+passwords and connection URLs; these functions return only allowlisted identity facts.
+
+This adapter is not connected to API startup yet. Durable provider-effect recording,
+private routing, verified TLS, SQL roles and live Coolify contract acceptance remain
+required before Production setup can be enabled. Local HTTP fixtures test an uncertain
+create followed by read-only recovery; they do not establish live provider acceptance.
+
+Provider reference: [Coolify PostgreSQL creation API](https://coolify.io/docs/api/endpoints/databases/create-database-postgresql).
