@@ -207,6 +207,7 @@ export async function admitInstanceProductionConnection(
 export async function readInstanceProductionConnection(
   database: Connection,
   principal: AccessPrincipal,
+  requestId?: string,
 ): Promise<{
   connectionId: string;
   status: Saved["status"];
@@ -217,9 +218,18 @@ export async function readInstanceProductionConnection(
     database.transaction(async (tx) => {
       await lockDatabaseQueues(tx);
       await owner(tx, principal);
+      if (requestId !== undefined) z.uuid().parse(requestId);
       const [saved] = await tx
         .select()
         .from(productionDatabaseConnections)
+        .where(
+          requestId === undefined
+            ? undefined
+            : and(
+                eq(productionDatabaseConnections.actorId, principal.userId),
+                eq(productionDatabaseConnections.requestId, requestId),
+              ),
+        )
         .orderBy(
           desc(productionDatabaseConnections.createdAt),
           desc(productionDatabaseConnections.id),

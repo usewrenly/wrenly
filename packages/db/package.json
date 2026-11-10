@@ -22,7 +22,8 @@
     "./production-project-credentials": "./src/application-databases/production-cluster/contract.ts",
     "./production-project-provisioning": "./src/application-databases/production-cluster/provisioning.ts",
     "./production-project-recovery": "./src/application-databases/production-cluster/recovery.ts",
-    "./production-resource-binding": "./src/application-databases/production-cluster/resource-contract.ts"
+    "./production-resource-binding": "./src/application-databases/production-cluster/resource-contract.ts",
+    "./production-connection-contract": "./src/application-databases/production-connection-contract.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

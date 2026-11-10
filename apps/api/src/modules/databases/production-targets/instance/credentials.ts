@@ -1,21 +1,13 @@
 /** Instance management credentials have their own authenticated identity and encryption purpose. */
 import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
-import { ProductionSetupInput } from "../setup/credentials";
 import {
   encryptDatabaseSecret,
   decryptDatabaseSecret,
   type DatabaseSecretEnvelope,
 } from "../../database-secrets";
-const { expectedRevision: _projectRevision, ...connectionFields } =
-  ProductionSetupInput.shape;
-export const ProductionConnectionInput = z
-  .object({ ...connectionFields, expectedConnectionId: z.uuid().nullable() })
-  .strict()
-  .refine((value) => Buffer.byteLength(JSON.stringify(value)) <= 24 * 1024);
-export type ProductionConnectionInput = z.infer<
-  typeof ProductionConnectionInput
->;
+import { ProductionConnectionInput } from "@wrenly/db/production-connection-contract";
+export { ProductionConnectionInput } from "@wrenly/db/production-connection-contract";
 export interface ConnectionSecretScope {
   id: string;
   actorId: string;

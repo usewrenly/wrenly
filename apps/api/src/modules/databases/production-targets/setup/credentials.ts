@@ -1,6 +1,7 @@
 /** Setup secrets use a distinct key directory and authenticated project/owner/target binding. */
 import { createHash, createHmac } from "node:crypto";
 import { z } from "zod";
+import { ProductionManagementCredential } from "@wrenly/db/production-connection-contract";
 import { ProductionDatabaseTarget } from "@wrenly/db/production-database-target-contract";
 import {
   encryptDatabaseSecret,
@@ -8,27 +9,13 @@ import {
   type DatabaseSecretEnvelope,
 } from "../../database-secrets";
 const MAX_SECRET_BYTES = 24 * 1024;
-const Credential = z
-  .object({
-    user: z
-      .string()
-      .min(1)
-      .max(63)
-      .regex(/^[a-zA-Z_][a-zA-Z0-9_-]*$/),
-    password: z
-      .string()
-      .min(1)
-      .max(4096)
-      .refine((value) => !value.includes("\0")),
-  })
-  .strict();
 export const ProductionSetupInput = z
   .object({
     requestId: z.uuid(),
     expectedRevision: z.uuid(),
     confirmTarget: z.literal(true),
     target: ProductionDatabaseTarget,
-    credential: Credential,
+    credential: ProductionManagementCredential,
     certificateAuthority: z
       .string()
       .min(1)
@@ -102,10 +89,13 @@ export function openProductionSetup(
   raw: unknown,
   scope: ProductionSetupBinding,
   key: Buffer,
-): { credential: z.infer<typeof Credential>; certificateAuthority?: string } {
+): {
+  credential: z.infer<typeof ProductionManagementCredential>;
+  certificateAuthority?: string;
+} {
   return z
     .object({
-      credential: Credential,
+      credential: ProductionManagementCredential,
       certificateAuthority: z
         .string()
         .min(1)

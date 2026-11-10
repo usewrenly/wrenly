@@ -155,6 +155,22 @@ check(
       "verified",
     ]);
     expect(JSON.stringify(status)).not.toContain("credential");
+    expect(
+      (
+        await readInstanceProductionConnection(
+          database,
+          principal,
+          request.requestId,
+        )
+      )?.connectionId,
+    ).toBe(first.connectionId);
+    expect(
+      await readInstanceProductionConnection(
+        database,
+        principal,
+        crypto.randomUUID(),
+      ),
+    ).toBeNull();
     const claim = await claimInstanceProductionConnection(database);
     if (!claim) throw new Error("Missing claim");
     expect(
