@@ -9,6 +9,7 @@ const Metadata = z
     role_name: z.string().min(1).max(63),
     server_version: z.number().int().min(170000).max(179999),
     replica: z.boolean(),
+    administrator: z.boolean(),
     create_role: z.boolean(),
     create_database: z.boolean(),
   })
@@ -37,6 +38,7 @@ export async function inspectProductionDatabase(
         current_user::text as role_name,
         pg_catalog.current_setting('server_version_num')::integer as server_version,
         pg_catalog.pg_is_in_recovery() as replica,
+        r.rolsuper as administrator,
         r.rolcreaterole as create_role,
         r.rolcreatedb as create_database
         from pg_catalog.pg_roles r where r.rolname = current_user`);
@@ -47,6 +49,7 @@ export async function inspectProductionDatabase(
       row.cluster_id === controlClusterId ||
       row.database_name !== expectedDatabase ||
       row.replica ||
+      !row.administrator ||
       !row.create_role ||
       !row.create_database
     )
