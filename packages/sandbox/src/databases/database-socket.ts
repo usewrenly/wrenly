@@ -10,6 +10,8 @@ import {
 } from "./database-runtime";
 import {
   managedDatabaseLabels,
+  databaseClientLabels,
+  type DatabaseClientScope,
   localDatabaseSocketConfiguration,
   DATABASE_SOCKET_DIRECTORY,
   DATABASE_SOCKET_PATH,
@@ -342,7 +344,7 @@ export async function cleanupDatabaseSocket(
 
 /** Removes a partially created socket only after the caller recorded its creation intent. */
 export async function cleanupScopedDatabaseSocket(
-  scope: ManagedDatabaseScope,
+  scope: DatabaseClientScope,
   socketId: string,
   assertHeld: () => Promise<void> = async () => {},
 ): Promise<void> {
@@ -350,11 +352,18 @@ export async function cleanupScopedDatabaseSocket(
   if (!UUID.test(socketId))
     throw new DatabaseRuntimeError("invalid socket cleanup scope");
   // Validate every scope identifier before deriving local Docker handles.
-  managedDatabaseLabels(scope, "database-socket");
+  databaseClientLabels(scope, "database-socket");
   const name = `wrenly-database-socket-${socketId}`;
   let imageId = "";
   try {
-    imageId = (await docker.getContainer(name).inspect()).Image;
+    const current = await docker.getContainer(name).inspect();
+    if (
+      Object.entries(databaseClientLabels(scope, "database-socket")).some(
+        ([key, value]) => current.Config.Labels?.[key] !== value,
+      )
+    )
+      throw new Error("Socket cleanup environment changed");
+    imageId = current.Image;
   } catch (error) {
     if (!(
       typeof error === "object" &&
@@ -363,6 +372,23 @@ export async function cleanupScopedDatabaseSocket(
       error.statusCode === 404
     ))
       throw new DatabaseRuntimeError("socket cleanup inspection");
+  }
+  try {
+    const volume = await docker.getVolume(name).inspect();
+    if (
+      Object.entries(databaseClientLabels(scope, "database-socket")).some(
+        ([key, value]) => volume.Labels?.[key] !== value,
+      )
+    )
+      throw new Error("Socket volume cleanup environment changed");
+  } catch (error) {
+    if (!(
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      error.statusCode === 404
+    ))
+      throw new DatabaseRuntimeError("socket cleanup volume inspection");
   }
   await cleanupDatabaseSocket(
     {

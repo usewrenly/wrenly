@@ -7,6 +7,19 @@ import Docker from "dockerode";
 import postgres from "@wrenly/db/app-database-driver";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql } from "drizzle-orm";
+import {
+  captureProductionDatabaseBackup,
+  restoreDisposableDatabaseBackup,
+} from "../src/databases/database-backup-runtime";
+import {
+  createManagedDatabase,
+  cleanupDisposableDatabase,
+} from "../src/databases/database-runtime";
+import { provisionManagedDatabaseRoles } from "../src/databases/database-administrator";
+import { createDatabaseCredentials } from "../../../apps/api/src/modules/databases/database-contract";
+import { getDatabaseWorkerBundle } from "../../../apps/api/src/modules/databases/database-worker-bundle";
+import { runDatabaseSocketWorker } from "../src/databases/database-socket-worker";
+import { cleanupScopedDatabaseSocket } from "../src/databases/database-socket";
 import { createProductionProjectCredentials } from "@wrenly/db/production-project-credentials";
 import {
   createProductionProjectRoles,
@@ -289,4 +302,173 @@ acceptance(
     expect(effects.length).toBe(4);
   },
   60_000,
+);
+
+acceptance(
+  "Production reader and backup use network-isolated helpers; archive restores separately",
+  async () => {
+    const fence = {
+      assertHeld: async (): Promise<void> => {},
+      beforeEffect: async (effect: { id: string }): Promise<void> => {
+        effects.push(`intent:${effect.id}`);
+      },
+      acknowledgeEffect: async (effect: { id: string }): Promise<void> => {
+        effects.push(`ack:${effect.id}`);
+      },
+    };
+    const signal = AbortSignal.timeout(90_000);
+    const opened: DatabaseSocketIdentity[] = [];
+    const temporaryId = crypto.randomUUID();
+    const temporaryScope = {
+      ...scope,
+      resourceId: temporaryId,
+      environment: "development" as const,
+    };
+    let temporaryStarted = false;
+    try {
+      for (const role of ["reader", "migrator"] as const) {
+        const socketId = crypto.randomUUID();
+        socketIds.push(socketId);
+        const socket = await startProductionDatabaseSocket({
+          scope,
+          socketId,
+          networkId,
+          upstream: {
+            hostname: "production.internal.test",
+            address,
+            port: 5432,
+          },
+          credentials,
+          role,
+          certificateAuthority: authority,
+          fence,
+          signal,
+          verifyTarget: async () => {},
+        });
+        opened.push(socket);
+      }
+      const reader = opened[0]!,
+        migrator = opened[1]!;
+      const viewed = await runDatabaseSocketWorker({
+        kind: "query",
+        scope,
+        socket: reader,
+        operationId: crypto.randomUUID(),
+        request: {
+          resourceId: scope.resourceId,
+          ...credentials.reader,
+          rows: false,
+        },
+        bundle: await getDatabaseWorkerBundle("query"),
+        fence,
+        signal,
+      });
+      expect(JSON.stringify(viewed)).toContain("notes");
+      await expect(
+        cleanupScopedDatabaseSocket(
+          { ...scope, environment: "development" },
+          reader.id,
+        ),
+      ).rejects.toThrow();
+      await command(
+        [
+          "docker",
+          "run",
+          "--rm",
+          "-i",
+          "--network",
+          "none",
+          "-v",
+          `${migrator.volumeName}:/run/wrenly-database`,
+          "--entrypoint",
+          "sh",
+          "postgres:17-alpine",
+          "-c",
+          'read -r PGPASSWORD; export PGPASSWORD; exec psql -h /run/wrenly-database -p 6432 -U "$1" -d app -qtAc "insert into public.notes(body) values (\'preserved booking\')"',
+          "sh",
+          credentials.migrator.user,
+        ],
+        credentials.migrator.password + "\n",
+      );
+      const archive = await captureProductionDatabaseBackup({
+        scope,
+        socket: migrator,
+        operationId: crypto.randomUUID(),
+        role: credentials.migrator,
+        fence,
+        signal,
+      });
+      expect(Buffer.from(archive.subarray(0, 5)).toString()).toBe("PGDMP");
+      await expect(
+        captureProductionDatabaseBackup({
+          scope: { ...scope, projectId: crypto.randomUUID() },
+          socket: migrator,
+          operationId: crypto.randomUUID(),
+          role: credentials.migrator,
+          fence,
+          signal,
+        }),
+      ).rejects.toThrow();
+      const temporaryCredentials = createDatabaseCredentials(temporaryId);
+      temporaryStarted = true;
+      const database = await createManagedDatabase({
+        scope: temporaryScope,
+        operationId: temporaryId,
+        administrator: temporaryCredentials.administrator,
+        fence,
+        signal,
+      });
+      await provisionManagedDatabaseRoles({
+        scope: temporaryScope,
+        database,
+        operationId: temporaryId,
+        credentials: temporaryCredentials,
+        administratorBundle: await getDatabaseWorkerBundle("administrator"),
+        fence,
+        signal,
+      });
+      await restoreDisposableDatabaseBackup({
+        scope: temporaryScope,
+        database,
+        operationId: temporaryId,
+        role: temporaryCredentials.migrator,
+        fence,
+        signal,
+        archive,
+      });
+      const info = await docker.getContainer(database.containerId).inspect();
+      const upstream = Object.values(info.NetworkSettings.Networks)[0]!
+        .IPAddress;
+      const restored = await command(
+        [
+          "docker",
+          "run",
+          "--rm",
+          "-i",
+          "--network",
+          database.networkId,
+          "--entrypoint",
+          "sh",
+          database.imageId,
+          "-c",
+          'read -r PGPASSWORD; export PGPASSWORD; exec psql -h "$1" -U "$2" -d app -qtAc "select body from public.notes"',
+          "sh",
+          upstream,
+          temporaryCredentials.reader.user,
+        ],
+        temporaryCredentials.reader.password + "\n",
+      );
+      expect(restored).toBe("preserved booking");
+    } finally {
+      for (const socket of opened)
+        await cleanupScopedDatabaseSocket(scope, socket.id);
+      if (temporaryStarted)
+        await cleanupDisposableDatabase(
+          temporaryScope,
+          temporaryId,
+          scope.resourceId,
+        );
+    }
+  },
+  120_000,
 );
