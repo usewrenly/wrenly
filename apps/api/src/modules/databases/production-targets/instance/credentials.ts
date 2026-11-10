@@ -57,7 +57,7 @@ export function sealProductionConnection(
     purpose(scope),
   );
 }
-/** Call only after rechecking owner, session, connection identity and work claim. */
+/** Call only after rechecking authorized session, connection identity and the operation/read claim. */
 export function openProductionConnection(
   raw: unknown,
   scope: ConnectionSecretScope,

@@ -1,3 +1,5 @@
+import { runDatabaseViewQuery } from "../../viewing/view-runtime";
+import { DatabaseViewerResultSchema } from "@wrenly/db/app-database-viewer-contract";
 import { executeProductionResourceAvailability } from "../data/availability";
 import { executeProductionResourceMigrations } from "../data/migrations";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
@@ -1026,6 +1028,49 @@ nativeReadiness(
         );
         expect(afterAvailability?.schemaDigest).toBe(migrated?.schemaDigest);
       }
+      const [readyForRead] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      const selection = {
+        resourceId: resource!.id,
+        revision: readyForRead!.revision,
+        environment: "production",
+        rows: true,
+        table: "booking_requests",
+      };
+      const view = DatabaseViewerResultSchema.parse(
+        await accessContext.run({ principal: currentPrincipal }, () =>
+          runDatabaseViewQuery(
+            database,
+            directory,
+            project.id,
+            currentPrincipal.userId,
+            selection,
+            signal,
+            { controlDatabaseUrl: url!, lookup },
+          ),
+        ),
+      );
+      expect(view.tables).toContain("booking_requests");
+      expect(view.columns.map((column) => column.name)).toContain(
+        "customer_name",
+      );
+      expect(view.rows).toEqual([]);
+      expect(view.tables).not.toContain("__drizzle_migrations");
+      await expect(
+        accessContext.run({ principal }, () =>
+          runDatabaseViewQuery(
+            database,
+            directory,
+            project.id,
+            principal.userId,
+            selection,
+            signal,
+            { controlDatabaseUrl: url!, lookup },
+          ),
+        ),
+      ).rejects.toThrow();
     } finally {
       const [resource] = await database
         .select()
