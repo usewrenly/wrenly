@@ -196,3 +196,26 @@ provider. Common orchestration owns credentials, work claims, locks and explicit
 recovery. A provider reporting TLS enabled does not replace a real verified TLS
 connection check. This extension boundary does not mean other deployers are
 implemented, nor does it expose infrastructure operations as model MCP tools.
+
+## Production app database isolation decision
+
+Generated apps will share one dedicated, privately reachable PostgreSQL 17 cluster,
+with a separate database and restricted migrator, runtime and reader accounts per
+project. A cluster means one PostgreSQL server installation. It must never be the
+cluster containing Wrenly accounts, prompts or project metadata; authenticated server
+identity checks reject that configuration even when hostnames differ.
+
+This supports one-time infrastructure setup followed by dashboard-managed project
+provisioning. Verified TLS protects the private upstream connection. Generated apps
+retain the existing role-scoped socket boundary and blocked IP egress. Database
+creation and grants are separate durable steps: interrupted creation must be inspected,
+not repeated blindly or adopted by matching a name. Existing passwords are never
+silently replaced. PUBLIC privileges are changed only on the newly created project
+database, never across the shared cluster.
+
+This is database-and-role isolation, not machine isolation. CPU, storage, maintenance,
+WAL and server outages remain shared. The management credential is highly privileged
+and stays instance-side; project credentials cannot create databases or roles. Future
+infrastructure adapters may support other placements without changing owner review,
+backup or recovery rules. Production activation remains gated on complete runtime,
+recovery, publishing and UI acceptance.

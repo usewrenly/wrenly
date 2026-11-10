@@ -250,3 +250,33 @@ known rewrite, including reformatting an otherwise unchanged journal, returns to
 build's existing repair attempts with the original files as guidance. It does not run
 SQL against saved data. If repair attempts are exhausted, review the recorded failure;
 do not apply a rewritten initial migration to make the preview open.
+
+## Production direction: one dedicated app database server
+
+Production support is still being implemented. The following explains the chosen
+architecture, not a feature you can enable today.
+
+Imagine two projects: a booking app and a notes app. Each will have its own PostgreSQL
+database and separate accounts for changing tables, running the app and viewing data.
+They will share a dedicated PostgreSQL server that holds generated-app data only.
+Wrenly's accounts, prompts and project history stay on a separate database server.
+
+```text
+Wrenly control database server
+  └─ Accounts, projects and conversation history
+
+Dedicated generated-app PostgreSQL server
+  ├─ Booking database → booking-only accounts
+  └─ Notes database   → notes-only accounts
+```
+
+The instance owner will configure the private connection and verified TLS certificate
+once. Wrenly will then create each project's database and restricted accounts through
+its dashboard workflow. This does not require typing SQL or copying passwords into
+generated code. Changes to saved tables will still require review and confirmation.
+
+Separate databases and permissions prevent an app account from opening another
+project's database. They do not provide separate machines: projects share server
+capacity, maintenance and outages. Backups remain necessary. Larger installations
+may eventually choose additional servers through a separate infrastructure adapter;
+that option is not available yet.
