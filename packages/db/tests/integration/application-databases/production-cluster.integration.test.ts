@@ -10,6 +10,10 @@ import {
   enableProductionProjectConnections,
   initializeProductionProjectSchema,
 } from "../../../src/application-databases/production-cluster/provisioning";
+import {
+  enforceProductionDatabaseRolePolicy,
+  terminateProductionDatabaseSessions,
+} from "../../../src/application-databases/roles";
 const url = process.env.WRENLY_TEST_APP_CLUSTER_URL;
 if (url) {
   const parsed = new URL(url);
@@ -222,3 +226,71 @@ check("control cluster identity is refused before creating roles", async () => {
   );
   expect(rows).toHaveLength(0);
 });
+
+check(
+  "reviewed Production permissions protect journals and refuse foreign authority",
+  async () => {
+    const project = projects[0]!;
+    const other = projects[1]!;
+    const admin = connect(project.credentials.database);
+    const migrator = connect(
+      project.credentials.database,
+      project.credentials.migrator,
+    );
+    const runtime = connect(
+      project.credentials.database,
+      project.credentials.runtime,
+    );
+    await migrator.execute(
+      sql`create table public.__drizzle_migrations (id serial primary key, hash text not null)`,
+    );
+    await enforceProductionDatabaseRolePolicy(
+      admin,
+      identity(),
+      project.id,
+      project.credentials,
+    );
+    await expect(
+      Promise.resolve(
+        runtime.execute(
+          sql`insert into public.__drizzle_migrations(hash) values ('forbidden')`,
+        ),
+      ),
+    ).rejects.toThrow();
+    await runtime.execute(
+      sql`insert into public.notes(body) values ('preserved after policy')`,
+    );
+    await terminateProductionDatabaseSessions(
+      admin,
+      identity(),
+      project.id,
+      project.credentials,
+      "runtime",
+    );
+    expect(
+      (
+        await connect(
+          project.credentials.database,
+          project.credentials.reader,
+        ).execute(sql`select body from public.notes`)
+      )[0]?.body,
+    ).toBe("preserved after policy");
+    await expect(
+      enforceProductionDatabaseRolePolicy(
+        admin,
+        identity(),
+        other.id,
+        other.credentials,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      terminateProductionDatabaseSessions(
+        admin,
+        identity(),
+        other.id,
+        other.credentials,
+        "migrator",
+      ),
+    ).rejects.toThrow();
+  },
+);

@@ -21,3 +21,9 @@ An interrupted action remains visible and blocks conflicting work. Unknown resul
 are not automatically retried. Current implemented actions here are creation readiness
 and verified backup; migration, stop/start, viewer and publishing adapters must be
 connected and tested before Production is enabled for users.
+
+Reviewed migrations use the same saved-source, backup and rehearsal sequence as
+Development. The Production adapter changes only how the exact database is reached:
+a pinned private TLS connection checks authority, while a role-scoped Unix socket
+carries the generated application's migration traffic. Cleanup terminates only that
+project's migrator sessions. Application roles cannot write the migration journals.

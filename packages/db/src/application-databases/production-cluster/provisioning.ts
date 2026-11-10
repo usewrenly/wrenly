@@ -7,7 +7,7 @@ import {
 } from "./contract";
 const CLUSTER_ID = /^[0-9]{1,20}$/;
 /** Rejects a control-cluster alias even when the database or hostname differs. */
-async function verifyCluster(
+export async function verifyProductionClusterAuthority(
   database: PostgresJsDatabase,
   identity: ProductionClusterIdentity,
 ): Promise<void> {
@@ -40,7 +40,7 @@ export async function createProductionProjectRoles(
   const credentials = validateProductionProjectCredentials(resourceId, input);
   try {
     await database.transaction(async (tx) => {
-      await verifyCluster(tx, identity);
+      await verifyProductionClusterAuthority(tx, identity);
       await tx.execute(sql`set local statement_timeout = '5s'`);
       await tx.execute(
         sql`select pg_catalog.set_config('search_path','pg_catalog',true)`,
@@ -76,7 +76,7 @@ export async function createProductionProjectDatabase(
 ): Promise<void> {
   const credentials = validateProductionProjectCredentials(resourceId, input);
   try {
-    await verifyCluster(database, identity);
+    await verifyProductionClusterAuthority(database, identity);
     const rows = await database.execute(
       sql`select rolname from pg_catalog.pg_roles where rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user}) and rolcanlogin and not rolsuper and not rolcreatedb and not rolcreaterole and not rolreplication and not rolbypassrls and not rolinherit and rolconnlimit=8`,
     );
@@ -100,7 +100,7 @@ export async function enableProductionProjectConnections(
   const credentials = validateProductionProjectCredentials(resourceId, input);
   try {
     await database.transaction(async (tx) => {
-      await verifyCluster(tx, identity);
+      await verifyProductionClusterAuthority(tx, identity);
       const rows = await tx.execute(
         sql`select r.rolname as owner, d.datallowconn as connected from pg_catalog.pg_database d join pg_catalog.pg_roles r on r.oid=d.datdba where d.datname=${credentials.database}`,
       );
@@ -136,7 +136,7 @@ export async function initializeProductionProjectSchema(
   const credentials = validateProductionProjectCredentials(resourceId, input);
   try {
     await database.transaction(async (tx) => {
-      await verifyCluster(tx, identity);
+      await verifyProductionClusterAuthority(tx, identity);
       const rows =
         await tx.execute(sql`select current_database() as database_name,
         (select r.rolname from pg_catalog.pg_database d join pg_catalog.pg_roles r on r.oid=d.datdba where d.datname=current_database()) as owner`);

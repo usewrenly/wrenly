@@ -1,3 +1,6 @@
+import { executeProductionResourceMigrations } from "../data/migrations";
+import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
+import type { DatabaseClaim } from "../../database-store";
 import { admitProductionDatabaseAction } from "../data/actions";
 import { executeProductionResourceBackup } from "../data/backup";
 import { runProjectProductionProvisionOnce } from "./worker";
@@ -39,6 +42,7 @@ import {
 import {
   claimDatabaseAction,
   recordDatabaseEffect,
+  renewDatabaseAction,
 } from "../../database-store";
 import { accessContext } from "../../../auth/access/access-context";
 import { PRODUCTION_PROVISION_PHASES } from "@wrenly/db/production-project-credentials";
@@ -778,7 +782,7 @@ nativeReadiness(
       input,
       directory,
     );
-    const signal = AbortSignal.timeout(55_000);
+    const signal = AbortSignal.timeout(160_000);
     const lookup = async (): Promise<
       Array<{ address: string; family: number }>
     > => [{ address: nativeAddress!, family: 4 }];
@@ -827,15 +831,13 @@ nativeReadiness(
       expect(operation?.effect).toBeNull();
       expect(operation?.cleanupEffect).toBeNull();
       const currentPrincipal = { ...principal, sessionId: crypto.randomUUID() };
-      await database
-        .insert(schema.session)
-        .values({
-          id: currentPrincipal.sessionId,
-          userId: principal.userId,
-          token: crypto.randomUUID(),
-          accessRevision: principal.revision,
-          expiresAt: new Date(Date.now() + 600000),
-        });
+      await database.insert(schema.session).values({
+        id: currentPrincipal.sessionId,
+        userId: principal.userId,
+        token: crypto.randomUUID(),
+        accessRevision: principal.revision,
+        expiresAt: new Date(Date.now() + 600000),
+      });
       await database
         .update(schema.session)
         .set({ accessRevision: crypto.randomUUID() })
@@ -868,14 +870,16 @@ nativeReadiness(
       );
       if (!backupClaim) throw new Error("Missing Production backup claim");
       expect(
-        await executeProductionResourceBackup({
-          database,
-          claim: backupClaim,
-          directory,
-          controlDatabaseUrl: url!,
-          signal,
-          lookup,
-        }),
+        await withRenewedClaim(backupClaim, () =>
+          executeProductionResourceBackup({
+            database,
+            claim: backupClaim,
+            directory,
+            controlDatabaseUrl: url!,
+            signal,
+            lookup,
+          }),
+        ),
       ).toBe("success");
       const [backup] = await database
         .select()
@@ -884,6 +888,102 @@ nativeReadiness(
       expect(backup?.verifiedAt).toBeInstanceOf(Date);
       expect(backup?.schemaDigest).toBe(resource?.schemaDigest);
       expect(backup?.sha256).toMatch(/^[a-f0-9]{64}$/);
+      const files = [
+        {
+          path: "wrenly.app.json",
+          content: JSON.stringify({
+            version: 1,
+            database: {
+              engine: "postgresql",
+              adapter: "drizzle-postgres",
+              migrations: ["drizzle/0000_initial.sql"],
+            },
+          }),
+        },
+        {
+          path: "drizzle/0000_initial.sql",
+          content:
+            "CREATE TABLE public.booking_requests (id serial PRIMARY KEY, customer_name text NOT NULL);",
+        },
+        {
+          path: "drizzle/meta/_journal.json",
+          content: JSON.stringify({
+            version: "7",
+            dialect: "postgresql",
+            entries: [
+              {
+                idx: 0,
+                version: "7",
+                when: 1700000000000,
+                tag: "0000_initial",
+                breakpoints: true,
+              },
+            ],
+          }),
+        },
+      ];
+      const manifest = readAppDatabaseManifest(files, "nextjs");
+      if (!manifest || !backup)
+        throw new Error("Missing reviewed fixture migration");
+      const buildId = crypto.randomUUID();
+      await database
+        .insert(schema.builds)
+        .values({
+          id: buildId,
+          projectId: project.id,
+          prompt: "Fixture booking schema",
+          stack: "nextjs",
+          status: "success",
+          files,
+        });
+      const [latest] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      await admitProductionDatabaseAction(
+        database,
+        currentPrincipal,
+        project.id,
+        {
+          requestId: crypto.randomUUID(),
+          environment: "production",
+          kind: "migrate",
+          expectedRevision: latest!.revision,
+          buildId,
+          backupId: backup.id,
+          migrationDigest: manifest.digest,
+          confirmChanges: true,
+        },
+      );
+      const migrationClaim = await claimDatabaseAction(
+        database,
+        "postgres-cluster",
+      );
+      if (!migrationClaim)
+        throw new Error("Missing Production migration claim");
+      expect(
+        await withRenewedClaim(migrationClaim, () =>
+          executeProductionResourceMigrations({
+            database,
+            claim: migrationClaim,
+            directory,
+            controlDatabaseUrl: url!,
+            signal,
+            lookup,
+          }),
+        ),
+      ).toBe("success");
+      const [migration] = await database
+        .select()
+        .from(schema.appDatabaseMigrations)
+        .where(eq(schema.appDatabaseMigrations.operationId, migrationClaim.id));
+      expect(migration?.completedAt).toBeInstanceOf(Date);
+      const [migrated] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      expect(migrated?.schemaDigest).toBe(migration?.rehearsedSchemaDigest);
+      expect(migrated?.schemaDigest).not.toBe(backup.schemaDigest);
     } finally {
       const [resource] = await database
         .select()
@@ -893,5 +993,28 @@ nativeReadiness(
         networks.push(resource.providerIdentity.networkId);
     }
   },
-  60_000,
+  180_000,
 );
+
+/** Production renews claims through its worker; direct native acceptance must do the same during restore rehearsal. */
+async function withRenewedClaim<T>(
+  claim: DatabaseClaim,
+  run: () => Promise<T>,
+): Promise<T> {
+  let stopped = false;
+  let failure: unknown;
+  const timer = setInterval(() => {
+    if (!stopped)
+      void renewDatabaseAction(database, claim).catch((error) => {
+        failure = error;
+      });
+  }, 5_000);
+  try {
+    const result = await run();
+    if (failure) throw failure;
+    return result;
+  } finally {
+    stopped = true;
+    clearInterval(timer);
+  }
+}

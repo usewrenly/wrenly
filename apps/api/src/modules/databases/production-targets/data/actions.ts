@@ -6,6 +6,7 @@ import {
   appDatabases,
   appDatabaseOperations,
   projects,
+  appDatabaseMigrations,
   type db,
 } from "@wrenly/db";
 import {
@@ -24,6 +25,7 @@ import {
   hasDatabaseWork,
 } from "../../database-store";
 import { AppDatabaseError } from "../../database-contract";
+import { prepareDatabaseMigrationReview } from "../../database-migration-review";
 const MAX_PENDING_ACTIONS = 8;
 /** Importing/admitting starts no worker. Only implemented actions may enter this provider queue. */
 export async function admitProductionDatabaseAction(
@@ -34,7 +36,10 @@ export async function admitProductionDatabaseAction(
 ): Promise<DatabaseActionAcknowledgement> {
   z.uuid().parse(projectId);
   const action = DatabaseAction.parse(raw);
-  if (action.environment !== "production" || action.kind !== "backup")
+  if (
+    action.environment !== "production" ||
+    (action.kind !== "backup" && action.kind !== "migrate")
+  )
     throw new AppDatabaseError(
       409,
       "This Production action is not available yet.",
@@ -118,23 +123,46 @@ export async function admitProductionDatabaseAction(
         .from(projects)
         .where(eq(projects.id, projectId));
       if (!project) throw new AppDatabaseError(404, "Project not found.");
+      const migrationReview =
+        action.kind === "migrate" &&
+        action.buildId &&
+        action.backupId &&
+        action.migrationDigest
+          ? await prepareDatabaseMigrationReview(tx, {
+              projectId,
+              resourceId: resource.id,
+              buildId: action.buildId,
+              backupId: action.backupId,
+              migrationDigest: action.migrationDigest,
+            })
+          : undefined;
       const id = crypto.randomUUID();
-      await tx
-        .insert(appDatabaseOperations)
-        .values({
-          id,
-          databaseId: resource.id,
-          projectId,
-          actorId: principal.userId,
-          executionPrincipal: {
-            ...principal,
-            accessRevision: project.revision,
-          },
-          requestId: action.requestId,
-          requestIdentity: identity,
-          kind: action.kind,
-          expectedRevision: resource.revision,
-        });
+      await tx.insert(appDatabaseOperations).values({
+        id,
+        databaseId: resource.id,
+        projectId,
+        actorId: principal.userId,
+        executionPrincipal: {
+          ...principal,
+          accessRevision: project.revision,
+        },
+        requestId: action.requestId,
+        requestIdentity: identity,
+        kind: action.kind,
+        expectedRevision: resource.revision,
+        buildId: action.buildId,
+        migrationDigest: action.migrationDigest,
+      });
+      if (migrationReview && action.buildId && action.migrationDigest)
+        await tx
+          .insert(appDatabaseMigrations)
+          .values({
+            databaseId: resource.id,
+            operationId: id,
+            buildId: action.buildId,
+            digest: action.migrationDigest,
+            ...migrationReview,
+          });
       return { operationId: id, resourceId: resource.id, replayed: false };
     }),
   );
