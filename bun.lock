@@ -197,6 +197,7 @@
         "@repo/eslint-config": "workspace:*",
         "@repo/typescript-config": "*",
         "@types/dockerode": "^3.3.31",
+        "drizzle-orm": "^0.45.3",
         "eslint": "10.9.1",
         "typescript": "*",
       },

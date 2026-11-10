@@ -35,6 +35,7 @@
     "@repo/typescript-config": "*",
     "@types/dockerode": "^3.3.31",
     "eslint": "10.9.1",
-    "typescript": "*"
+    "typescript": "*",
+    "drizzle-orm": "^0.45.3"
   }
 }
