@@ -49,3 +49,11 @@ changed project access, uncertain inspection or changed evidence cannot authoriz
 Native tests cover every SQL phase, password/grant drift, current-session continuation,
 expired reports, and lost intent or acknowledgements. These workers remain inactive
 until the complete Production resource lifecycle is connected and accepted.
+
+`resource-store.ts` transfers completed SQL creation into a pending ordinary resource
+exactly once. Its server binding is separate from a Development container identity.
+`resource-worker.ts` verifies the original role policy, creates an explicitly labelled
+broker network, runs the actual trusted reader through a network-disabled container and
+closes that socket before saving readiness. The same passwords are retained throughout.
+Local and remote mutation claims are disjoint. These factories are still not registered
+by startup; data workflow and deployment-host acceptance must pass before activation.

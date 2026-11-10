@@ -10,13 +10,14 @@ import {
   type DatabaseSocketConfiguration,
 } from "./database-resource-policy";
 
+const SYSTEM_CERTIFICATE_PATH = "/etc/ssl/certs/ca-certificates.crt";
 const CERTIFICATE_PATH = "/run/wrenly-db-config/upstream-ca.pem";
 const MAX_CA_BYTES = 32 * 1024;
 const MAX_CONNECTIONS = 8;
 const HOSTNAME =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 export interface ProductionSocketConfiguration extends DatabaseSocketConfiguration {
-  certificateAuthority: string;
+  certificateAuthority?: string;
 }
 export interface ProductionSocketUpstream {
   hostname: string;
@@ -52,7 +53,7 @@ export function productionDatabaseSocketConfiguration(input: {
   credentials: ProductionProjectCredentials;
   role: "migrator" | "runtime" | "reader";
   upstream: ProductionSocketUpstream;
-  certificateAuthority: string;
+  certificateAuthority?: string;
 }): ProductionSocketConfiguration {
   const credentials = validateProductionProjectCredentials(
     input.resourceId,
@@ -63,12 +64,13 @@ export function productionDatabaseSocketConfiguration(input: {
     throw new Error("Invalid Production socket role.");
   const ca = input.certificateAuthority;
   if (
-    !ca ||
-    Buffer.byteLength(ca) > MAX_CA_BYTES ||
-    !/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/.test(
-      ca,
-    ) ||
-    ca.includes("PRIVATE KEY")
+    ca !== undefined &&
+    (!ca ||
+      Buffer.byteLength(ca) > MAX_CA_BYTES ||
+      !/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/.test(
+        ca,
+      ) ||
+      ca.includes("PRIVATE KEY"))
   )
     throw new Error(
       "Production socket requires a bounded certificate authority certificate.",
@@ -81,8 +83,8 @@ export function productionDatabaseSocketConfiguration(input: {
       `[pgbouncer]\nlisten_addr =\nlisten_port = ${DATABASE_SOCKET_PORT}\nunix_socket_dir = ${DATABASE_SOCKET_DIRECTORY}\nunix_socket_mode = 0777\n` +
       `auth_type = scram-sha-256\nauth_file = /run/wrenly-db-config/users.txt\npool_mode = session\nmax_client_conn = ${MAX_CONNECTIONS}\n` +
       `default_pool_size = ${MAX_CONNECTIONS}\nmax_db_connections = ${MAX_CONNECTIONS}\nmax_user_connections = ${MAX_CONNECTIONS}\n` +
-      `server_tls_sslmode = verify-full\nserver_tls_ca_file = ${CERTIFICATE_PATH}\nserver_connect_timeout = 5\nlog_connections = 0\nlog_disconnections = 0\n`,
+      `server_tls_sslmode = verify-full\nserver_tls_ca_file = ${ca === undefined ? SYSTEM_CERTIFICATE_PATH : CERTIFICATE_PATH}\nserver_connect_timeout = 5\nlog_connections = 0\nlog_disconnections = 0\n`,
     authentication: `"${role.user}" "${role.password}"\n`,
-    certificateAuthority: ca,
+    ...(ca === undefined ? {} : { certificateAuthority: ca }),
   };
 }

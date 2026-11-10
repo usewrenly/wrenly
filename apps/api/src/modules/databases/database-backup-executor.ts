@@ -42,7 +42,46 @@ export async function executeManagedDatabaseBackup(input: {
     projectId: claim.projectId,
     environment: "development" as const,
   };
-  const temporaryScope = { ...sourceScope, resourceId: claim.id };
+  const source = {
+    scope: sourceScope,
+    database: execution.resource.runtimeIdentity,
+    operationId: claim.id,
+    credentials: execution.credentials,
+    administratorBundle: input.bundle,
+    fence,
+    signal,
+  };
+  return verifyCapturedDatabaseBackup({
+    ...input,
+    inspect: () => inspectManagedDatabaseSchema(source),
+    capture: () =>
+      captureManagedDatabaseBackup({
+        ...source,
+        role: execution.credentials.migrator,
+      }),
+  });
+}
+
+/** Shared sealed-archive verification; source adapters supply only bounded capture and schema inspection. */
+export async function verifyCapturedDatabaseBackup(input: {
+  claim: DatabaseClaim;
+  directory: string;
+  bundle: Uint8Array;
+  fence: DatabaseRuntimeFence;
+  signal: AbortSignal;
+  inspect: () => Promise<string>;
+  capture: () => Promise<Uint8Array>;
+}): Promise<{ sha256: string; encryptedPath: string; schemaDigest: string }> {
+  const { claim, fence, signal } = input;
+  const temporaryScope = {
+    resourceId: claim.id,
+    projectId: claim.projectId,
+    environment: "development" as const,
+  };
+  if (claim.id === claim.resourceId)
+    throw new Error(
+      "Backup verification requires a separate disposable identity.",
+    );
   const temporaryCredentials = createDatabaseCredentials(claim.id);
   const temporaryFence: DatabaseRuntimeFence = {
     ...fence,
@@ -50,20 +89,8 @@ export async function executeManagedDatabaseBackup(input: {
   };
   let temporaryStarted = false;
   try {
-    const source = {
-      scope: sourceScope,
-      database: execution.resource.runtimeIdentity,
-      operationId: claim.id,
-      credentials: execution.credentials,
-      administratorBundle: input.bundle,
-      fence,
-      signal,
-    };
-    const schemaDigest = await inspectManagedDatabaseSchema(source);
-    const archive = await captureManagedDatabaseBackup({
-      ...source,
-      role: execution.credentials.migrator,
-    });
+    const schemaDigest = await input.inspect();
+    const archive = await input.capture();
     const key = await loadDatabaseKey(
       join(input.directory, "database-keys"),
       true,
@@ -112,7 +139,7 @@ export async function executeManagedDatabaseBackup(input: {
     });
     if (
       (await inspectManagedDatabaseSchema(temporary)) !== schemaDigest ||
-      (await inspectManagedDatabaseSchema(source)) !== schemaDigest
+      (await input.inspect()) !== schemaDigest
     )
       throw new Error(
         "Restored/source schema or migration journal changed during verification",

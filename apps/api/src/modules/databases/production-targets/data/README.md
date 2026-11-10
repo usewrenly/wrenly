@@ -1,0 +1,23 @@
+# Work with a Production project's data
+
+After a project database is ready, its owner should be able to create a backup from
+the workspace. The password used to manage the shared server never enters the app.
+The app, migration runner and data viewer each use their own restricted account.
+
+`actions.ts` saves an explicit owner request with its current session and project
+access revision. A request UUID can be read again after a lost response; it cannot
+be reused for different contents. `worker.ts` owns polling, lease renewal and awaited
+shutdown. Its provider-specific claims keep remote work away from the local adapter.
+These factories are not registered by startup until the full lifecycle is accepted.
+
+`backup.ts` verifies the original server and role policy, opens a migrator socket,
+then captures an archive from a container with no IP network. The shared backup
+executor encrypts that archive, decrypts the saved copy, restores it into a separate
+disposable database and compares schema/migration history. It checks the source again
+and confirms temporary cleanup before storing a verified backup record. It never
+restores over the Production database or stores application rows in Wrenly's tables.
+
+An interrupted action remains visible and blocks conflicting work. Unknown results
+are not automatically retried. Current implemented actions here are creation readiness
+and verified backup; migration, stop/start, viewer and publishing adapters must be
+connected and tested before Production is enabled for users.

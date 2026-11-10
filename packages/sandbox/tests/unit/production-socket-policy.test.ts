@@ -83,3 +83,17 @@ test("foreign resources, malformed CA and key material fail before secret delive
     }),
   ).toThrow();
 });
+
+test("omitted custom CA keeps verify-full and uses the trusted toolchain system certificates", () => {
+  const result = productionDatabaseSocketConfiguration({
+    resourceId,
+    credentials,
+    role: "reader",
+    upstream,
+  });
+  expect(result.configuration).toContain("server_tls_sslmode = verify-full");
+  expect(result.configuration).toContain(
+    "server_tls_ca_file = /etc/ssl/certs/ca-certificates.crt",
+  );
+  expect(result.certificateAuthority).toBeUndefined();
+});

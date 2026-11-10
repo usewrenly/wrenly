@@ -49,7 +49,14 @@ export const productionDatabaseProvisions = pgTable(
     placement: jsonb("placement").$type<Record<string, string>>().notNull(),
     secrets: jsonb("secrets").$type<AppDatabaseSecretEnvelope>().notNull(),
     status: text("status")
-      .$type<"queued" | "creating" | "created" | "needs_review" | "failed">()
+      .$type<
+        | "queued"
+        | "creating"
+        | "created"
+        | "needs_review"
+        | "failed"
+        | "attached"
+      >()
       .notNull()
       .default("queued"),
     claimToken: uuid("claim_token"),

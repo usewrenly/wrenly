@@ -19,7 +19,8 @@
     "./database-validation-cleanup": "./src/databases/database-validation-cleanup.ts",
     "./runtime-artifact": "./src/artifacts/runtime-artifact.ts",
     "./runtime-artifact-cleanup": "./src/artifacts/runtime-artifact-cleanup.ts",
-    "./database-preview-runtime": "./src/previews/database-runtime.ts"
+    "./database-preview-runtime": "./src/previews/database-runtime.ts",
+    "./production-database-network": "./src/databases/production-network.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

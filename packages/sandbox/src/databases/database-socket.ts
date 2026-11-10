@@ -78,7 +78,7 @@ export async function startProductionDatabaseSocket(input: {
   upstream: ProductionSocketUpstream;
   credentials: ProductionProjectCredentials;
   role: "runtime" | "migrator" | "reader";
-  certificateAuthority: string;
+  certificateAuthority?: string;
   fence: DatabaseRuntimeFence;
   signal: AbortSignal;
   verifyTarget: () => Promise<void>;

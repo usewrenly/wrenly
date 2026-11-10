@@ -47,12 +47,13 @@ function matchesScram(verifier: unknown, password: string): boolean {
   );
 }
 /** Uses privileged read-only metadata on the saved cluster; never changes passwords, grants, databases or data. */
-export async function inspectProductionProjectPhase(
+async function inspectProjectPolicy(
   database: PostgresJsDatabase,
   identity: ProductionClusterIdentity,
   resourceId: string,
   raw: unknown,
   phase: ProductionProvisionPhase,
+  requireEmptySchema: boolean,
 ): Promise<ProductionPhaseInspection> {
   const credentials = validateProductionProjectCredentials(resourceId, raw);
   ProductionProvisionPhase.parse(phase);
@@ -156,7 +157,7 @@ export async function inspectProductionProjectPhase(
       const objects = await tx.execute(
         sql`select exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('r','p','v','m','f','S')) or exists(select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid=p.pronamespace where n.nspname='public') as present`,
       );
-      if (objects[0]?.present !== false) return "review";
+      if (requireEmptySchema && objects[0]?.present !== false) return "review";
       const schemas = await tx.execute(
         sql`select r.rolname as owner, n.oid::integer as id from pg_catalog.pg_namespace n join pg_catalog.pg_roles r on r.oid=n.nspowner where n.nspname='public'`,
       );
@@ -167,7 +168,7 @@ export async function inspectProductionProjectPhase(
         from pg_catalog.pg_default_acl d join pg_catalog.pg_roles r on r.oid=d.defaclrole cross join lateral pg_catalog.aclexplode(d.defaclacl) x left join pg_catalog.pg_roles g on g.oid=x.grantee
         where d.defaclnamespace=${Number(schema!.id)} and d.defaclrole in (select oid from pg_catalog.pg_roles where rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user}))`);
       const settings = await tx.execute(
-        sql`select r.rolname as name, s.setconfig as settings from pg_catalog.pg_db_role_setting s join pg_catalog.pg_roles r on r.oid=s.setrole where s.setdatabase=${Number(saved.id)} and r.rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user})`,
+        sql`select r.rolname as name, pg_catalog.to_jsonb(s.setconfig) as settings from pg_catalog.pg_db_role_setting s join pg_catalog.pg_roles r on r.oid=s.setrole where s.setdatabase=${Number(saved.id)} and r.rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user})`,
       );
       const schemaAcl = await tx.execute(
         sql`select coalesce(r.rolname,'PUBLIC') as name, x.privilege_type as privilege, x.is_grantable as grantable from pg_catalog.pg_namespace n cross join lateral pg_catalog.aclexplode(n.nspacl) x left join pg_catalog.pg_roles r on r.oid=x.grantee where n.nspname='public'`,
@@ -253,4 +254,41 @@ export async function inspectProductionProjectPhase(
       "Production setup phase inspection could not be verified. Saved resources remain protected.",
     );
   }
+}
+
+/** Recovery can confirm only initial empty schema setup; existing app objects are never adopted by this path. */
+export async function inspectProductionProjectPhase(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  credentials: unknown,
+  phase: ProductionProvisionPhase,
+): Promise<ProductionPhaseInspection> {
+  return inspectProjectPolicy(
+    database,
+    identity,
+    resourceId,
+    credentials,
+    phase,
+    true,
+  );
+}
+/** Verifies the same restricted role/grant policy after applications have legitimately created tables. */
+export async function verifyProductionProjectPolicy(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  credentials: unknown,
+): Promise<void> {
+  if (
+    (await inspectProjectPolicy(
+      database,
+      identity,
+      resourceId,
+      credentials,
+      "schema",
+      false,
+    )) !== "confirmed"
+  )
+    throw new Error("Production database role policy could not be verified.");
 }

@@ -1,10 +1,14 @@
+import { admitProductionDatabaseAction } from "../data/actions";
+import { executeProductionResourceBackup } from "../data/backup";
+import { runProjectProductionProvisionOnce } from "./worker";
+import { executeProductionResourceCreation } from "./resource-worker";
 /** Dedicated disposable control-store acceptance; SQL side effects are tested separately against native PostgreSQL. */
 import { beforeAll, beforeEach, afterAll, expect, test } from "bun:test";
 import postgres from "@wrenly/db/app-database-driver";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { eq } from "drizzle-orm";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import * as schema from "@wrenly/db/schema";
@@ -27,6 +31,16 @@ import {
   finishProductionProvisionReview,
   resumeProductionProvision,
 } from "./recovery-store";
+import {
+  attachProductionProjectResource,
+  loadProductionResourceExecution,
+  saveProductionResourceNetwork,
+} from "./resource-store";
+import {
+  claimDatabaseAction,
+  recordDatabaseEffect,
+} from "../../database-store";
+import { accessContext } from "../../../auth/access/access-context";
 import { PRODUCTION_PROVISION_PHASES } from "@wrenly/db/production-project-credentials";
 const url = process.env.WRENLY_TEST_PROJECT_PROVISION_URL;
 if (url) {
@@ -49,16 +63,24 @@ const principal = {
   revision: crypto.randomUUID(),
 };
 let directory = "";
+let productionCA: string | undefined;
+const nativeAddress = process.env.WRENLY_TEST_PROJECT_CLUSTER_ADDRESS;
+const nativeCluster = process.env.WRENLY_TEST_PROJECT_CLUSTER_ID;
+const nativeCA = process.env.WRENLY_TEST_PROJECT_CLUSTER_CA;
+const networks: string[] = [];
+const nativeReadiness =
+  url && nativeAddress && nativeCluster && nativeCA ? test : test.skip;
 const target = {
   version: 1 as const,
   environment: "production" as const,
   host: "apps.internal.test",
-  port: 5432,
+  port: Number(process.env.WRENLY_TEST_PROJECT_CLUSTER_PORT ?? "5432"),
   database: "maintenance",
   sslmode: "verify-full" as const,
 };
 beforeAll(async () => {
   if (!url) return;
+  if (nativeCA) productionCA = await readFile(nativeCA, "utf8");
   directory = await mkdtemp(join(tmpdir(), "wrenly-project-provision-"));
   await migrate(database, {
     migrationsFolder: resolve(
@@ -89,12 +111,24 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   if (url) {
+    await database.delete(schema.appDatabaseMigrations);
+    await database.delete(schema.appDatabaseBackups);
+    await database.delete(schema.appDatabaseOperations);
+    await database.delete(schema.appDatabases);
     await database.delete(schema.productionDatabaseProvisionReviews);
     await database.delete(schema.productionDatabaseProvisions);
     await database.delete(schema.productionDatabaseConnections);
   }
 });
 afterAll(async () => {
+  for (const network of networks) {
+    const child = Bun.spawn(["docker", "network", "rm", network], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    if ((await child.exited) !== 0)
+      throw new Error("Disposable Production network cleanup failed");
+  }
   await client.end({ timeout: 1 });
   if (directory) await rm(directory, { recursive: true, force: true });
 });
@@ -108,6 +142,7 @@ async function fixture() {
       confirmTarget: true,
       target,
       credential: { user: "postgres", password: "fixture-management-secret" },
+      ...(productionCA ? { certificateAuthority: productionCA } : {}),
     },
     directory,
   );
@@ -116,12 +151,12 @@ async function fixture() {
   await finishInstanceProductionConnection(database, claim, {
     status: "verified",
     inspection: {
-      clusterId: "123456789",
+      clusterId: nativeCluster ?? "123456789",
       database: "maintenance",
       setupRole: "postgres",
       serverVersion: 170000,
     },
-    pinned: { target, addresses: ["10.20.30.40"] },
+    pinned: { target, addresses: [nativeAddress ?? "10.20.30.40"] },
   });
   const [project] = await database
     .insert(schema.projects)
@@ -635,4 +670,228 @@ check(
     expect(saved?.status).toBe("needs_review");
     expect(saved?.effectPhase).toBe("roles");
   },
+);
+
+check(
+  "SQL completion hands off once to a pending Production resource and only its provider can claim it",
+  async () => {
+    const { project, input } = await fixture();
+    const created = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    await expect(
+      attachProductionProjectResource({
+        database,
+        principal,
+        projectId: project.id,
+        provisionId: created.resourceId,
+        directory,
+      }),
+    ).rejects.toThrow();
+    const claim = await claimProjectProductionProvision(database);
+    if (!claim) throw new Error("Missing SQL claim");
+    let originalSecret = "";
+    for (const phase of PRODUCTION_PROVISION_PHASES) {
+      const saved = await beginProjectProductionPhase(
+        database,
+        claim,
+        phase,
+        directory,
+      );
+      originalSecret = saved.credentials.runtime.password;
+      await finishProjectProductionPhase(database, claim, phase, true);
+    }
+    const receipt = await attachProductionProjectResource({
+      database,
+      principal,
+      projectId: project.id,
+      provisionId: created.resourceId,
+      directory,
+    });
+    expect(
+      (
+        await attachProductionProjectResource({
+          database,
+          principal,
+          projectId: project.id,
+          provisionId: created.resourceId,
+          directory,
+        })
+      ).operationId,
+    ).toBe(receipt.operationId);
+    const [resource] = await database
+      .select()
+      .from(schema.appDatabases)
+      .where(eq(schema.appDatabases.id, receipt.resourceId));
+    expect(resource?.status).toBe("provisioning");
+    expect(resource?.runtimeIdentity).toBeNull();
+    expect(JSON.stringify(resource)).not.toContain(originalSecret);
+    await accessContext.run({ principal }, async () => {
+      expect(await claimDatabaseAction(database)).toBeNull();
+      const executionClaim = await claimDatabaseAction(
+        database,
+        "postgres-cluster",
+      );
+      if (!executionClaim) throw new Error("Missing Production resource claim");
+      const execution = await loadProductionResourceExecution(
+        database,
+        executionClaim,
+        directory,
+      );
+      expect(execution.credentials.runtime.password).toBe(originalSecret);
+      expect(execution.server.clusterId).toBe(nativeCluster ?? "123456789");
+      await expect(
+        saveProductionResourceNetwork(database, executionClaim, "a".repeat(64)),
+      ).rejects.toThrow();
+      await recordDatabaseEffect(database, executionClaim, {
+        kind: "create-network",
+        id: `wrenly-production-network-${receipt.resourceId}`,
+      });
+      await saveProductionResourceNetwork(
+        database,
+        executionClaim,
+        "a".repeat(64),
+      );
+      const again = await loadProductionResourceExecution(
+        database,
+        executionClaim,
+        directory,
+      );
+      expect(again.resource.providerIdentity?.networkId).toBe("a".repeat(64));
+      expect(again.resource.status).toBe("provisioning");
+    });
+  },
+);
+
+nativeReadiness(
+  "actual private TLS SQL creation becomes ready only after isolated reader acceptance",
+  async () => {
+    const { project, input } = await fixture();
+    const created = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const signal = AbortSignal.timeout(55_000);
+    const lookup = async (): Promise<
+      Array<{ address: string; family: number }>
+    > => [{ address: nativeAddress!, family: 4 }];
+    const result = await runProjectProductionProvisionOnce({
+      database,
+      directory,
+      controlDatabaseUrl: url!,
+      signal,
+      lookup,
+    });
+    expect(result?.status).toBe("created");
+    await attachProductionProjectResource({
+      database,
+      principal,
+      projectId: project.id,
+      provisionId: created.resourceId,
+      directory,
+    });
+    const claim = await accessContext.run({ principal }, () =>
+      claimDatabaseAction(database, "postgres-cluster"),
+    );
+    if (!claim) throw new Error("Missing Production readiness claim");
+    try {
+      expect(
+        await executeProductionResourceCreation({
+          database,
+          claim,
+          directory,
+          controlDatabaseUrl: url!,
+          signal,
+          lookup,
+        }),
+      ).toBe("success");
+      const [resource] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, created.resourceId));
+      expect(resource?.status).toBe("ready");
+      expect(resource?.runtimeIdentity).toBeNull();
+      expect(resource?.schemaDigest).toMatch(/^[a-f0-9]{64}$/);
+      const [operation] = await database
+        .select()
+        .from(schema.appDatabaseOperations)
+        .where(eq(schema.appDatabaseOperations.id, claim.id));
+      expect(operation?.status).toBe("success");
+      expect(operation?.effect).toBeNull();
+      expect(operation?.cleanupEffect).toBeNull();
+      const currentPrincipal = { ...principal, sessionId: crypto.randomUUID() };
+      await database
+        .insert(schema.session)
+        .values({
+          id: currentPrincipal.sessionId,
+          userId: principal.userId,
+          token: crypto.randomUUID(),
+          accessRevision: principal.revision,
+          expiresAt: new Date(Date.now() + 600000),
+        });
+      await database
+        .update(schema.session)
+        .set({ accessRevision: crypto.randomUUID() })
+        .where(eq(schema.session.id, principal.sessionId));
+      const action = {
+        requestId: crypto.randomUUID(),
+        environment: "production",
+        kind: "backup",
+        expectedRevision: resource!.revision,
+      };
+      const admitted = await admitProductionDatabaseAction(
+        database,
+        currentPrincipal,
+        project.id,
+        action,
+      );
+      expect(
+        (
+          await admitProductionDatabaseAction(
+            database,
+            currentPrincipal,
+            project.id,
+            action,
+          )
+        ).operationId,
+      ).toBe(admitted.operationId);
+      expect(await claimDatabaseAction(database)).toBeNull();
+      const backupClaim = await accessContext.run({ principal }, () =>
+        claimDatabaseAction(database, "postgres-cluster"),
+      );
+      if (!backupClaim) throw new Error("Missing Production backup claim");
+      expect(
+        await executeProductionResourceBackup({
+          database,
+          claim: backupClaim,
+          directory,
+          controlDatabaseUrl: url!,
+          signal,
+          lookup,
+        }),
+      ).toBe("success");
+      const [backup] = await database
+        .select()
+        .from(schema.appDatabaseBackups)
+        .where(eq(schema.appDatabaseBackups.operationId, backupClaim.id));
+      expect(backup?.verifiedAt).toBeInstanceOf(Date);
+      expect(backup?.schemaDigest).toBe(resource?.schemaDigest);
+      expect(backup?.sha256).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      const [resource] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, created.resourceId));
+      if (resource?.providerIdentity?.networkId)
+        networks.push(resource.providerIdentity.networkId);
+    }
+  },
+  60_000,
 );

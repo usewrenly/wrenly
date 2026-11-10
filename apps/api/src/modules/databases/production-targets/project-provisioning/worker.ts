@@ -1,4 +1,5 @@
 /** Executes separately journalled project SQL phases; importing it starts no background loop. */
+import type { DatabaseAddressLookup } from "../target-policy";
 import type { db } from "@wrenly/db";
 import { type ProductionProvisionPhase } from "@wrenly/db/production-project-credentials";
 import {
@@ -32,6 +33,7 @@ export async function runProjectProductionProvisionOnce(input: {
   directory: string;
   controlDatabaseUrl: string;
   signal: AbortSignal;
+  lookup?: DatabaseAddressLookup;
 }): Promise<ProjectProvisionReceipt | null> {
   input.signal.throwIfAborted();
   const claim = await claimProjectProductionProvision(input.database);
@@ -74,6 +76,7 @@ export async function runProjectProductionProvisionOnce(input: {
             certificateAuthority: saved.server.certificateAuthority,
             controlDatabaseUrl: input.controlDatabaseUrl,
             signal: input.signal,
+            lookup: input.lookup,
             run: async (database) => {
               lock.assertHeld();
               input.signal.throwIfAborted();
