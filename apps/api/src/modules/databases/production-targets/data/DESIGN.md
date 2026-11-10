@@ -49,3 +49,19 @@ STEPS:
 4. Return only bounded validated data after the existing final authority check.
 EDGE CASES: Members may read schema, but Production rows remain owner-only. Revoked/restored sessions and changed access revisions cannot reuse a read.
 ERROR STATES: Unknown query/socket effects retain the saved recovery blocker and suppress all output.
+
+COMPONENT: Effect-free Production interruption recovery
+PURPOSE: Release an owner-reviewed action that provably never reached an external effect.
+INPUTS: Exact interrupted operation/current resource revision and current project owner confirmation.
+OUTPUTS: Failed original action plus a separate successful recovery receipt; no job replay.
+STEPS: Reuse ordered recovery locks and resource kernel lock; accept only a complete verified Production binding for existing resources, no primary/cleanup intents or acknowledgements, then record failure and restore the prior ready/stopped state.
+EDGE CASES: SQL creation handoff/network creation and any partial action remain inspection-required; Production creation cannot use this shortcut.
+ERROR STATES: Missing/foreign binding or any effect evidence preserves the blocker. This does not resolve unknown migrations or connection changes.
+
+COMPONENT: Read-only Production availability recovery
+PURPOSE: Confirm the result of an interrupted project stop/start without repeating it.
+INPUTS: Current owner confirmation, exact interrupted effect ID, preserved project/server binding and resource revision.
+OUTPUTS: Separate recovery receipt after actual connection state matches the original request.
+STEPS: Hold the existing recovery resource lock; verify immutable cluster, restricted role flags, database ownership and connection grants through the maintenance connection; stopped requires no sessions, ready additionally requires unchanged original schema and role policy; compare only the exact saved availability effect before releasing the blocker.
+EDGE CASES: Another project's database, altered grants, a missing intent or any unrelated effect cannot be adopted.
+ERROR STATES: An unreachable or mismatched server preserves the blocker. Recovery performs no availability DDL, SQL replay, restore or password replacement.

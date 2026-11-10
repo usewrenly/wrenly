@@ -10,6 +10,7 @@ import {
   enableProductionProjectConnections,
   initializeProductionProjectSchema,
   setProductionProjectAvailability,
+  inspectProductionProjectAvailability,
 } from "../../../src/application-databases/production-cluster/provisioning";
 import {
   enforceProductionDatabaseRolePolicy,
@@ -308,6 +309,14 @@ check(
       first.credentials,
       false,
     );
+    expect(
+      await inspectProductionProjectAvailability(
+        database,
+        identity(),
+        first.id,
+        first.credentials,
+      ),
+    ).toBe("stopped");
     await expect(
       Promise.resolve(
         connect(first.credentials.database, first.credentials.reader).execute(
@@ -339,6 +348,14 @@ check(
       first.credentials,
       true,
     );
+    expect(
+      await inspectProductionProjectAvailability(
+        database,
+        identity(),
+        first.id,
+        first.credentials,
+      ),
+    ).toBe("ready");
     expect(
       (
         await connect(

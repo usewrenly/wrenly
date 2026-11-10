@@ -221,3 +221,41 @@ export async function setProductionProjectAvailability(
     }
   });
 }
+
+/** Reads exact project availability for reconciliation; never repeats an interrupted stop/start. */
+export async function inspectProductionProjectAvailability(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  input: unknown,
+): Promise<"ready" | "stopped"> {
+  const credentials = validateProductionProjectCredentials(resourceId, input);
+  await verifyProductionClusterAuthority(database, identity);
+  const rows =
+    await database.execute(sql`select d.datallowconn as available, r.rolname as owner,
+    exists(select 1 from pg_catalog.pg_stat_activity a where a.datname=d.datname) as active,
+    not exists(select 1 from pg_catalog.aclexplode(coalesce(d.datacl,pg_catalog.acldefault('d',d.datdba))) acl where acl.grantee=0) as private,
+    pg_catalog.has_database_privilege(${credentials.runtime.user},d.oid,'CONNECT') as runtime_connect,
+    pg_catalog.has_database_privilege(${credentials.reader.user},d.oid,'CONNECT') as reader_connect,
+    pg_catalog.has_database_privilege(${credentials.migrator.user},d.oid,'CONNECT') as migrator_connect
+    from pg_catalog.pg_database d join pg_catalog.pg_roles r on r.oid=d.datdba where d.datname=${credentials.database}`);
+  const row = rows[0];
+  const roles =
+    await database.execute(sql`select rolname from pg_catalog.pg_roles
+    where rolname in (${credentials.migrator.user},${credentials.runtime.user},${credentials.reader.user})
+    and rolcanlogin and not rolsuper and not rolcreatedb and not rolcreaterole
+    and not rolreplication and not rolbypassrls and not rolinherit and rolconnlimit=8`);
+  if (
+    rows.length !== 1 ||
+    roles.length !== 3 ||
+    row?.owner !== credentials.migrator.user ||
+    row?.private !== true ||
+    row?.runtime_connect !== true ||
+    row?.reader_connect !== true ||
+    row?.migrator_connect !== true ||
+    typeof row?.available !== "boolean" ||
+    (!row.available && row.active !== false)
+  )
+    throw new Error("Production availability could not be verified.");
+  return row.available ? "ready" : "stopped";
+}

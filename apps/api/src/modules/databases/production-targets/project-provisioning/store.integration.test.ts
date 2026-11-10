@@ -1,3 +1,7 @@
+import {
+  recoverInspectedDatabaseAction,
+  recoverUnstartedDatabaseAction,
+} from "../../database-recovery";
 import { runDatabaseViewQuery } from "../../viewing/view-runtime";
 import { DatabaseViewerResultSchema } from "@wrenly/db/app-database-viewer-contract";
 import { executeProductionResourceAvailability } from "../data/availability";
@@ -46,6 +50,7 @@ import {
   claimDatabaseAction,
   recordDatabaseEffect,
   renewDatabaseAction,
+  interruptDatabaseAction,
 } from "../../database-store";
 import { accessContext } from "../../../auth/access/access-context";
 import { PRODUCTION_PROVISION_PHASES } from "@wrenly/db/production-project-credentials";
@@ -1058,6 +1063,115 @@ nativeReadiness(
       );
       expect(view.rows).toEqual([]);
       expect(view.tables).not.toContain("__drizzle_migrations");
+      await admitProductionDatabaseAction(
+        database,
+        currentPrincipal,
+        project.id,
+        {
+          requestId: crypto.randomUUID(),
+          environment: "production",
+          kind: "backup",
+          expectedRevision: readyForRead!.revision,
+        },
+      );
+      const unstarted = await claimDatabaseAction(database, "postgres-cluster");
+      if (!unstarted) throw new Error("Missing effect-free fixture claim");
+      await interruptDatabaseAction(database, unstarted);
+      const [interruptedResource] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      const recoveryRequest = {
+        requestId: crypto.randomUUID(),
+        operationId: unstarted.id,
+        expectedRevision: interruptedResource!.revision,
+      };
+      const recovered = await accessContext.run(
+        { principal: currentPrincipal },
+        () =>
+          recoverUnstartedDatabaseAction(
+            database,
+            project.id,
+            currentPrincipal.userId,
+            recoveryRequest,
+          ),
+      );
+      expect(recovered.resourceId).toBe(resource!.id);
+      expect(
+        (
+          await accessContext.run({ principal: currentPrincipal }, () =>
+            recoverUnstartedDatabaseAction(
+              database,
+              project.id,
+              currentPrincipal.userId,
+              recoveryRequest,
+            ),
+          )
+        ).operationId,
+      ).toBe(recovered.operationId);
+      const [afterRecovery] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      expect(afterRecovery?.status).toBe("ready");
+      expect(afterRecovery?.schemaDigest).toBe(readyForRead?.schemaDigest);
+      await admitProductionDatabaseAction(
+        database,
+        currentPrincipal,
+        project.id,
+        {
+          requestId: crypto.randomUUID(),
+          environment: "production",
+          kind: "stop",
+          expectedRevision: afterRecovery!.revision,
+        },
+      );
+      const stopClaim = await claimDatabaseAction(database, "postgres-cluster");
+      if (!stopClaim) throw new Error("Missing stop acknowledgement fixture");
+      expect(
+        await withRenewedClaim(stopClaim, () =>
+          executeProductionResourceAvailability({
+            database,
+            claim: stopClaim,
+            directory,
+            controlDatabaseUrl: url!,
+            signal,
+            lookup,
+          }),
+        ),
+      ).toBe("success");
+      // Simulate a lost completion acknowledgement after the exact saved stop effect finished.
+      await database
+        .update(schema.appDatabaseOperations)
+        .set({ status: "interrupted", completedAt: null })
+        .where(eq(schema.appDatabaseOperations.id, stopClaim.id));
+      const recoveryRevision = crypto.randomUUID();
+      await database
+        .update(schema.appDatabases)
+        .set({ status: "recovery_required", revision: recoveryRevision })
+        .where(eq(schema.appDatabases.id, resource!.id));
+      const stoppedRecovery = await accessContext.run(
+        { principal: currentPrincipal },
+        () =>
+          recoverInspectedDatabaseAction(
+            database,
+            project.id,
+            currentPrincipal.userId,
+            {
+              requestId: crypto.randomUUID(),
+              operationId: stopClaim.id,
+              expectedRevision: recoveryRevision,
+            },
+            { directory, controlDatabaseUrl: url!, lookup },
+          ),
+      );
+      expect(stoppedRecovery.resourceId).toBe(resource!.id);
+      const [verifiedStopped] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      expect(verifiedStopped?.status).toBe("stopped");
+
       await expect(
         accessContext.run({ principal }, () =>
           runDatabaseViewQuery(
