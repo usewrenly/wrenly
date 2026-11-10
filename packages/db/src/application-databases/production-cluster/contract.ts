@@ -69,3 +69,14 @@ export function createProductionProjectCredentials(
     reader: role("reader"),
   });
 }
+
+/** Ordered durable provisioning phases; an unknown phase result must be inspected before advancing. */
+export const ProductionProvisionPhase = z.enum([
+  "roles",
+  "database",
+  "connections",
+  "schema",
+]);
+export type ProductionProvisionPhase = z.infer<typeof ProductionProvisionPhase>;
+export const PRODUCTION_PROVISION_PHASES: readonly ProductionProvisionPhase[] =
+  ["roles", "database", "connections", "schema"];

@@ -72,7 +72,7 @@ export async function claimProductionProvision(database: Connection): Promise<Pr
   return database.transaction(async tx => {
     await lockDatabaseQueues(tx);
     await tx.update(productionDatabaseProvisions).set({ status: "needs_review", errorCode: "creation_interrupted" }).where(and(eq(productionDatabaseProvisions.status, "creating"), lte(productionDatabaseProvisions.leaseExpiresAt, new Date())));
-    const [row] = await tx.select().from(productionDatabaseProvisions).where(eq(productionDatabaseProvisions.status, "queued")).orderBy(asc(productionDatabaseProvisions.createdAt)).limit(1).for("update", { skipLocked: true });
+    const [row] = await tx.select().from(productionDatabaseProvisions).where(and(eq(productionDatabaseProvisions.mode, "provider"), eq(productionDatabaseProvisions.status, "queued"))).orderBy(asc(productionDatabaseProvisions.createdAt)).limit(1).for("update", { skipLocked: true });
     if (!row) return null;
     const principal = { userId: row.actorId, sessionId: row.sessionId, revision: row.accountRevision };
     return accessContext.run({ principal }, async () => {
