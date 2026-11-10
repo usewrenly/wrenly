@@ -18,7 +18,9 @@
     "./schema": "./src/schema/index.ts",
     "./app-database-binding-contract": "./src/application-databases/binding-contract.ts",
     "./production-database-target-contract": "./src/application-databases/production-target-contract.ts",
-    "./production-database-inspection": "./src/application-databases/production-inspection.ts"
+    "./production-database-inspection": "./src/application-databases/production-inspection.ts",
+    "./production-project-credentials": "./src/application-databases/production-cluster/contract.ts",
+    "./production-project-provisioning": "./src/application-databases/production-cluster/provisioning.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
