@@ -1,0 +1,33 @@
+# Saving a Production database connection
+
+This folder remembers the connection a project owner has explicitly confirmed.
+For example, an owner enters a private PostgreSQL address and setup credentials.
+Wrenly saves an encrypted request before a worker checks that connection, so a
+lost browser response does not create another request.
+
+A successful connection check is **not** a ready application database. Creating
+roles, applying migrations and publishing an app require separate confirmed work.
+This module provides storage functions; it does not activate HTTP routes or
+start a worker.
+
+- `credentials.ts` validates bounded input and encrypts credentials. Encryption
+  binds the project, owner, access revision and destination together, so moving
+  encrypted data to another request makes decryption fail.
+- `setup-store.ts` checks current sessions and ownership, saves requests, hands
+  each request to one worker, and records safe connection-check results.
+- The unit and PostgreSQL integration tests check encryption, repeated requests,
+  expired worker claims, and revoked or unrelated accounts.
+
+A claim is temporary permission for one worker to process one saved request.
+Expired claims become `needs_review`; they do not restart automatically. Reading
+ a receipt only reads the saved result and never contacts the remote database.
+Browser receipts contain no passwords, certificates or encrypted credentials.
+
+Setup keys live in `production-setup-keys` under the instance data directory.
+Back up that directory with the control database. If encrypted requests exist
+and the key is missing, restore the original key; a replacement cannot recover
+those requests.
+
+Integration tests require an explicitly supplied loopback PostgreSQL URL whose
+database name is `wrenly_production_setup_test`. They create schema and clear
+setup records in that disposable database; never use an installation database.
