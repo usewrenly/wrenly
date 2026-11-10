@@ -219,3 +219,24 @@ and stays instance-side; project credentials cannot create databases or roles. F
 infrastructure adapters may support other placements without changing owner review,
 backup or recovery rules. Production activation remains gated on complete runtime,
 recovery, publishing and UI acceptance.
+
+## Deployment-host transport decision
+
+A database socket is a file on the machine running the generated app. Giving a remote
+Coolify server a local volume name does not move that socket to it. Database-backed
+publishing therefore needs verified access to the deployment machine as well as the
+private PostgreSQL server.
+
+The deployment adapter uses a repository-owned fixed helper on that machine. Same-host
+operations can use the existing local Docker transport. Remote operations use SSH—an
+encrypted connection to a specifically trusted machine—with an explicitly pinned host
+key and a dedicated instance-owner credential. Generated code cannot choose the host,
+command or mounts. Host setup is separate from project publishing permissions.
+
+Runtime-role configuration travels through the helper's standard input, never command
+arguments, Docker environment metadata, Compose files or repositories. The generated
+application keeps IP networking disabled; a trusted ingress bridge and database broker
+provide only its HTTP and role-scoped database sockets. Every application image remains
+pinned to its validated digest. Existing stateless image publishing retains its adapter.
+This path becomes available only after the complete host, lifecycle and deployed-data
+acceptance checks pass.
