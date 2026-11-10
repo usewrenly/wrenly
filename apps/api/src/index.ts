@@ -19,6 +19,8 @@ try {
   const { startProductionBuildWorker, verifyBuildWorkerSchema } = await import('./modules/builds/execution/production-build-worker')
   const { verifyConversationSchema, startProductionConversationWorker } = await import('./modules/conversations/execution/production-conversation-worker')
   const { verifySkillsSchema } = await import("./modules/skills/skill-store")
+  const { verifyProductionProvisionSchema } = await import('./modules/databases/production-targets/provisioning/store')
+  await verifyProductionProvisionSchema(db)
   await verifySkillsSchema(db)
   await verifyBuildWorkerSchema(db)
   await verifyConversationSchema(db)

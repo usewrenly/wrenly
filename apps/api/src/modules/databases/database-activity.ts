@@ -1,7 +1,7 @@
 // Shared access/admission checks preserve queued and uncertain database effects as blockers.
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { db } from "@wrenly/db";
-import { appDatabaseOperations, projects } from "@wrenly/db";
+import { appDatabaseOperations, productionDatabaseProvisions, projects } from "@wrenly/db";
 import { AppDatabaseError } from "./database-contract";
 const BLOCKING = ["queued", "running", "interrupted"] as const;
 /** Call under a project-work queue lock; interrupted operations retain the fence. */
@@ -20,7 +20,12 @@ export async function hasDatabaseWork(
         ),
       )
       .limit(1);
-    return Boolean(row);
+    if (row) return true;
+    const [provision] = await database.select({ id: productionDatabaseProvisions.id })
+      .from(productionDatabaseProvisions)
+      .where(and(eq(productionDatabaseProvisions.projectId, projectId),
+        inArray(productionDatabaseProvisions.status, ["queued", "creating", "created", "needs_review"]))).limit(1);
+    return Boolean(provision);
   } catch {
     throw new AppDatabaseError(
       503,
@@ -48,7 +53,12 @@ export async function hasMemberDatabaseWork(
         ),
       )
       .limit(1);
-    return Boolean(row);
+    if (row) return true;
+    const [provision] = await database.select({ id: productionDatabaseProvisions.id })
+      .from(productionDatabaseProvisions).innerJoin(projects, eq(projects.id, productionDatabaseProvisions.projectId))
+      .where(and(inArray(productionDatabaseProvisions.status, ["queued", "creating", "created", "needs_review"]),
+        or(eq(productionDatabaseProvisions.actorId, actorId), eq(projects.userId, actorId)))).limit(1);
+    return Boolean(provision);
   } catch {
     throw new AppDatabaseError(
       503,

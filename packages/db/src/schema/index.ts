@@ -22,3 +22,5 @@ export * from './resources/app-database-validations'
 export * from './resources/preview-databases'
 
 export * from "./resources/production-database-setups"
+
+export * from "./resources/production-database-provisions";
