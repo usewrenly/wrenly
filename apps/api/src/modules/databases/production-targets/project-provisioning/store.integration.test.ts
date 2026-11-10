@@ -20,6 +20,13 @@ import {
   finishProjectProductionPhase,
 } from "./store";
 import { claimProductionProvision } from "../provisioning/store";
+import {
+  admitProductionProvisionReview,
+  claimProductionProvisionReview,
+  loadProductionProvisionReview,
+  finishProductionProvisionReview,
+  resumeProductionProvision,
+} from "./recovery-store";
 import { PRODUCTION_PROVISION_PHASES } from "@wrenly/db/production-project-credentials";
 const url = process.env.WRENLY_TEST_PROJECT_PROVISION_URL;
 if (url) {
@@ -82,6 +89,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   if (url) {
+    await database.delete(schema.productionDatabaseProvisionReviews);
     await database.delete(schema.productionDatabaseProvisions);
     await database.delete(schema.productionDatabaseConnections);
   }
@@ -306,5 +314,325 @@ check(
     await expect(
       beginProjectProductionPhase(database, claim, "roles", directory),
     ).rejects.toThrow();
+  },
+);
+
+check(
+  "confirmed read-only recovery preserves history and resumes only remaining phases with the current session",
+  async () => {
+    const { project, input } = await fixture();
+    const original = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const oldClaim = await claimProjectProductionProvision(database);
+    if (!oldClaim) throw new Error("Missing claim");
+    await beginProjectProductionPhase(database, oldClaim, "roles", directory);
+    await finishProjectProductionPhase(database, oldClaim, "roles", false);
+    const request = {
+      requestId: crypto.randomUUID(),
+      expectedRevision: project.accessRevision,
+      confirmInspect: true,
+    };
+    const review = await admitProductionProvisionReview(
+      database,
+      principal,
+      project.id,
+      original.resourceId,
+      request,
+    );
+    expect(
+      (
+        await admitProductionProvisionReview(
+          database,
+          principal,
+          project.id,
+          original.resourceId,
+          request,
+        )
+      ).reviewId,
+    ).toBe(review.reviewId);
+    const inspection = await claimProductionProvisionReview(database);
+    if (!inspection) throw new Error("Missing inspection");
+    expect(
+      (await loadProductionProvisionReview(database, inspection, directory))
+        .phase,
+    ).toBe("roles");
+    await finishProductionProvisionReview(database, inspection, "confirmed");
+    const [before] = await database
+      .select()
+      .from(schema.productionDatabaseProvisions)
+      .where(eq(schema.productionDatabaseProvisions.id, original.resourceId));
+    expect(before?.status).toBe("needs_review");
+    const current = { ...principal, sessionId: crypto.randomUUID() };
+    await database.insert(schema.session).values({
+      id: current.sessionId,
+      userId: current.userId,
+      token: crypto.randomUUID(),
+      accessRevision: current.revision,
+      expiresAt: new Date(Date.now() + 600000),
+    });
+    const confirmation = {
+      requestId: crypto.randomUUID(),
+      expectedRevision: project.accessRevision,
+      confirmContinue: true,
+    };
+    const continued = await resumeProductionProvision(
+      database,
+      current,
+      project.id,
+      review.reviewId,
+      confirmation,
+    );
+    expect(continued.completedPhases).toEqual(["roles"]);
+    expect(
+      (
+        await resumeProductionProvision(
+          database,
+          current,
+          project.id,
+          review.reviewId,
+          confirmation,
+        )
+      ).replayed,
+    ).toBe(true);
+    await expect(
+      resumeProductionProvision(
+        database,
+        current,
+        project.id,
+        review.reviewId,
+        { ...confirmation, requestId: crypto.randomUUID() },
+      ),
+    ).rejects.toThrow();
+    const next = await claimProjectProductionProvision(database);
+    if (!next) throw new Error("Missing resumed claim");
+    expect(next.completedPhases).toEqual(["roles"]);
+    expect(next.principal.sessionId).toBe(current.sessionId);
+    await expect(
+      beginProjectProductionPhase(database, next, "roles", directory),
+    ).rejects.toThrow();
+    await beginProjectProductionPhase(database, next, "database", directory);
+    const [after] = await database
+      .select()
+      .from(schema.productionDatabaseProvisions)
+      .where(eq(schema.productionDatabaseProvisions.id, original.resourceId));
+    expect(after?.sessionId).toBe(principal.sessionId);
+    expect(after?.executionPrincipal?.sessionId).toBe(current.sessionId);
+    expect(after?.secrets).toEqual(before?.secrets);
+  },
+);
+check(
+  "absent-phase recovery permits explicit continuation without acknowledging SQL that did not run",
+  async () => {
+    const { project, input } = await fixture();
+    const original = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const claim = await claimProjectProductionProvision(database);
+    if (!claim) throw new Error("Missing claim");
+    await beginProjectProductionPhase(database, claim, "roles", directory);
+    await finishProjectProductionPhase(database, claim, "roles", false);
+    const review = await admitProductionProvisionReview(
+      database,
+      principal,
+      project.id,
+      original.resourceId,
+      {
+        requestId: crypto.randomUUID(),
+        expectedRevision: project.accessRevision,
+        confirmInspect: true,
+      },
+    );
+    const inspection = await claimProductionProvisionReview(database);
+    if (!inspection) throw new Error("Missing inspection");
+    await finishProductionProvisionReview(database, inspection, "absent");
+    const resumed = await resumeProductionProvision(
+      database,
+      principal,
+      project.id,
+      review.reviewId,
+      {
+        requestId: crypto.randomUUID(),
+        expectedRevision: project.accessRevision,
+        confirmContinue: true,
+      },
+    );
+    expect(resumed.completedPhases).toEqual([]);
+    expect(resumed.status).toBe("queued");
+    expect(await claimProductionProvisionReview(database)).toBeNull();
+  },
+);
+check(
+  "active claims and refused inspections cannot clear the creation blocker",
+  async () => {
+    const { project, input } = await fixture();
+    const original = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const claim = await claimProjectProductionProvision(database);
+    if (!claim) throw new Error("Missing claim");
+    const request = {
+      requestId: crypto.randomUUID(),
+      expectedRevision: project.accessRevision,
+      confirmInspect: true,
+    };
+    await expect(
+      admitProductionProvisionReview(
+        database,
+        principal,
+        project.id,
+        original.resourceId,
+        request,
+      ),
+    ).rejects.toThrow();
+    await beginProjectProductionPhase(database, claim, "roles", directory);
+    await finishProjectProductionPhase(database, claim, "roles", false);
+    const review = await admitProductionProvisionReview(
+      database,
+      principal,
+      project.id,
+      original.resourceId,
+      request,
+    );
+    const inspection = await claimProductionProvisionReview(database);
+    if (!inspection) throw new Error("Missing inspection");
+    await finishProductionProvisionReview(database, inspection, "review");
+    await expect(
+      resumeProductionProvision(
+        database,
+        principal,
+        project.id,
+        review.reviewId,
+        {
+          requestId: crypto.randomUUID(),
+          expectedRevision: project.accessRevision,
+          confirmContinue: true,
+        },
+      ),
+    ).rejects.toThrow();
+    const [saved] = await database
+      .select()
+      .from(schema.productionDatabaseProvisions)
+      .where(eq(schema.productionDatabaseProvisions.id, original.resourceId));
+    expect(saved?.status).toBe("needs_review");
+    expect(saved?.effectPhase).toBe("roles");
+  },
+);
+check(
+  "a phase with no saved intent cannot be adopted as confirmed SQL",
+  async () => {
+    const { project, input } = await fixture();
+    const original = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const claim = await claimProjectProductionProvision(database);
+    if (!claim) throw new Error("Missing claim");
+    await database
+      .update(schema.productionDatabaseProvisions)
+      .set({ leaseExpiresAt: new Date(0) })
+      .where(eq(schema.productionDatabaseProvisions.id, original.resourceId));
+    const review = await admitProductionProvisionReview(
+      database,
+      principal,
+      project.id,
+      original.resourceId,
+      {
+        requestId: crypto.randomUUID(),
+        expectedRevision: project.accessRevision,
+        confirmInspect: true,
+      },
+    );
+    const inspection = await claimProductionProvisionReview(database);
+    if (!inspection) throw new Error("Missing inspection");
+    const result = await finishProductionProvisionReview(
+      database,
+      inspection,
+      "confirmed",
+    );
+    expect(result.status).toBe("refused");
+    await expect(
+      resumeProductionProvision(
+        database,
+        principal,
+        project.id,
+        review.reviewId,
+        {
+          requestId: crypto.randomUUID(),
+          expectedRevision: project.accessRevision,
+          confirmContinue: true,
+        },
+      ),
+    ).rejects.toThrow();
+  },
+);
+
+check(
+  "an expired inspection report cannot authorize continuation",
+  async () => {
+    const { project, input } = await fixture();
+    const original = await admitProjectProductionProvision(
+      database,
+      principal,
+      project.id,
+      input,
+      directory,
+    );
+    const claim = await claimProjectProductionProvision(database);
+    if (!claim) throw new Error("Missing claim");
+    await beginProjectProductionPhase(database, claim, "roles", directory);
+    await finishProjectProductionPhase(database, claim, "roles", false);
+    const review = await admitProductionProvisionReview(
+      database,
+      principal,
+      project.id,
+      original.resourceId,
+      {
+        requestId: crypto.randomUUID(),
+        expectedRevision: project.accessRevision,
+        confirmInspect: true,
+      },
+    );
+    const inspection = await claimProductionProvisionReview(database);
+    if (!inspection) throw new Error("Missing inspection");
+    await finishProductionProvisionReview(database, inspection, "confirmed");
+    await database
+      .update(schema.productionDatabaseProvisionReviews)
+      .set({ completedAt: new Date(0) })
+      .where(eq(schema.productionDatabaseProvisionReviews.id, review.reviewId));
+    await expect(
+      resumeProductionProvision(
+        database,
+        principal,
+        project.id,
+        review.reviewId,
+        {
+          requestId: crypto.randomUUID(),
+          expectedRevision: project.accessRevision,
+          confirmContinue: true,
+        },
+      ),
+    ).rejects.toThrow();
+    const [saved] = await database
+      .select()
+      .from(schema.productionDatabaseProvisions)
+      .where(eq(schema.productionDatabaseProvisions.id, original.resourceId));
+    expect(saved?.status).toBe("needs_review");
+    expect(saved?.effectPhase).toBe("roles");
   },
 );

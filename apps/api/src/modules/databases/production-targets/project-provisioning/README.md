@@ -22,11 +22,30 @@ Completed steps are preserved. No code here deletes a database or resets applica
 
 The final `created` status means these SQL setup phases completed. It does not mean a
 runtime broker was verified or an app can use the database yet. Promotion into a ready
-project resource, explicit uncertain-phase recovery, data workflows and publishing
-acceptance remain separate. This worker is not started automatically and browser routes
+project resource, data workflows and publishing acceptance remain separate. This worker is not started automatically and browser routes
 are not enabled until those paths are connected.
 
 Tests separate concerns: native PostgreSQL store tests cover authority, exact replay,
 encrypted identities and phase records; executor tests prove ordering and no-repeat
 behavior after lost responses. Native SQL and TLS socket acceptance live in the database
 and sandbox packages. These are not a substitute for complete deployed-app acceptance.
+
+## Continue after an interrupted setup
+
+An inspection is a separate saved owner request. `recovery-store.ts` records exactly
+which phase and previous acknowledgements are being inspected. `recovery-worker.ts`
+uses the same resource lock as creation, then reads the original server over verified
+TLS. It checks role passwords against PostgreSQL's stored password proofs, role limits,
+project ownership and grants. It never returns those proofs or runs provisioning SQL.
+Matching names alone are insufficient.
+
+The result can confirm the phase, prove it absent, or require further review. The
+original creation stays blocked until the owner separately confirms continuation.
+Continuation consumes a recent inspection once, preserves the original actor and
+secrets, and saves the current session for the remaining execution. A confirmed phase
+is skipped; an absent phase can run with its original credentials. An expired report,
+changed project access, uncertain inspection or changed evidence cannot authorize it.
+
+Native tests cover every SQL phase, password/grant drift, current-session continuation,
+expired reports, and lost intent or acknowledgements. These workers remain inactive
+until the complete Production resource lifecycle is connected and accepted.

@@ -20,7 +20,8 @@
     "./production-database-target-contract": "./src/application-databases/production-target-contract.ts",
     "./production-database-inspection": "./src/application-databases/production-inspection.ts",
     "./production-project-credentials": "./src/application-databases/production-cluster/contract.ts",
-    "./production-project-provisioning": "./src/application-databases/production-cluster/provisioning.ts"
+    "./production-project-provisioning": "./src/application-databases/production-cluster/provisioning.ts",
+    "./production-project-recovery": "./src/application-databases/production-cluster/recovery.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

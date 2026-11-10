@@ -10,6 +10,7 @@ import {
 } from "./executor";
 import type { ProjectProvisionClaim } from "./store";
 const claim: ProjectProvisionClaim = {
+  completedPhases: [],
   id: crypto.randomUUID(),
   projectId: crypto.randomUUID(),
   token: crypto.randomUUID(),
@@ -99,4 +100,21 @@ test("lost intent or acknowledgement never becomes a second SQL call", async () 
     );
     expect(calls).not.toContain("intent:database");
   }
+});
+
+test("resumed execution skips every previously acknowledged phase", async () => {
+  const { calls, dependencies } = fixture();
+  await executeProjectProductionProvision(
+    { ...claim, completedPhases: ["roles", "database"] },
+    dependencies,
+    new AbortController().signal,
+  );
+  expect(calls).toEqual([
+    "intent:connections",
+    "sql:connections",
+    "ack:connections:true",
+    "intent:schema",
+    "sql:schema",
+    "ack:schema:true",
+  ]);
 });

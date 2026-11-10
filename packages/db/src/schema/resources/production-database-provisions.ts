@@ -17,6 +17,11 @@ export const productionDatabaseProvisions = pgTable(
   "production_database_provisions",
   {
     id: uuid("id").primaryKey(),
+    executionPrincipal: jsonb("execution_principal").$type<{
+      userId: string;
+      sessionId: string;
+      revision: string;
+    }>(),
     mode: text("mode")
       .$type<"provider" | "cluster">()
       .notNull()

@@ -24,7 +24,16 @@ export async function executeProjectProductionProvision<PhaseInput>(
   signal: AbortSignal,
 ): Promise<ProjectProvisionReceipt> {
   let receipt: ProjectProvisionReceipt | undefined;
-  for (const phase of PRODUCTION_PROVISION_PHASES) {
+  if (
+    claim.completedPhases.some(
+      (phase, index) => phase !== PRODUCTION_PROVISION_PHASES[index],
+    ) ||
+    claim.completedPhases.length > PRODUCTION_PROVISION_PHASES.length
+  )
+    throw new Error("Invalid saved provisioning progress");
+  for (const phase of PRODUCTION_PROVISION_PHASES.slice(
+    claim.completedPhases.length,
+  )) {
     signal.throwIfAborted();
     dependencies.assertHeld();
     const saved = await dependencies.begin(claim, phase);

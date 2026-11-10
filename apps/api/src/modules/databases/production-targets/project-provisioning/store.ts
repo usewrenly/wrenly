@@ -58,6 +58,7 @@ export interface ProjectProvisionClaim {
   projectId: string;
   token: string;
   principal: AccessPrincipal;
+  completedPhases: ProductionProvisionPhase[];
 }
 function receipt(row: Row, replayed: boolean): ProjectProvisionReceipt {
   return {
@@ -67,7 +68,8 @@ function receipt(row: Row, replayed: boolean): ProjectProvisionReceipt {
     replayed,
   };
 }
-async function owner(
+/** Rechecks the live owner session and exact project access revision under ordered queue locks. */
+export async function requireProductionProjectOwner(
   tx: Transaction,
   projectId: string,
   actor: AccessPrincipal,
@@ -88,7 +90,8 @@ async function owner(
       "Project access changed. Review Production creation again.",
     );
 }
-function purpose(
+/** Authenticated data keeps project credentials bound to their original resource and server revision. */
+export function productionProjectSecretPurpose(
   row: Pick<
     Row,
     "id" | "projectId" | "connectionId" | "actorId" | "accessRevision"
@@ -107,7 +110,8 @@ function purpose(
     )
     .digest("hex")}`;
 }
-async function projectKey(
+/** Existing encrypted requests require their original instance-local key; it is never replaced. */
+export async function loadProductionProjectKey(
   database: Connection,
   directory: string,
 ): Promise<Buffer> {
@@ -134,15 +138,25 @@ export async function admitProjectProductionProvision(
   return accessContext.run({ principal: actor }, async () => {
     await database.transaction(async (tx) => {
       await lockDatabaseQueues(tx);
-      await owner(tx, projectId, actor, input.expectedRevision);
+      await requireProductionProjectOwner(
+        tx,
+        projectId,
+        actor,
+        input.expectedRevision,
+      );
     });
-    const key = await projectKey(database, directory);
+    const key = await loadProductionProjectKey(database, directory);
     const identity = createHash("sha256")
       .update(JSON.stringify([projectId, actor.userId, input]))
       .digest("hex");
     return database.transaction(async (tx) => {
       await lockDatabaseQueues(tx);
-      await owner(tx, projectId, actor, input.expectedRevision);
+      await requireProductionProjectOwner(
+        tx,
+        projectId,
+        actor,
+        input.expectedRevision,
+      );
       const [replay] = await tx
         .select()
         .from(productionDatabaseProvisions)
@@ -242,7 +256,7 @@ export async function admitProjectProductionProvision(
           secrets: encryptDatabaseSecret(
             JSON.stringify(credentials),
             key,
-            purpose(binding),
+            productionProjectSecretPurpose(binding),
           ),
         })
         .returning();
@@ -284,14 +298,19 @@ export async function claimProjectProductionProvision(
       .limit(1)
       .for("update", { skipLocked: true });
     if (!saved) return null;
-    const actor = {
+    const actor = saved.executionPrincipal ?? {
       userId: saved.actorId,
       sessionId: saved.sessionId,
       revision: saved.accountRevision,
     };
     return accessContext.run({ principal: actor }, async () => {
       try {
-        await owner(tx, saved.projectId, actor, saved.accessRevision);
+        await requireProductionProjectOwner(
+          tx,
+          saved.projectId,
+          actor,
+          saved.accessRevision,
+        );
       } catch {
         await tx
           .update(productionDatabaseProvisions)
@@ -313,6 +332,7 @@ export async function claimProjectProductionProvision(
         projectId: saved.projectId,
         token,
         principal: actor,
+        completedPhases: saved.completedPhases,
       };
     });
   });
@@ -326,19 +346,34 @@ async function claimed(
     .from(productionDatabaseProvisions)
     .where(eq(productionDatabaseProvisions.id, claim.id));
   if (!snapshot) throw new AppDatabaseError(409, "Creation claim unavailable.");
-  await owner(tx, snapshot.projectId, claim.principal, snapshot.accessRevision);
+  await requireProductionProjectOwner(
+    tx,
+    snapshot.projectId,
+    claim.principal,
+    snapshot.accessRevision,
+  );
   const [saved] = await tx
     .select()
     .from(productionDatabaseProvisions)
     .where(eq(productionDatabaseProvisions.id, claim.id))
     .for("update");
+  const execution =
+    saved?.executionPrincipal ??
+    (saved
+      ? {
+          userId: saved.actorId,
+          sessionId: saved.sessionId,
+          revision: saved.accountRevision,
+        }
+      : null);
   if (
     !saved ||
     saved.mode !== "cluster" ||
     saved.projectId !== claim.projectId ||
     saved.actorId !== claim.principal.userId ||
-    saved.sessionId !== claim.principal.sessionId ||
-    saved.accountRevision !== claim.principal.revision ||
+    execution?.userId !== claim.principal.userId ||
+    execution?.sessionId !== claim.principal.sessionId ||
+    execution?.revision !== claim.principal.revision ||
     saved.status !== "creating" ||
     saved.claimToken !== claim.token ||
     !saved.leaseExpiresAt ||
@@ -372,7 +407,7 @@ export async function beginProjectProductionPhase(
   };
 }> {
   ProductionProvisionPhase.parse(phase);
-  const key = await projectKey(database, directory);
+  const key = await loadProductionProjectKey(database, directory);
   const instanceKey = await loadDatabaseKey(
     join(directory, "production-instance-keys"),
     true,
@@ -405,7 +440,13 @@ export async function beginProjectProductionPhase(
         );
       const credentials = validateProductionProjectCredentials(
         saved.id,
-        JSON.parse(decryptDatabaseSecret(saved.secrets, key, purpose(saved))),
+        JSON.parse(
+          decryptDatabaseSecret(
+            saved.secrets,
+            key,
+            productionProjectSecretPurpose(saved),
+          ),
+        ),
       );
       const management = openProductionConnection(
         server.secret,
