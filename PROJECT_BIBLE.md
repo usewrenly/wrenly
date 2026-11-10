@@ -180,3 +180,19 @@ databases have distinct backup requirements.
 CONTRIBUTING.md explains local checks and PR scope. SECURITY.md explains private reporting.
 Keep user documentation practical: what to do, what it means, what should happen and how
 to recover safely. Keep release notes honest about verified capabilities and limitations.
+
+## Infrastructure adapters and framework tools
+
+A framework MCP server helps generate or edit source. An infrastructure adapter
+talks to a Git host, deployer or database service. Those responsibilities stay
+separate. For example, a future deployer can replace Coolify's API calls while
+Wrenly keeps the same owner checks, saved requests and recovery rules.
+
+The internal database-provider contract lives in `packages/deploy/src/databases`.
+A saved provider ID selects an explicitly configured, compiled-in adapter. The
+adapter interprets its own placement fields and returns an opaque remote identity.
+Missing adapters fail closed; existing resources never silently move to another
+provider. Common orchestration owns credentials, work claims, locks and explicit
+recovery. A provider reporting TLS enabled does not replace a real verified TLS
+connection check. This extension boundary does not mean other deployers are
+implemented, nor does it expose infrastructure operations as model MCP tools.

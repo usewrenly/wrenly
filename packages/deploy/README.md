@@ -16,6 +16,7 @@ Gitea and Coolify API calls. The sandbox package builds the app inside Docker.
 
 ```text
 src/
+  databases/                Common internal database-provider contract
   providers/gitea/           Creates and checks private source repositories
   providers/coolify/         Configures apps and checks deployment status
     databases/              Private PostgreSQL provider contract (not activated)
@@ -94,3 +95,23 @@ required before Production setup can be enabled. Local HTTP fixtures test an unc
 create followed by read-only recovery; they do not establish live provider acceptance.
 
 Provider reference: [Coolify PostgreSQL creation API](https://coolify.io/docs/api/endpoints/databases/create-database-postgresql).
+
+## Adding another database infrastructure provider
+
+An adapter translates a common request into one service's API calls. Implement
+`DatabaseProvider` from `src/databases/provider.ts`, then explicitly configure it
+on the server. Its placement fields belong to that adapter; the common worker
+does not need to understand a vendor's project, region or destination identifiers.
+Coolify's translation is in `providers/coolify/databases/provider.ts`.
+
+The saved request includes `providerId`. Resolution requires exactly that configured
+adapter; there is no default-provider fallback, automatic package discovery or
+resource migration. Credentials remain server-only, and the API still owns intent
+recording, project/account authorization, kernel locks and uncertain-effect recovery.
+Adding an adapter must include real service contract acceptance before activation.
+The controlled second adapter in the worker tests proves the interface can be
+substituted; it is not advertised support for another deployment service.
+
+This is an internal TypeScript interface. Framework tools continue using MCP.
+A separate public integration API or MCP tool for provisioning would need its own
+authorization design; implementing this interface grants neither automatically.

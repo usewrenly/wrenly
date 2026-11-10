@@ -5,7 +5,7 @@ again could leave two databases. This folder saves the request before contacting
 Coolify and keeps an uncertain result for inspection instead of repeating it.
 
 - `store.ts` checks the current project owner and session, saves the exact reviewed
-  provider placement, encrypts generated credentials, and gives one worker a claim.
+  provider ID and placement, encrypts generated credentials, and gives one worker a claim.
 - `worker.ts` holds the existing resource kernel lock, saves the external-effect
   intent, makes one provider call and saves its UUID or uncertain outcome.
 - The PostgreSQL integration suite exercises those real transactions, the shared
@@ -29,3 +29,9 @@ No browser route or startup worker is enabled by this module. Startup checks tha
 the journal migration exists because shared project/member admission reads it.
 Apply all checked-in Drizzle migrations before running this branch. This module
 never runs those migrations against an installation automatically.
+
+The worker receives a configured provider registry. It resolves the exact saved
+provider ID, then gives that adapter the frozen placement. It imports no Coolify
+API function and makes no fallback choice. Placement keys are sorted before hashing
+and encryption binding so PostgreSQL JSON storage cannot change their identity by
+reordering object fields. A missing or duplicate adapter prevents any provider call.

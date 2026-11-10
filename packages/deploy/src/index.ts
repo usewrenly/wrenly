@@ -9,3 +9,7 @@ export {
   DeploymentProviderError,
 } from "./http/provider-client";
 export type { DeploymentProviderClient } from "./http/provider-client";
+
+export { resolveDatabaseProvider } from "./databases/provider";
+export type { DatabaseProvider, DatabaseProviderIntent, DatabaseProviderResource, DatabaseSetupCredential } from "./databases/provider";
+export { createCoolifyDatabaseProvider } from "./providers/coolify/databases/provider";

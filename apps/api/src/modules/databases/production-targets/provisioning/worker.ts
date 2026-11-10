@@ -1,19 +1,19 @@
-/** One persisted Coolify creation; importing this file does not start a polling loop. */
+/** One persisted provider creation; importing this file does not start a polling loop. */
 import type { db } from "@wrenly/db";
-import type { DeploymentProviderClient } from "@wrenly/deploy";
-import { createPrivateProductionDatabase } from "../../../../../../../packages/deploy/src/providers/coolify/databases/creation";
+import { resolveDatabaseProvider, type DatabaseProvider } from "@wrenly/deploy";
 import { acquireDatabaseExecutorLock } from "../../database-executor-lock";
 import { claimProductionProvision, beginProductionProviderEffect, finishProductionProviderEffect, type ProvisionReceipt } from "./store";
 /** Holds the resource kernel lock across saved intent, provider request and saved acknowledgement. */
 export async function runProductionProvisionOnce(input: {
   database: typeof db;
   directory: string;
-  client: DeploymentProviderClient;
+  providers: readonly DatabaseProvider[];
   signal: AbortSignal;
 }): Promise<ProvisionReceipt | null> {
   input.signal.throwIfAborted();
   const claim = await claimProductionProvision(input.database);
   if (!claim) return null;
+  const provider = resolveDatabaseProvider(input.providers, claim.providerId);
   const lock = await acquireDatabaseExecutorLock({ id: claim.id, resourceId: claim.id, projectId: claim.projectId, token: claim.token });
   try {
     lock.assertHeld();
@@ -23,7 +23,8 @@ export async function runProductionProvisionOnce(input: {
     let remoteUuid: string | null = null;
     try {
       input.signal.throwIfAborted();
-      remoteUuid = await createPrivateProductionDatabase(input.client, { resourceId: saved.resourceId, operationId: saved.operationId, ...saved.placement }, saved.credential, input.signal);
+      if (saved.placement.providerId !== provider.id) throw new Error("Saved provider changed.");
+      remoteUuid = await provider.createStopped({ resourceId: saved.resourceId, operationId: saved.operationId, placement: saved.placement }, saved.credential, input.signal);
     } catch {
       // The provider may have saved its record even when the response was lost.
       // Preserve uncertainty and never issue another POST from this claim.

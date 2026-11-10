@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 import * as schema from "@wrenly/db/schema";
 import { admitProductionProvision, claimProductionProvision, beginProductionProviderEffect, finishProductionProviderEffect } from "./store";
 import { runProductionProvisionOnce } from "./worker";
+import { createCoolifyDatabaseProvider } from "@wrenly/deploy";
 import { hasDatabaseWork, hasMemberDatabaseWork } from "../../database-activity";
 const url = process.env.WRENLY_TEST_PRODUCTION_PROVISION_DATABASE_URL;
 if (url) { const parsed = new URL(url); if (parsed.hostname !== "127.0.0.1" || parsed.pathname !== "/wrenly_production_setup_test") throw new Error("Use the dedicated disposable provision test database."); }
@@ -17,7 +18,7 @@ const client = postgres(url ?? "postgresql://unused:unused@127.0.0.1:1/unused", 
 const database = drizzle(client, { schema });
 const check = url ? test : test.skip;
 const principal = { userId: crypto.randomUUID(), sessionId: crypto.randomUUID(), revision: crypto.randomUUID() };
-const placement = { projectUuid: "project", serverUuid: "server", environmentUuid: "environment", destinationUuid: "destination" };
+const placement = { providerId: "coolify", projectUuid: "project", serverUuid: "server", environmentUuid: "environment", destinationUuid: "destination" };
 let directory = "";
 beforeAll(async () => {
   if (!url) return;
@@ -76,15 +77,15 @@ check("real worker sends a single create after saved intent and preserves uncert
   const { project, input } = await fixture();
   const receipt = await admitProductionProvision(database, principal, project.id, input, placement, directory);
   let calls = 0;
-  const result = await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, client: { request: async (method) => {
+  const result = await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, providers: [createCoolifyDatabaseProvider({ request: async (method) => {
     calls++;
     expect(method).toBe("POST");
     const [row] = await database.select().from(schema.productionDatabaseProvisions).where(eq(schema.productionDatabaseProvisions.id, receipt.resourceId));
     expect(row?.effectStartedAt).toBeInstanceOf(Date);
     throw new Error("private provider failure after possible creation");
-  } } });
+  } })] });
   expect(result?.status).toBe("needs_review");
-  expect(await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, client: { request: async () => { calls++; return {}; } } })).toBeNull();
+  expect(await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, providers: [createCoolifyDatabaseProvider({ request: async () => { calls++; return {}; } })] })).toBeNull();
   expect(calls).toBe(1);
 });
 check("revoked session cannot retrieve management credentials or acknowledge provider creation", async () => {
@@ -101,7 +102,7 @@ check("revoked session cannot retrieve management credentials or acknowledge pro
 check("successful worker stores the provider UUID without creating a ready application resource", async () => {
   const { project, input } = await fixture();
   const receipt = await admitProductionProvision(database, principal, project.id, input, placement, directory);
-  const result = await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, client: { request: async () => ({ uuid: "provider-created" }) } });
+  const result = await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, providers: [createCoolifyDatabaseProvider({ request: async () => ({ uuid: "provider-created" }) })] });
   expect(result?.status).toBe("created");
   const [row] = await database.select().from(schema.productionDatabaseProvisions).where(eq(schema.productionDatabaseProvisions.id, receipt.resourceId));
   expect(row?.remoteUuid).toBe("provider-created");
@@ -117,4 +118,27 @@ check("another active account and stale project revision cannot admit provider c
   await expect(admitProductionProvision(database, other, project.id, input, placement, directory)).rejects.toThrow();
   await expect(admitProductionProvision(database, principal, project.id, { ...input, expectedRevision: crypto.randomUUID() }, placement, directory)).rejects.toThrow();
   expect(await database.select().from(schema.productionDatabaseProvisions).where(eq(schema.productionDatabaseProvisions.projectId, project.id))).toHaveLength(0);
+});
+check("orchestration accepts a different compiled adapter without Coolify placement fields", async () => {
+  const { project, input } = await fixture();
+  const selection = { providerId: "fixture-postgres", region: "fixture-region" };
+  await admitProductionProvision(database, principal, project.id, input, selection, directory);
+  let calls = 0;
+  const result = await runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, providers: [{
+    id: "fixture-postgres",
+    createStopped: async (saved, credential) => {
+      calls++; expect(saved.placement).toEqual(selection);
+      expect(credential.user).toContain("wrenly_"); return "fixture-remote";
+    },
+    inspect: async () => { throw new Error("not used by creation"); },
+    find: async () => { throw new Error("not used by creation"); },
+  }] });
+  expect(result?.status).toBe("created"); expect(calls).toBe(1);
+});
+check("an unavailable saved provider never falls back to a configured Coolify adapter", async () => {
+  const { project, input } = await fixture();
+  await admitProductionProvision(database, principal, project.id, input, { providerId: "fixture-postgres", region: "fixture-region" }, directory);
+  let calls = 0;
+  await expect(runProductionProvisionOnce({ database, directory, signal: new AbortController().signal, providers: [createCoolifyDatabaseProvider({ request: async () => { calls++; return {}; } })] })).rejects.toThrow("unavailable");
+  expect(calls).toBe(0);
 });

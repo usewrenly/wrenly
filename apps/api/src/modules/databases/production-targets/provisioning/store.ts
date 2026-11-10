@@ -9,7 +9,9 @@ import { requireProjectCapability } from "../../../projects/access/project-acces
 import { lockDatabaseQueues, requireDatabaseProjectIdle, hasDatabaseWork } from "../../database-store";
 import { AppDatabaseError } from "../../database-contract";
 import { loadDatabaseKey, encryptDatabaseSecret, decryptDatabaseSecret } from "../../database-secrets";
-const Placement = z.object({ projectUuid: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/), serverUuid: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/), environmentUuid: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/), destinationUuid: z.string().regex(/^[a-zA-Z0-9_-]{1,100}$/) }).strict();
+const Placement = z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().min(1).max(256))
+  .refine(value => Object.keys(value).length <= 16 && /^[a-z][a-z0-9-]{0,31}$/.test(value.providerId ?? ""))
+  .transform(value => Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)));
 const Confirmation = z.object({ requestId: z.uuid(), expectedRevision: z.uuid(), confirmPrivateCreation: z.literal(true) }).strict();
 const Credential = z.object({ user: z.string().regex(/^wrenly_[a-f0-9]{32}_admin$/), password: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 const LEASE_MS = 45_000;
@@ -19,7 +21,7 @@ type Connection = typeof db;
 type Transaction = Parameters<Parameters<Connection["transaction"]>[0]>[0];
 type Row = typeof productionDatabaseProvisions.$inferSelect;
 export interface ProvisionReceipt { resourceId: string; status: Row["status"]; replayed: boolean }
-export interface ProvisionClaim { id: string; projectId: string; token: string; principal: AccessPrincipal }
+export interface ProvisionClaim { id: string; projectId: string; providerId: string; token: string; principal: AccessPrincipal }
 const receipt = (row: Row, replayed: boolean): ProvisionReceipt => ({ resourceId: row.id, status: row.status, replayed });
 async function owner(tx: Transaction, projectId: string, principal: AccessPrincipal, revision: string): Promise<void> {
   await requireProjectCapability(tx, projectId, principal.userId, "manage");
@@ -78,7 +80,7 @@ export async function claimProductionProvision(database: Connection): Promise<Pr
       catch { await tx.update(productionDatabaseProvisions).set({ status: "failed", errorCode: "access_changed" }).where(eq(productionDatabaseProvisions.id, row.id)); return null; }
       const token = crypto.randomUUID();
       await tx.update(productionDatabaseProvisions).set({ status: "creating", claimToken: token, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }).where(eq(productionDatabaseProvisions.id, row.id));
-      return { id: row.id, projectId: row.projectId, token, principal };
+      return { id: row.id, projectId: row.projectId, providerId: Placement.parse(row.placement).providerId!, token, principal };
     });
   });
 }
