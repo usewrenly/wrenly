@@ -56,3 +56,27 @@ EDGE CASES:
 - Driver reconnects must repeat destination checks; no mutation or credential fallback is allowed.
 ERROR STATES:
 - Fixed safe errors; raw driver errors and connection credentials never enter results/logs.
+
+COMPONENT: Production control worker lifecycle
+PURPOSE: Progress saved setup and project creation while the API is running, independent of browser polling.
+INPUTS: Explicit verified host prerequisites and bounded single-request verification/provisioning adapters.
+OUTPUTS: Serial saved-request processing and an awaited stop handle.
+STEPS:
+1. Poll only saved queued setup/host/project requests and completed SQL handoffs.
+2. Give each pass a cancellation/deadline signal; adapters own claim and effect fencing.
+3. Isolate stage failures so one unavailable setup does not suppress other queues.
+4. Stop prevents another stage, cancels the active call and awaits cleanup before returning.
+EDGE CASES: A rejected adapter is not retried by this worker; the next pass may claim only what its store still permits. Unknown mutations remain review-required.
+ERROR STATES: Log stage names only, never input, credentials or provider responses. Keep startup activation separate until joined lifecycle gates pass.
+
+COMPONENT: Explicit Production service composition
+PURPOSE: Own the setup/control and project-resource workers together and expose authenticated setup handlers only after prerequisites pass.
+INPUTS: Control database, instance data directory, control URL, trusted web origin, current-session resolver and selected deployment-server verifier.
+OUTPUTS: Owner-only connection/host handlers and one awaited shutdown handle.
+STEPS:
+1. Verify resource/setup/host/provision/publishing schema and trusted worker bundle before starting any worker.
+2. Construct strict owner-only HTTP handlers using existing transactional stores.
+3. Start the serial control worker and provider-specific resource worker explicitly.
+4. If any startup fails, abort/await all started workers; shutdown awaits both owners and reports cleanup failures.
+EDGE CASES: Importing the module starts nothing. The application must not mount these handlers until complete lifecycle activation is accepted.
+ERROR STATES: Missing migrations or helper bundles fail before claims. Partial shutdown never reports success while a worker remains unconfirmed.

@@ -62,3 +62,10 @@ The opt-in authenticated fixture uses `WRENLY_TEST_PRODUCTION_DATABASE_ADDRESS` 
 `WRENLY_TEST_PRODUCTION_DATABASE_CA`, pointing only at the disposable PostgreSQL 17
 TLS fixture with database `app` and the fixture-only setup password. These are test
 inputs, not configuration variables for a Wrenly installation.
+
+`module.ts` now composes the owner-only connection/host handlers, serial control
+worker and project resource worker. It verifies migrations and the trusted helper
+before claims can start, and awaits both workers during shutdown or partial startup
+failure. `control-worker.ts` progresses only saved requests; it does not invent a
+new request or retry an uncertain external effect. This explicit factory remains
+unmounted until project transport, recovery, runtime and UI activation are accepted.
