@@ -11,16 +11,19 @@ and invokes one fixed helper. It never accepts a shell command from the browser
 or model. Requests travel on standard input, so future runtime credentials do not
 appear in process arguments or Docker configuration.
 
-`helper.ts` currently implements **inspection only**. It reads one bounded request,
-queries the explicit local Docker socket and returns the daemon identity with the
-request's unique identifier. Unknown actions fail before Docker is contacted.
+`helper.ts` reads bounded, versioned requests through the explicit local Docker
+socket. Inspection returns the daemon identity. Socket-volume actions derive names
+from the saved deployment ID and verify project/resource ownership labels. They
+require a matching daemon identity and an exclusive deployment lock. An existing
+volume requires explicit inspection rather than an automatic creation retry.
+Unknown actions fail before Docker is contacted.
 Importing either file starts no connection or process.
 
-Build the standalone inspection helper from `apps/api`:
+Build the standalone helper from `apps/api`:
 
 ```bash
 bun build src/modules/databases/production-targets/deployment-hosts/helper.ts \
-  --target=bun --env=disable --outfile=dist/runtime-host-inspection.js
+  --target=bun --env=disable --outfile=dist/runtime-host.js
 ```
 
 This is a verification component, not an enabled production installation path.
@@ -30,8 +33,8 @@ values, exact retries return the saved receipt, and expired checks need explicit
 review. `worker.ts` requires the deployment adapter to independently match the
 inspected Docker daemon to the selected Coolify server before marking a host verified.
 The worker is not registered at startup. Runtime bootstrap and database-backed
-publishing still need their saved operation checks before this helper gains mutation actions. Installing
-an inspection bundle alone does not enable Production databases.
+publishing still need their saved operation checks before invoking the helper’s volume actions. Installing
+a helper bundle alone does not enable Production databases.
 
 The unit tests exercise request bounds and private-address checks. The optional
 SSH tests start their own temporary SSH server and keys; they do not alter an

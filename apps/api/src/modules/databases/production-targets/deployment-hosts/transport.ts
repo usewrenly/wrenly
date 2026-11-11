@@ -241,3 +241,43 @@ export async function inspectRemoteRuntimeHost(input: {
     throw new Error("Deployment host inspection could not be verified.");
   }
 }
+
+/** Sends an already-journaled socket-volume action and binds its reply to the exact deployment and daemon. */
+export async function executeRemoteRuntimeVolumeRequest(input: {
+  target: ProductionRuntimeHostTarget;
+  addresses: string[];
+  privateKey: string;
+  request: import("@wrenly/db/production-host-contract").ProductionRuntimeVolumeRequest;
+  signal: AbortSignal;
+  lookup?: RuntimeHostLookup;
+}): Promise<
+  import("zod").infer<
+    typeof import("@wrenly/db/production-host-contract").ProductionRuntimeVolumeReply
+  >
+> {
+  try {
+    const { ProductionRuntimeVolumeRequest, ProductionRuntimeVolumeReply } =
+      await import("@wrenly/db/production-host-contract");
+    const request = ProductionRuntimeVolumeRequest.parse(input.request);
+    const reply = ProductionRuntimeVolumeReply.parse(
+      await executeRuntimeHostRequest({ ...input, request }),
+    );
+    if (
+      reply.nonce !== request.nonce ||
+      reply.dockerId !== request.expectedDockerId ||
+      (reply.http &&
+        reply.http.name !== `wrenly-deployment-http-${request.deploymentId}`) ||
+      (reply.database &&
+        reply.database.name !==
+          `wrenly-deployment-db-${request.deploymentId}`) ||
+      (request.action === "create-http-volume" && !reply.http) ||
+      (request.action === "create-database-volume" && !reply.database)
+    )
+      throw new Error("Host volume reply identity changed.");
+    return reply;
+  } catch {
+    throw new Error(
+      "Deployment socket volumes could not be confirmed. Inspect the saved operation before retrying.",
+    );
+  }
+}

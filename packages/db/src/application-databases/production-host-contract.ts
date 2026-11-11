@@ -98,3 +98,44 @@ export const ProductionRuntimeHostState = z
 export const ProductionRuntimeHostAcknowledgement = z
   .object({ connectionId: z.uuid(), confirmInterruptedCheck: z.literal(true) })
   .strict();
+
+/** Mutations carry the caller's persisted operation identity; no command, path or credential is selectable. */
+export const ProductionRuntimeVolumeRequest = z
+  .object({
+    version: z.literal(1),
+    action: z.enum([
+      "create-http-volume",
+      "create-database-volume",
+      "inspect-runtime-volumes",
+    ]),
+    nonce: z.uuid(),
+    expectedDockerId: ProductionRuntimeHostIdentity.shape.dockerId,
+    deploymentId: z.uuid(),
+    projectId: z.uuid(),
+    resourceId: z.uuid(),
+    claimToken: z.uuid(),
+    confirmDurableIntent: z.literal(true),
+  })
+  .strict();
+export type ProductionRuntimeVolumeRequest = z.infer<
+  typeof ProductionRuntimeVolumeRequest
+>;
+export const ProductionRuntimeVolumeFact = z
+  .object({
+    name: z.string().min(1).max(128),
+    createdAt: z.string().min(1).max(64),
+  })
+  .strict();
+export const ProductionRuntimeVolumeReply = z
+  .object({
+    version: z.literal(1),
+    nonce: z.uuid(),
+    dockerId: ProductionRuntimeHostIdentity.shape.dockerId,
+    http: ProductionRuntimeVolumeFact.nullable(),
+    database: ProductionRuntimeVolumeFact.nullable(),
+  })
+  .strict();
+export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeHostInspection,
+  ProductionRuntimeVolumeRequest,
+]);

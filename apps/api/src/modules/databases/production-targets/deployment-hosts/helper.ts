@@ -1,8 +1,11 @@
-/** Fixed host inspection entrypoint. It never loads instance settings or accepts shell commands. */
+/** Fixed deployment-host entrypoint. It never loads instance settings or accepts shell commands. */
 import {
   ProductionRuntimeHostInspection,
   ProductionRuntimeHostIdentity,
+  ProductionRuntimeHostRequest,
 } from "@wrenly/db/production-host-contract";
+import { executeRuntimeVolumeRequest } from "./volumes";
+const MAX_OPERATION_MS = 30_000;
 const MAX_INPUT_BYTES = 128 * 1024;
 const MAX_DOCKER_OUTPUT_BYTES = 16 * 1024;
 const INSPECTION_TIMEOUT_MS = 5_000;
@@ -82,7 +85,7 @@ export async function inspectRuntimeHost(
 }
 
 /** Reads one bounded request. Unknown actions and extra fields fail before any daemon access. */
-export async function readRuntimeHostInspection(
+export async function readRuntimeHostRequest(
   stream: ReadableStream<Uint8Array>,
 ): Promise<unknown> {
   const reader = stream.getReader();
@@ -103,7 +106,7 @@ export async function readRuntimeHostInspection(
         throw new Error("Host request exceeds its limit.");
       chunks.push(part.value);
     }
-    return ProductionRuntimeHostInspection.parse(
+    return ProductionRuntimeHostRequest.parse(
       JSON.parse(Buffer.concat(chunks).toString("utf8")),
     );
   } finally {
@@ -114,11 +117,17 @@ export async function readRuntimeHostInspection(
 
 if (import.meta.main) {
   try {
-    const request = await readRuntimeHostInspection(Bun.stdin.stream());
-    const reply = await inspectRuntimeHost(
-      request,
-      AbortSignal.timeout(INSPECTION_TIMEOUT_MS),
+    const request = await readRuntimeHostRequest(Bun.stdin.stream());
+    const input = ProductionRuntimeHostRequest.parse(request);
+    const signal = AbortSignal.timeout(MAX_OPERATION_MS);
+    const host = await inspectRuntimeHost(
+      { version: 1, action: "inspect", nonce: input.nonce },
+      signal,
     );
+    const reply =
+      input.action === "inspect"
+        ? host
+        : await executeRuntimeVolumeRequest(input, host.dockerId, signal);
     process.stdout.write(JSON.stringify(reply) + "\n");
   } catch {
     process.stderr.write("Deployment host inspection could not be verified.\n");

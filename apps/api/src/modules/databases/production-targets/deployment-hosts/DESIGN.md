@@ -53,3 +53,17 @@ STEPS:
 5. Require its SSH port and hostname/selected private IP to match the owner-reviewed SSH destination, and recheck the complete DNS set.
 EDGE CASES: Foreign placement, changed DNS, session rotation and lost acknowledgements never silently resubmit.
 ERROR STATES: Provider/credential bodies are never browser responses; failed verification does not enable publishing.
+
+COMPONENT: Deployment-owned socket volumes
+PURPOSE: Prepare empty HTTP/database socket storage on the verified deployment daemon without accepting arbitrary mounts.
+INPUTS: Versioned action, nonce, expected daemon ID, deployment/project/resource IDs and saved claim identity.
+OUTPUTS: Exact volume names and creation timestamps, or an unconfirmed result requiring inspection.
+STEPS:
+1. Validate the request and daemon before acquiring the dedicated per-deployment kernel lock.
+2. Derive names from the deployment UUID; never accept a path or volume name.
+3. Inspect local-driver volumes and every project/resource ownership label.
+4. Refuse creation when a volume exists; use the separate inspection action for uncertain creation.
+5. Create only the requested empty socket volume, inspect it, and return a nonce-bound reply.
+6. Release the lock after every outcome; never delete resources on uncertainty.
+EDGE CASES: Same-host API and helper locks have separate namespaces. Foreign volumes, daemon changes and active helpers refuse progress.
+ERROR STATES: The publishing caller retains durable intent until verified acknowledgement or explicit reconciliation; transport failures never retry creation.
