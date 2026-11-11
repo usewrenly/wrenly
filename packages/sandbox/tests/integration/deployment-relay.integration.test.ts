@@ -165,7 +165,7 @@ native(
         throw new Error("Guardian fixture bundle failed.");
       await Bun.write(
         join(directory, "node_modules/next/dist/bin/next"),
-        'if(process.getuid()!==1000||!/^wrenly_[a-f0-9]{32}_runtime$/.test(process.env.PGUSER??"")||!/^a{64}$/.test(process.env.PGPASSWORD??""))process.exit(1); Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
+        'if(process.getuid()!==1000||!/^wrenly_[a-f0-9]{32}_runtime$/.test(process.env.PGUSER??"")||!/^a{64}$/.test(process.env.PGPASSWORD??""))process.exit(1); try{process.setuid(0);process.exit(2)}catch(error){if(error.code!=="EPERM")process.exit(3)} try{process.kill(1,0);process.exit(4)}catch(error){if(error.code!=="EPERM")process.exit(5)} Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
       );
       const image = await docker.getImage("oven/bun:alpine").inspect();
       await docker.createVolume({ Name: volumeName, Labels: labels });
