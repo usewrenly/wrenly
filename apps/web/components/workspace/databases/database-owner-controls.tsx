@@ -202,7 +202,11 @@ export function DatabaseOwnerControls({
         if (
           mode !== "submit" ||
           (!choice && !recovery) ||
-          selected !== "development"
+          (selected !== "development" &&
+            !(
+              selected === "production" &&
+              status.capabilities.productionManagement
+            ))
         )
           return;
         if (
@@ -234,7 +238,7 @@ export function DatabaseOwnerControls({
           action = {
             requestId: crypto.randomUUID(),
             kind: choice,
-            environment: "development",
+            environment: selected,
             expectedRevision: resource?.revision ?? null,
             ...(choice === "migrate" && migration
               ? {
@@ -380,7 +384,8 @@ export function DatabaseOwnerControls({
                 Request <code>{pending.action.requestId}</code>
               </p>
             </div>
-          ) : selected === "production" ? (
+          ) : selected === "production" &&
+            !status.capabilities.productionManagement ? (
             <p className="database-view-message">
               Production needs a separately configured and verified private
               provider. These local controls manage Development only; no data is
@@ -555,7 +560,8 @@ export function DatabaseOwnerControls({
               </Button>
             ) : choice &&
               (choice !== "migrate" || migration !== null) &&
-              selected === "development" &&
+              (selected === "development" ||
+                status.capabilities.productionManagement) &&
               !active &&
               !storageError ? (
               <Button

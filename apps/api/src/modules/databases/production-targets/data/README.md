@@ -37,3 +37,8 @@ The Production viewer uses the existing bounded read lease and query helper. Pro
 members may inspect schema; only the project owner may inspect Production rows. The
 adapter opens only a reader-role socket and returns no management or migrator secrets.
 These factories still require explicit host activation and joined deployment acceptance.
+
+HTTP composition is explicit: `http.ts` supplies Production-only action admission
+and the control-cluster identity needed by the viewer and stop/start recovery.
+Development keeps its local adapter. The server advertises Production controls only
+when that complete resource composition was supplied; a browser cannot enable them.

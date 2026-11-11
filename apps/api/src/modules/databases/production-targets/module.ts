@@ -1,3 +1,5 @@
+import { accessContext } from "../../auth/access/access-context";
+import { createProductionDatabaseHandlers } from "../http/production-handlers";
 import { createProjectProductionCreationHandlers } from "./project-provisioning/http";
 import { admitProjectProductionProvision } from "./project-provisioning/store";
 import { readProjectProductionCreation } from "./project-provisioning/status";
@@ -88,6 +90,7 @@ const defaults: Adapters = {
   resources: (input) => createProductionClusterResourceWorker(input),
 };
 export interface ProductionClusterModule extends Lifecycle {
+  projectDatabases: ReturnType<typeof createProductionDatabaseHandlers>;
   projectCreation: ReturnType<typeof createProjectProductionCreationHandlers>;
   instanceSetup: ReturnType<typeof createInstanceProductionHttpHandlers>;
   hostSetup: ReturnType<typeof createRuntimeHostHttpHandlers>;
@@ -131,6 +134,19 @@ export async function startProductionClusterModule(
     },
     input.webUrl,
   );
+  const projectDatabases = createProductionDatabaseHandlers(input.database, {
+    directory: input.directory,
+    webUrl: input.webUrl,
+    productionReader: { controlDatabaseUrl: input.controlDatabaseUrl },
+    productionManagement: true,
+    userId: async (headers) => {
+      const principal = await input.principal(headers);
+      const context = accessContext.getStore();
+      if (!context) throw new Error("Database HTTP request scope is missing.");
+      context.principal = principal ?? undefined;
+      return principal?.userId ?? null;
+    },
+  });
   const projectCreation = createProjectProductionCreationHandlers(
     {
       principal: input.principal,
@@ -169,6 +185,7 @@ export async function startProductionClusterModule(
   return {
     instanceSetup,
     hostSetup,
+    projectDatabases,
     projectCreation,
     stop: () => (stopping ??= cleanup()),
   };

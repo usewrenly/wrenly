@@ -1,4 +1,5 @@
 /** Composes authenticated database handlers explicitly; importing this file starts no worker or listener. */
+import { admitProductionResourceCommand } from "../production-targets/data/http";
 import type { db } from "@wrenly/db";
 import type { ApiHandlers } from "../../../app";
 import { createDatabaseResourceStatusHandler } from "./resource-status";
@@ -20,6 +21,7 @@ export function createProductionDatabaseHandlers(
   database: typeof db,
   options: {
     productionReader?: { controlDatabaseUrl: string };
+    productionManagement?: boolean;
     directory: string;
     webUrl: string;
     userId: (headers: Headers) => Promise<string | null>;
@@ -35,20 +37,35 @@ export function createProductionDatabaseHandlers(
   return {
     status: createDatabaseResourceStatusHandler({
       userId,
-      read: (project, actor) => readDatabaseResources(database, project, actor),
+      read: async (project, actor) => {
+        const status = await readDatabaseResources(database, project, actor);
+        return {
+          ...status,
+          capabilities: {
+            ...status.capabilities,
+            productionManagement: options.productionManagement === true,
+          },
+        };
+      },
     }),
     actions: createDatabaseActionHandlers(
       {
         userId,
         lookup,
         admit: (project, actor, action) =>
-          admitDatabaseAction(
-            database,
-            project,
-            actor,
-            action,
-            options.directory,
-          ),
+          action.environment === "production"
+            ? options.productionManagement && options.productionReader
+              ? admitProductionResourceCommand(database, project, actor, action)
+              : Promise.reject(
+                  new Error("Production management is not enabled."),
+                )
+            : admitDatabaseAction(
+                database,
+                project,
+                actor,
+                action,
+                options.directory,
+              ),
       },
       options.webUrl,
     ),
@@ -63,6 +80,9 @@ export function createProductionDatabaseHandlers(
             actor,
             action,
             options.directory,
+            options.productionManagement && options.productionReader
+              ? { ...options.productionReader, directory: options.directory }
+              : undefined,
           ),
       },
       options.webUrl,
