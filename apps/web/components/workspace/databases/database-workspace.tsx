@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { requestDatabaseStatus } from "@/lib/databases/requests";
 import { DatabaseOverview } from "./database-overview";
 import { DatabaseViewer } from "./database-viewer";
+import { ProductionDatabaseCreation } from "./production-database-creation";
 import { DatabaseOwnerControls } from "./database-owner-controls";
 
 const ACTIVE_STATUS_POLL_MS = 1500;
@@ -46,7 +47,9 @@ export function DatabaseWorkspace({
     revision: string;
     view: "rows" | "schema";
   } | null>(null);
-  const [lifecycleAction, setLifecycleAction] = useState<"start" | "stop" | null>(null);
+  const [lifecycleAction, setLifecycleAction] = useState<
+    "start" | "stop" | null
+  >(null);
   const [management, setManagement] = useState<{
     projectId: string;
     actorId: string;
@@ -153,17 +156,29 @@ export function DatabaseWorkspace({
             ? (value) => setEnvironment(value)
             : undefined
         }
-        onLifecycle={actorId && status.capabilities.manage ? (id, action) => {
-          const resource = status.resources.find(item => item.id === id);
-          if (resource) { setLifecycleAction(action); setEnvironment(resource.environment); }
-        } : undefined}
+        onLifecycle={
+          actorId && status.capabilities.manage
+            ? (id, action) => {
+                const resource = status.resources.find(
+                  (item) => item.id === id,
+                );
+                if (resource) {
+                  setLifecycleAction(action);
+                  setEnvironment(resource.environment);
+                }
+              }
+            : undefined
+        }
         onManage={
           actorId && status.capabilities.manage
             ? (id) => {
                 const resource = status.resources.find(
                   (item) => item.id === id,
                 );
-                if (resource) { setLifecycleAction(null); setEnvironment(resource.environment); }
+                if (resource) {
+                  setLifecycleAction(null);
+                  setEnvironment(resource.environment);
+                }
               }
             : undefined
         }
@@ -181,7 +196,21 @@ export function DatabaseWorkspace({
             });
         }}
       />
-      {actorId && status.capabilities.manage ? (
+      {actorId &&
+      status.capabilities.manage &&
+      environment === "production" &&
+      !status.resources.some((item) => item.environment === "production") ? (
+        <ProductionDatabaseCreation
+          key={`${projectId}:${actorId}`}
+          actorId={actorId}
+          projectId={projectId}
+          onClose={() => setEnvironment(null)}
+          onAccepted={() => {
+            setEnvironment(null);
+            reload();
+          }}
+        />
+      ) : actorId && status.capabilities.manage ? (
         <DatabaseOwnerControls
           key={`${projectId}:${actorId}:${selectedBuildId ?? "none"}:${lifecycleAction ?? "manage"}`}
           initialAction={lifecycleAction}
@@ -192,7 +221,10 @@ export function DatabaseWorkspace({
           status={status}
           unavailable={query.isError}
           environment={environment}
-          onClose={() => { setLifecycleAction(null); setEnvironment(null); }}
+          onClose={() => {
+            setLifecycleAction(null);
+            setEnvironment(null);
+          }}
           onReload={reload}
           onAccepted={() => {
             setLifecycleAction(null);

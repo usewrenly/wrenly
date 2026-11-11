@@ -135,3 +135,16 @@ fail source validation with fixed repair guidance; this does not claim comprehen
 static connection analysis and never replaces blocked Docker networking. Generation
 and edit guidance require response.ok/shape checks and a visible retryable error state.
 Existing saved revisions remain immutable; repair requires a new reviewed build.
+
+COMPONENT: Production creation review
+PURPOSE: Show the saved setup/creation phases and confirm one project database without exposing instance credentials.
+INPUTS: Current project/actor, owner management permission and authenticated creation status.
+OUTPUTS: One explicitly submitted creation request; progress comes from server reads only.
+STEPS:
+1. Fetch current project revision and the verified connection UUID; no request runs on mount.
+2. On confirmation, persist the exact actor/project/request identity in session storage before POST.
+3. Unknown submission retains that identity and offers lookup or explicit identical retry; never invent another request UUID.
+4. After a validated receipt, clear only that matching pending entry and poll saved phase/status.
+5. Refresh the parent resource after attachment, without treating SQL completion as resource readiness.
+EDGE CASES: Project/account changes abort old responses. Unavailable endpoints keep Production unavailable; absent setup directs the owner to Connections.
+ERROR STATES: Storage failure blocks submission; stale session/revision or unsafe response cannot render success. A missing lookup preserves uncertainty.

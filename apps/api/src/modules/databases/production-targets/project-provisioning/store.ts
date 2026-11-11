@@ -1,3 +1,4 @@
+import { ProductionProjectCreationInput } from "@wrenly/db/production-project-contract";
 /** Project-owner admission and separately durable SQL phases on one immutable verified instance connection. */
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import { createHash } from "node:crypto";
@@ -34,14 +35,7 @@ import {
   decryptDatabaseSecret,
 } from "../../database-secrets";
 import { openProductionConnection } from "../instance/credentials";
-const Confirmation = z
-  .object({
-    requestId: z.uuid(),
-    expectedRevision: z.uuid(),
-    connectionId: z.uuid(),
-    confirmCreate: z.literal(true),
-  })
-  .strict();
+const Confirmation = ProductionProjectCreationInput;
 const LEASE_MS = 60_000;
 const MAX_PENDING = 8;
 type Connection = typeof db;

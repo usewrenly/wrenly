@@ -1,3 +1,4 @@
+import type { ProjectProductionCreationHandlers } from "./modules/databases/production-targets/project-provisioning/http"
 import type { InstanceProductionHttpHandlers } from "./modules/databases/production-targets/instance/http"
 import type { RuntimeHostHttpHandlers } from "./modules/databases/production-targets/deployment-hosts/http"
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
@@ -37,6 +38,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  productionProjectCreation?: ProjectProductionCreationHandlers
   productionDatabaseSetup?: InstanceProductionHttpHandlers
   productionHostSetup?: RuntimeHostHttpHandlers
   projectDatabases?: { status: ProjectHandler; view: ProjectHandler; actions?: DatabaseCommandHandlers; migrationReview?: ProjectHandler; recoveryReview?: ProjectHandler; recovery?: DatabaseCommandHandlers }
@@ -201,6 +203,12 @@ export function createApp(
     app.get('/api/instance/deployment-host', c => setup.status(c.req.raw))
     app.get('/api/instance/deployment-host/requests/:requestId', c => setup.status(c.req.raw, c.req.param('requestId')))
     app.post('/api/instance/deployment-host/acknowledge', c => setup.acknowledge(c.req.raw))
+  }
+  if (handlers.productionProjectCreation) {
+    const creation = handlers.productionProjectCreation
+    app.post('/api/projects/:id/databases/production/creation', c => creation.submit(c.req.raw, c.req.param('id')))
+    app.get('/api/projects/:id/databases/production/creation', c => creation.status(c.req.raw, c.req.param('id')))
+    app.get('/api/projects/:id/databases/production/creation/requests/:requestId', c => creation.status(c.req.raw, c.req.param('id'), c.req.param('requestId')))
   }
   if(handlers.projectDatabases){
     app.get('/api/projects/:id/databases',c=>handlers.projectDatabases!.status(c.req.raw,c.req.param('id')))

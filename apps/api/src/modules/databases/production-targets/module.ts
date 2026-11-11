@@ -1,3 +1,6 @@
+import { createProjectProductionCreationHandlers } from "./project-provisioning/http";
+import { admitProjectProductionProvision } from "./project-provisioning/store";
+import { readProjectProductionCreation } from "./project-provisioning/status";
 /** Own Production setup and resource workers explicitly; importing this module enables no route or background work. */
 import { deployments, productionDatabaseProvisions, type db } from "@wrenly/db";
 import { logger } from "../../../lib/logger";
@@ -85,6 +88,7 @@ const defaults: Adapters = {
   resources: (input) => createProductionClusterResourceWorker(input),
 };
 export interface ProductionClusterModule extends Lifecycle {
+  projectCreation: ReturnType<typeof createProjectProductionCreationHandlers>;
   instanceSetup: ReturnType<typeof createInstanceProductionHttpHandlers>;
   hostSetup: ReturnType<typeof createRuntimeHostHttpHandlers>;
 }
@@ -127,6 +131,22 @@ export async function startProductionClusterModule(
     },
     input.webUrl,
   );
+  const projectCreation = createProjectProductionCreationHandlers(
+    {
+      principal: input.principal,
+      admit: (actor, id, value) =>
+        admitProjectProductionProvision(
+          input.database,
+          actor,
+          id,
+          value,
+          input.directory,
+        ),
+      read: (actor, id, requestId) =>
+        readProjectProductionCreation(input.database, actor, id, requestId),
+    },
+    input.webUrl,
+  );
   let control: Lifecycle | undefined, resources: Lifecycle | undefined;
   async function cleanup(): Promise<void> {
     const results = await Promise.allSettled([
@@ -146,5 +166,10 @@ export async function startProductionClusterModule(
     throw error;
   }
   let stopping: Promise<void> | undefined;
-  return { instanceSetup, hostSetup, stop: () => (stopping ??= cleanup()) };
+  return {
+    instanceSetup,
+    hostSetup,
+    projectCreation,
+    stop: () => (stopping ??= cleanup()),
+  };
 }

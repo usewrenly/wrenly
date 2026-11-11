@@ -26,3 +26,16 @@ STEPS:
 4. Let the existing readiness worker prove role/schema/socket identity before marking ready.
 EDGE CASES: Lost attachment replies are safe exact replay; stale sessions require explicit owner review and never transfer ownership.
 ERROR STATES: SQL uncertainty is not a completed handoff candidate. Refuse changed authority or incomplete evidence without replaying SQL.
+
+COMPONENT: Project Production creation transport
+PURPOSE: Let a project owner confirm creation and follow saved progress without seeing instance credentials.
+INPUTS: Current authenticated principal, reviewed project revision, verified connection UUID and exact request UUID.
+OUTPUTS: Bounded creation receipt/status and safe phase names; no host, passwords or role data.
+STEPS:
+1. Validate method, origin, IDs, bounded body and live session before transactional admission.
+2. Reuse the existing owner/session/revision/provisioning store; never execute SQL in the HTTP handler.
+3. Read progress by exact request UUID after a lost response; lookup never resubmits creation.
+4. Project setup status exposes only the current verified connection UUID and project access revision to its owner.
+5. Preserve queued/creating/created/attached/review-required distinctions; SQL completion is not readiness.
+EDGE CASES: Old/changed connection or project revisions are refused. A missing exact request is distinct from an empty project status.
+ERROR STATES: Unauthorized, malformed, changed or unconfirmed requests return fixed messages with private/no-store headers.
