@@ -131,3 +131,132 @@ native(
   },
   30_000,
 );
+
+native(
+  "Production guardian keeps runtime secrets out of Docker metadata and starts the child unprivileged",
+  async () => {
+    const docker = new Docker({
+      socketPath: "/var/run/docker.sock",
+      timeout: 15_000,
+    });
+    const id = crypto.randomUUID();
+    const directory = await mkdtemp(join(tmpdir(), "wrenly-guardian-native-"));
+    const volumeName = `wrenly-guardian-test-${id}`;
+    const labels = { "io.wrenly.test-relay": id };
+    let container: Docker.Container | undefined;
+    let attached: ReturnType<typeof Bun.spawn> | undefined;
+    let volumeCreated = false;
+    try {
+      const build = Bun.spawn(
+        [
+          "bun",
+          "build",
+          join(
+            import.meta.dir,
+            "../../src/deployment-runtime/application-entry.mts",
+          ),
+          "--target=bun",
+          "--env=disable",
+          `--outfile=${join(directory, "guardian.js")}`,
+        ],
+        { stdin: "ignore", stdout: "ignore", stderr: "pipe" },
+      );
+      if ((await build.exited) !== 0)
+        throw new Error("Guardian fixture bundle failed.");
+      await Bun.write(
+        join(directory, "node_modules/next/dist/bin/next"),
+        'if(process.getuid()!==1000||!/^wrenly_[a-f0-9]{32}_runtime$/.test(process.env.PGUSER??"")||!/^a{64}$/.test(process.env.PGPASSWORD??""))process.exit(1); Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
+      );
+      const image = await docker.getImage("oven/bun:alpine").inspect();
+      await docker.createVolume({ Name: volumeName, Labels: labels });
+      volumeCreated = true;
+      container = await docker.createContainer({
+        Image: image.Id,
+        Entrypoint: ["bun", "--no-env-file", "/app/guardian.js"],
+        Cmd: [],
+        User: "0:0",
+        OpenStdin: true,
+        StdinOnce: true,
+        AttachStdin: true,
+        Labels: labels,
+        HostConfig: {
+          NetworkMode: "none",
+          ReadonlyRootfs: true,
+          Binds: [`${directory}:/app:ro`, `${volumeName}:/run/wrenly-http`],
+          Tmpfs: { "/tmp": "rw,noexec,nosuid,size=16m" },
+          Memory: 128 * 1024 * 1024,
+          PidsLimit: 64,
+        },
+      });
+      await container.start();
+      attached = Bun.spawn(
+        [
+          "docker",
+          "--host",
+          "unix:///var/run/docker.sock",
+          "attach",
+          "--sig-proxy=false",
+          container.id,
+        ],
+        { stdin: "pipe", stdout: "pipe", stderr: "ignore" },
+      );
+      if (
+        !attached.stdin ||
+        typeof attached.stdin === "number" ||
+        !attached.stdout ||
+        typeof attached.stdout === "number"
+      )
+        throw new Error("Fixture attach unavailable.");
+      attached.stdin.write(
+        JSON.stringify({
+          version: 1,
+          framework: "nextjs",
+          resourceId: id,
+          role: {
+            user: `wrenly_${id.replaceAll("-", "")}_runtime`,
+            password: "a".repeat(64),
+          },
+          appKey: null,
+        }),
+      );
+      attached.stdin.end();
+      const reader = attached.stdout.getReader();
+      let output = "";
+      const deadline = setTimeout(() => {
+        void reader.cancel();
+      }, 10_000);
+      try {
+        while (!output.includes("WRENLY_PRODUCTION_APPLICATION_READY_V1")) {
+          const part = await reader.read();
+          if (part.done) break;
+          output += new TextDecoder().decode(part.value);
+          if (output.length > 1024)
+            throw new Error("Unexpected guardian fixture output.");
+        }
+      } finally {
+        clearTimeout(deadline);
+        reader.releaseLock();
+      }
+      expect(output).toContain("WRENLY_PRODUCTION_APPLICATION_READY_V1");
+      const facts = await container.inspect();
+      expect(facts.State.Running).toBe(true);
+      expect(facts.HostConfig.NetworkMode).toBe("none");
+      expect(JSON.stringify(facts.Config)).not.toContain("a".repeat(64));
+      await container.stop({ t: 6 });
+      await attached.exited;
+      expect((await container.inspect()).State.Running).toBe(false);
+      await container.start();
+      const restarted = await container.wait();
+      expect(restarted.StatusCode).toBe(125);
+    } finally {
+      if (container) await container.remove({ force: true, v: true });
+      if (attached) {
+        if (attached.exitCode === null) attached.kill("SIGKILL");
+        await attached.exited;
+      }
+      if (volumeCreated) await docker.getVolume(volumeName).remove();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);

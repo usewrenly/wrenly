@@ -15,6 +15,13 @@ application guardian owns that socket. The generated child cannot replace the
 root-owned socket directory. The ingress can connect to the socket through a
 read-only volume mount; it receives no database credentials or Docker socket.
 
+`application.ts` is the trusted Production guardian. It accepts a bounded stdin
+message, starts generated code as UID1000 and passes the runtime role only in that
+child’s process environment. It never stores a password in Docker metadata or a
+host file. A bare container restart fails closed; the publishing lifecycle must
+verify the saved deployment before delivering settings again. The guardian does
+not apply migrations or restart a failed application automatically.
+
 `relay.ts` limits simultaneous connections, respects stream backpressure and closes
 both peers on timeout or shutdown. `application-http.ts` supplies the fixed offline
 app destination. `ingress.ts` supplies the fixed network-facing listener and Unix

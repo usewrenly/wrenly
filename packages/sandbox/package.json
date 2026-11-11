@@ -20,7 +20,8 @@
     "./runtime-artifact": "./src/artifacts/runtime-artifact.ts",
     "./runtime-artifact-cleanup": "./src/artifacts/runtime-artifact-cleanup.ts",
     "./database-preview-runtime": "./src/previews/database-runtime.ts",
-    "./production-database-network": "./src/databases/production-network.ts"
+    "./production-database-network": "./src/databases/production-network.ts",
+    "./production-application-bootstrap": "./src/deployment-runtime/application.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
