@@ -33,3 +33,10 @@ host SSH material after rechecking the active publishing claim. The management
 credential is decrypted locally only to recover its CA; it is excluded from the
 returned runtime settings, along with the migrator and reader passwords. Stable
 Laravel keys reuse the existing encrypted deployment key rather than being regenerated.
+
+`host-adapter.ts` translates a saved effect into the fixed host helper protocol.
+Application discovery matches deployment/project/database labels and then verifies
+the exact guardian image and isolation; it never guesses Coolify container names.
+`service-adapter.ts` creates and starts only the saved credential-free composition.
+Changing server placement or image digests refuses the effect before a provider call.
+These adapters do not yet activate the Production executor.

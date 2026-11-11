@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { inspectRuntimeHost } from "./helper";
 import {
   executeRuntimeApplicationInspection,
+  findRuntimeApplication,
   inspectProductionApplicationContainer,
 } from "./application-inspection";
 const native =
@@ -132,6 +133,29 @@ native(
       );
       expect(checked.containerId).toBe(containerId);
       expect(checked.nonce).toBe(request.nonce);
+      const { containerId: _containerId, ...discovery } = request;
+      void _containerId;
+      expect(
+        (
+          await findRuntimeApplication(
+            { ...discovery, action: "find-runtime-application" },
+            host.dockerId,
+            AbortSignal.timeout(10000),
+          )
+        ).containerId,
+      ).toBe(containerId);
+      await expect(
+        findRuntimeApplication(
+          {
+            ...discovery,
+            action: "find-runtime-application",
+            projectId: crypto.randomUUID(),
+          },
+          host.dockerId,
+          AbortSignal.timeout(10000),
+        ),
+      ).rejects.toThrow("could not be discovered");
+
       await expect(
         executeRuntimeApplicationInspection(
           { ...request, resourceId: crypto.randomUUID() },

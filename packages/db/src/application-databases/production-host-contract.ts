@@ -235,7 +235,12 @@ export const ProductionRuntimeApplicationStart =
     upstream: ProductionRuntimeBrokerRequest.shape.upstream,
     addresses: ProductionRuntimeBrokerRequest.shape.addresses,
   });
+export const ProductionRuntimeApplicationDiscovery =
+  ProductionRuntimeApplicationInspection.omit({ containerId: true }).extend({
+    action: z.literal("find-runtime-application"),
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeApplicationDiscovery,
   ProductionRuntimeApplicationStart,
   ProductionRuntimeBrokerInspection,
   ProductionRuntimeBrokerRequest,

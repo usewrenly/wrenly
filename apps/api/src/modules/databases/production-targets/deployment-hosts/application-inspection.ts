@@ -2,6 +2,7 @@
 import { z } from "zod";
 import {
   ProductionRuntimeApplicationInspection,
+  ProductionRuntimeApplicationDiscovery,
   ProductionRuntimeApplicationReply,
 } from "@wrenly/db/production-host-contract";
 import { acquireRuntimeHostLock } from "./host-lock";
@@ -245,6 +246,83 @@ export async function executeRuntimeApplicationInspection(
   } catch {
     throw new Error(
       "Production application isolation could not be verified. Runtime credentials were not approved for delivery.",
+    );
+  } finally {
+    await lock.release();
+  }
+}
+
+/** Finds one exact deployment-labelled container, then applies the same image and isolation proof. No name-based adoption. */
+export async function findRuntimeApplication(
+  raw: unknown,
+  dockerId: string,
+  signal: AbortSignal,
+): Promise<z.infer<typeof ProductionRuntimeApplicationReply>> {
+  const input = ProductionRuntimeApplicationDiscovery.parse(raw);
+  if (input.expectedDockerId !== dockerId)
+    throw new Error("Deployment Docker identity changed.");
+  const lock = await acquireRuntimeHostLock(input.deploymentId);
+  try {
+    lock.assertHeld();
+    signal.throwIfAborted();
+    const id = await runRuntimeHostDocker(
+      [
+        "container",
+        "ls",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        `label=io.wrenly.deployment-id=${input.deploymentId}`,
+        "--filter",
+        `label=io.wrenly.project-id=${input.projectId}`,
+        "--filter",
+        `label=io.wrenly.database-id=${input.resourceId}`,
+        "--filter",
+        "label=io.wrenly.role=production-application",
+        "--format",
+        "{{.ID}}",
+      ],
+      signal,
+    );
+    if (!/^[a-f0-9]{64}$/.test(id))
+      throw new Error("Missing or ambiguous application.");
+    const [container] = z
+      .array(z.unknown())
+      .length(1)
+      .parse(
+        JSON.parse(
+          await runRuntimeHostDocker(["container", "inspect", id], signal),
+        ),
+      );
+    const [image] = z
+      .array(z.unknown())
+      .length(1)
+      .parse(
+        JSON.parse(
+          await runRuntimeHostDocker(
+            ["image", "inspect", input.imageId],
+            signal,
+          ),
+        ),
+      );
+    const result = inspectProductionApplicationContainer(container, image, {
+      deploymentId: input.deploymentId,
+      projectId: input.projectId,
+      resourceId: input.resourceId,
+      containerId: id,
+      imageId: input.imageId,
+    });
+    lock.assertHeld();
+    signal.throwIfAborted();
+    return ProductionRuntimeApplicationReply.parse({
+      version: 1,
+      nonce: input.nonce,
+      dockerId,
+      ...result,
+    });
+  } catch {
+    throw new Error(
+      "The exact Production application could not be discovered. No container was started or adopted.",
     );
   } finally {
     await lock.release();

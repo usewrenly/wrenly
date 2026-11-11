@@ -6,7 +6,10 @@ import {
 } from "@wrenly/db/production-host-contract";
 import { executeRuntimeVolumeRequest } from "./volumes";
 import { executeRuntimeNetworkRequest } from "./network";
-import { executeRuntimeApplicationInspection } from "./application-inspection";
+import {
+  findRuntimeApplication,
+  executeRuntimeApplicationInspection,
+} from "./application-inspection";
 import { createRuntimeDatabaseBroker } from "./broker";
 import { inspectRuntimeDatabaseBroker } from "./broker-inspection";
 import { startRuntimeApplication } from "./application-start";
@@ -132,30 +135,36 @@ if (import.meta.main) {
     const reply =
       input.action === "inspect"
         ? host
-        : input.action === "start-runtime-application"
-          ? await startRuntimeApplication(input, host.dockerId, signal)
-          : input.action === "create-runtime-broker"
-            ? await createRuntimeDatabaseBroker(input, host.dockerId, signal)
-            : input.action === "inspect-runtime-broker"
-              ? await inspectRuntimeDatabaseBroker(input, host.dockerId, signal)
-              : input.action === "inspect-runtime-application"
-                ? await executeRuntimeApplicationInspection(
+        : input.action === "find-runtime-application"
+          ? await findRuntimeApplication(input, host.dockerId, signal)
+          : input.action === "start-runtime-application"
+            ? await startRuntimeApplication(input, host.dockerId, signal)
+            : input.action === "create-runtime-broker"
+              ? await createRuntimeDatabaseBroker(input, host.dockerId, signal)
+              : input.action === "inspect-runtime-broker"
+                ? await inspectRuntimeDatabaseBroker(
                     input,
                     host.dockerId,
                     signal,
                   )
-                : input.action === "create-runtime-network" ||
-                    input.action === "inspect-runtime-network"
-                  ? await executeRuntimeNetworkRequest(
+                : input.action === "inspect-runtime-application"
+                  ? await executeRuntimeApplicationInspection(
                       input,
                       host.dockerId,
                       signal,
                     )
-                  : await executeRuntimeVolumeRequest(
-                      input,
-                      host.dockerId,
-                      signal,
-                    );
+                  : input.action === "create-runtime-network" ||
+                      input.action === "inspect-runtime-network"
+                    ? await executeRuntimeNetworkRequest(
+                        input,
+                        host.dockerId,
+                        signal,
+                      )
+                    : await executeRuntimeVolumeRequest(
+                        input,
+                        host.dockerId,
+                        signal,
+                      );
     process.stdout.write(JSON.stringify(reply) + "\n");
   } catch {
     process.stderr.write("Deployment host inspection could not be verified.\n");
