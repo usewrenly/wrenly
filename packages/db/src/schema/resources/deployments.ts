@@ -1,3 +1,4 @@
+import type { ProductionPublishingBinding, ProductionPublishingJournal } from "../../application-databases/production-publishing-contract";
 // Server-only deployment source snapshots, encrypted credentials and durable effect tracking.
 // Handlers must select safe public fields explicitly instead of spreading these records.
 import { pgEnum, pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index, integer, bigint } from 'drizzle-orm/pg-core'
@@ -56,6 +57,8 @@ export const deployments = pgTable('deployments', {
   stack: stackEnum('stack').notNull(),
   files: jsonb('files').$type<Array<{ path: string; content: string }>>().notNull(),
   sourceSha256: text('source_sha256').notNull(),
+  productionDatabaseBinding: jsonb('production_database_binding').$type<ProductionPublishingBinding>(),
+  productionRuntimeJournal: jsonb('production_runtime_journal').$type<ProductionPublishingJournal>(),
   status: deploymentStatusEnum('status').notNull().default('queued'),
   claimToken: uuid('claim_token'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
