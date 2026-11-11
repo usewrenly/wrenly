@@ -57,3 +57,9 @@ broker network, runs the actual trusted reader through a network-disabled contai
 closes that socket before saving readiness. The same passwords are retained throughout.
 Local and remote mutation claims are disjoint. These factories are still not registered
 by startup; data workflow and deployment-host acceptance must pass before activation.
+
+Normal SQL completion now attaches its resource automatically. `handoff.ts` also
+handles a restart between SQL acknowledgement and attachment: it proves the previous
+executor has released its lock and uses the original saved owner/session identity.
+The attachment transaction rechecks completed phases and produces a pending readiness
+request exactly once. It never repeats SQL or calls the resource ready early.

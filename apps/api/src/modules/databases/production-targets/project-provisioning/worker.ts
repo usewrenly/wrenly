@@ -1,4 +1,5 @@
 /** Executes separately journalled project SQL phases; importing it starts no background loop. */
+import { attachProductionProjectResource } from "./resource-store";
 import type { DatabaseAddressLookup } from "../target-policy";
 import type { db } from "@wrenly/db";
 import { type ProductionProvisionPhase } from "@wrenly/db/production-project-credentials";
@@ -45,7 +46,7 @@ export async function runProjectProductionProvisionOnce(input: {
     token: claim.token,
   });
   try {
-    return await executeProjectProductionProvision(
+    const receipt = await executeProjectProductionProvision(
       claim,
       {
         assertHeld: () => lock.assertHeld(),
@@ -99,6 +100,22 @@ export async function runProjectProductionProvisionOnce(input: {
       },
       input.signal,
     );
+    if (receipt.status === "created") {
+      lock.assertHeld();
+      input.signal.throwIfAborted();
+      // The next worker may claim the resource as soon as attachment commits.
+      // SQL is already acknowledged; release its kernel lock before publishing that claim.
+      await lock.release();
+      await attachProductionProjectResource({
+        database: input.database,
+        directory: input.directory,
+        projectId: claim.projectId,
+        provisionId: claim.id,
+        principal: claim.principal,
+      });
+      return { ...receipt, status: "attached" };
+    }
+    return receipt;
   } finally {
     await lock.release();
   }

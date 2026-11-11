@@ -14,3 +14,15 @@ STEPS:
 6. An unknown response or acknowledgement preserves its phase and blocks automatic repetition. Completed phases are never replayed.
    EDGE CASES: Connection updates never retarget existing requests; expired work needs explicit inspection; foreign existing database/role names are not adopted or reset.
    ERROR STATES: Unknown SQL remains review-required. A fully provisioned SQL resource remains distinct from runtime/broker readiness.
+
+COMPONENT: Completed SQL resource handoff
+PURPOSE: Continue an owner's saved creation into readiness without another browser click.
+INPUTS: A completed cluster-mode SQL provision and its saved execution principal.
+OUTPUTS: Exactly one ordinary pending resource/create operation, never an automatic ready state.
+STEPS:
+1. After all SQL phases are acknowledged, verify the exact resource kernel lock and release it before publishing the readiness claim; no SQL is replayable from created state.
+2. Reuse the existing transactional attachment with the saved owner/session/access revision.
+3. On restart, select only created provisions with no uncertain SQL effect and prove the prior kernel lock is released before the transactional attachment.
+4. Let the existing readiness worker prove role/schema/socket identity before marking ready.
+EDGE CASES: Lost attachment replies are safe exact replay; stale sessions require explicit owner review and never transfer ownership.
+ERROR STATES: SQL uncertainty is not a completed handoff candidate. Refuse changed authority or incomplete evidence without replaying SQL.

@@ -10,6 +10,7 @@ import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import type { DatabaseClaim } from "../../database-store";
 import { admitProductionDatabaseAction } from "../data/actions";
 import { executeProductionResourceBackup } from "../data/backup";
+import { attachCompletedProductionProvision } from "./handoff";
 import { runProjectProductionProvisionOnce } from "./worker";
 import { executeProductionResourceCreation } from "./resource-worker";
 /** Dedicated disposable control-store acceptance; SQL side effects are tested separately against native PostgreSQL. */
@@ -717,13 +718,20 @@ check(
       originalSecret = saved.credentials.runtime.password;
       await finishProjectProductionPhase(database, claim, phase, true);
     }
-    const receipt = await attachProductionProjectResource({
+    const receipt = await attachCompletedProductionProvision({
       database,
-      principal,
-      projectId: project.id,
-      provisionId: created.resourceId,
       directory,
+      signal: AbortSignal.timeout(5000),
     });
+    if (!receipt) throw new Error("Missing completed resource handoff");
+    expect(receipt.resourceId).toBe(created.resourceId);
+    expect(
+      await attachCompletedProductionProvision({
+        database,
+        directory,
+        signal: AbortSignal.timeout(5000),
+      }),
+    ).toBeNull();
     expect(
       (
         await attachProductionProjectResource({
@@ -801,7 +809,7 @@ nativeReadiness(
       signal,
       lookup,
     });
-    expect(result?.status).toBe("created");
+    expect(result?.status).toBe("attached");
     await attachProductionProjectResource({
       database,
       principal,
