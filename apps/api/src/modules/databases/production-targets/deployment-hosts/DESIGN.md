@@ -145,3 +145,18 @@ STEPS:
 5. Readiness changes state to ready before emitting the fixed trusted marker.
 EDGE CASES: A stopped guardian may be started once under saved intent. The generated user has no access to the bootstrap tmpfs. A bare restart still cannot recover credentials automatically.
 ERROR STATES: Missing/unsafe state storage, consumed input, lost acknowledgement or failed startup requires inspection; no implicit credential resend.
+
+COMPONENT: Production ingress inspection
+PURPOSE: Verify the credential-free HTTP relay before accepting a public route.
+INPUTS: Saved deployment/project/database identity and trusted ingress image ID.
+OUTPUTS: Exact container/image/running facts, with no generated output or credentials.
+STEPS:
+1. Acquire the deployment lock and match all resource labels; require exactly one container.
+2. Inspect the selected container and image independently through the fixed Docker socket.
+3. Require the trusted unprivileged relay entrypoint, unchanged image environment/command,
+   read-only root, bounded resources, no elevated privileges or host namespaces.
+4. Require only the owned HTTP socket volume, mounted read-only; reject database volumes,
+   bind/device mounts, custom hosts and extra memory mounts.
+5. Inspect attached networks and refuse host networking or the database broker network.
+EDGE CASES: A stopped relay is reported stopped. No discovery starts or mutates it.
+ERROR STATES: Ambiguous identity or changed isolation refuses route verification.

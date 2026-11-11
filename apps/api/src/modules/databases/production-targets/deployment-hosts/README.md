@@ -69,3 +69,9 @@ container. It sends only the runtime role and framework startup settings. A seco
 request to an already-running app is refused. The guardian starts the generated
 process as user 1000 and emits its own readiness marker. This proves local startup,
 not the public URL or a successful database transaction.
+
+`ingress-inspection.ts` verifies the HTTP relay separately from the generated app.
+For example, a relay with a database volume, added password environment variable,
+root user or host networking is rejected even if Coolify calls it healthy. Discovery
+requires one exact labelled container and independently checks its image, owned
+read-only HTTP volume and bridge networks. It never starts a stopped relay.

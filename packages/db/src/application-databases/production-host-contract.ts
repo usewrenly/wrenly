@@ -239,7 +239,12 @@ export const ProductionRuntimeApplicationDiscovery =
   ProductionRuntimeApplicationInspection.omit({ containerId: true }).extend({
     action: z.literal("find-runtime-application"),
   });
+export const ProductionRuntimeIngressDiscovery =
+  ProductionRuntimeApplicationDiscovery.extend({
+    action: z.literal("find-runtime-ingress"),
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeIngressDiscovery,
   ProductionRuntimeApplicationDiscovery,
   ProductionRuntimeApplicationStart,
   ProductionRuntimeBrokerInspection,
