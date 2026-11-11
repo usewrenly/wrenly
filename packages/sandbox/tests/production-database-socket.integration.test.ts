@@ -1,7 +1,14 @@
+import { inspectRuntimeHost } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/helper";
+import { executeRuntimeVolumeRequest } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/volumes";
+import { executeRuntimeNetworkRequest } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/network";
+import { createRuntimeDatabaseBroker } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/broker";
+import { startRuntimeApplication } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/application-start";
+import { findRuntimeIngress } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/ingress-inspection";
 /** Disposable native TLS acceptance. No existing Wrenly resource is read or modified. */
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import Docker from "dockerode";
 import postgres from "@wrenly/db/app-database-driver";
@@ -45,6 +52,7 @@ const fixtureName = `wrenly-production-socket-test-${scope.resourceId}`;
 const sockets: DatabaseSocketIdentity[] = [];
 const socketIds: string[] = [];
 let directory: string, networkId: string, address: string, authority: string;
+let publishingAddress: string, publishingPort: number;
 let management: ReturnType<typeof postgres> | undefined;
 const effects: string[] = [];
 async function command(args: string[], input?: string): Promise<string> {
@@ -100,6 +108,8 @@ beforeAll(async () => {
     },
   });
   networkId = network.id;
+  const fixtureNetwork = await network.inspect();
+  publishingAddress = fixtureNetwork.IPAM.Config[0]!.Gateway!;
   await command([
     "docker",
     "run",
@@ -110,6 +120,8 @@ beforeAll(async () => {
     networkId,
     "-p",
     "127.0.0.1::5432",
+    "-p",
+    `${publishingAddress}::5432`,
     "-e",
     "POSTGRES_PASSWORD=fixture-only",
     "-e",
@@ -124,7 +136,13 @@ beforeAll(async () => {
   ]);
   const info = await docker.getContainer(fixtureName).inspect();
   address = Object.values(info.NetworkSettings.Networks)[0]!.IPAddress;
-  const port = Number(info.NetworkSettings.Ports["5432/tcp"]![0]!.HostPort);
+  const ports = info.NetworkSettings.Ports["5432/tcp"]!;
+  const port = Number(
+    ports.find((binding) => binding.HostIp === "127.0.0.1")!.HostPort,
+  );
+  publishingPort = Number(
+    ports.find((binding) => binding.HostIp === publishingAddress)!.HostPort,
+  );
   management = postgres({
     host: "127.0.0.1",
     port,
@@ -471,4 +489,294 @@ acceptance(
     }
   },
   120_000,
+);
+
+acceptance(
+  "publishing guardian and HTTP relay perform real CRUD through a private TLS broker",
+  async () => {
+    const signal = AbortSignal.timeout(90000),
+      deploymentId = crypto.randomUUID();
+    const host = await inspectRuntimeHost(
+      { version: 1, action: "inspect", nonce: crypto.randomUUID() },
+      signal,
+    );
+    const base = {
+      version: 1 as const,
+      nonce: crypto.randomUUID(),
+      expectedDockerId: host.dockerId,
+      deploymentId,
+      projectId: scope.projectId,
+      resourceId: scope.resourceId,
+      claimToken: crypto.randomUUID(),
+      confirmDurableIntent: true as const,
+    };
+    const httpVolume = `wrenly-deployment-http-${deploymentId}`,
+      dbVolume = `wrenly-deployment-db-${deploymentId}`,
+      brokerNetwork = `wrenly-deployment-network-${deploymentId}`,
+      ingressNetwork = `wrenly-http-fixture-${deploymentId}`;
+    const imageTag = `wrenly-crud-fixture:${deploymentId}`,
+      brokerName = `wrenly-deployment-broker-${deploymentId}`;
+    const fixture = await mkdtemp(join(tmpdir(), "wrenly-publishing-crud-"));
+    let appId: string | undefined, relayId: string | undefined;
+    const labels = (role: string): string[] =>
+      Object.entries({
+        "io.wrenly.deployment-id": deploymentId,
+        "io.wrenly.project-id": scope.projectId,
+        "io.wrenly.database-id": scope.resourceId,
+        "io.wrenly.database-environment": "production",
+        "io.wrenly.role": role,
+      }).flatMap(([key, value]) => ["--label", `${key}=${value}`]);
+    try {
+      await command([
+        "bun",
+        "build",
+        join(
+          import.meta.dir,
+          "../src/deployment-runtime/application-entry.mts",
+        ),
+        "--target=bun",
+        "--env=disable",
+        `--outfile=${join(fixture, "guardian.js")}`,
+      ]);
+      await Bun.write(
+        join(fixture, "app.ts"),
+        `import postgres from ${JSON.stringify(join(import.meta.dir, "../../db/src/application-databases/driver.ts"))};
+import { drizzle } from ${JSON.stringify(fileURLToPath(import.meta.resolve("drizzle-orm/postgres-js")))};
+import { sql } from ${JSON.stringify(fileURLToPath(import.meta.resolve("drizzle-orm")))};
+const client=postgres({max:1,connect_timeout:3,prepare:false}), database=drizzle(client);
+if(process.getuid()!==1000)process.exit(1);
+Bun.serve({hostname:"127.0.0.1",port:3000,async fetch(request){
+ const path=new URL(request.url).pathname;
+ try {
+ if(path==="/create"){ await database.execute(sql\`insert into public.notes(body) values ('publishing CRUD fixture')\`); return new Response("saved"); }
+ if(path==="/update"){ await database.execute(sql\`update public.notes set body='publishing CRUD updated' where body='publishing CRUD fixture'\`); return new Response("updated"); }
+ if(path==="/read"){const rows=await database.execute(sql\`select body from public.notes where body like 'publishing CRUD%'\`);return Response.json(rows);}
+ if(path==="/delete"){await database.execute(sql\`delete from public.notes where body like 'publishing CRUD%'\`);return new Response("deleted");}
+ return new Response("ready");
+ }catch{return new Response("database request failed",{status:500});}
+}});`,
+      );
+      await command([
+        "bun",
+        "build",
+        join(fixture, "app.ts"),
+        "--target=bun",
+        "--env=disable",
+        `--outfile=${join(fixture, "next.js")}`,
+      ]);
+      await Bun.write(
+        join(fixture, "Dockerfile"),
+        'FROM oven/bun:alpine\nUSER 0:0\nWORKDIR /app\nCOPY guardian.js /wrenly/production-application.js\nCOPY next.js /app/node_modules/next/dist/bin/next\nLABEL io.wrenly.database-runtime-version="1"\nENTRYPOINT ["bun","--no-env-file","/wrenly/production-application.js"]\nCMD []\n',
+      );
+      await command(["docker", "build", "-t", imageTag, fixture]);
+      const appImage = await docker.getImage(imageTag).inspect(),
+        brokerImage = await docker
+          .getImage("wrenly/database-socket:2")
+          .inspect();
+      await executeRuntimeVolumeRequest(
+        { ...base, action: "create-http-volume" },
+        host.dockerId,
+        signal,
+      );
+      await executeRuntimeVolumeRequest(
+        { ...base, action: "create-database-volume" },
+        host.dockerId,
+        signal,
+      );
+      const network = await executeRuntimeNetworkRequest(
+        { ...base, action: "create-runtime-network" },
+        host.dockerId,
+        signal,
+      );
+      const upstream = {
+        hostname: "production.internal.test",
+        address: publishingAddress,
+        port: publishingPort,
+      };
+      const resolver = async () => [{ address: publishingAddress, family: 4 }];
+      const broker = await createRuntimeDatabaseBroker(
+        {
+          ...base,
+          action: "create-runtime-broker",
+          imageId: brokerImage.Id,
+          networkId: network.network!.id,
+          upstream,
+          addresses: [publishingAddress],
+          runtimeRole: credentials.runtime,
+          certificateAuthority: authority,
+        },
+        host.dockerId,
+        signal,
+        resolver,
+      );
+      appId = await command([
+        "docker",
+        "create",
+        "--network",
+        "none",
+        "--read-only",
+        "--interactive",
+        "--memory",
+        "2g",
+        "--cpus",
+        "2",
+        "--pids-limit",
+        "256",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "SETUID",
+        "--cap-add",
+        "SETGID",
+        "--cap-add",
+        "CHOWN",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--restart",
+        "no",
+        "--tmpfs",
+        "/run/wrenly-bootstrap:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
+        "--tmpfs",
+        "/tmp:rw,noexec,nosuid,size=16m,uid=1000,gid=1000",
+        ...labels("production-application"),
+        "--mount",
+        `type=volume,src=${httpVolume},dst=/run/wrenly-http`,
+        "--mount",
+        `type=volume,src=${dbVolume},dst=/run/wrenly-database,readonly`,
+        imageTag,
+      ]);
+      await startRuntimeApplication(
+        {
+          ...base,
+          action: "start-runtime-application",
+          containerId: appId,
+          imageId: appImage.Id,
+          framework: "nextjs",
+          runtimeRole: credentials.runtime,
+          appKey: null,
+          brokerId: broker.containerId,
+          brokerImageId: brokerImage.Id,
+          networkId: network.network!.id,
+          upstream,
+          addresses: [publishingAddress],
+        },
+        host.dockerId,
+        signal,
+        resolver,
+      );
+      await command(["docker", "network", "create", ingressNetwork]);
+      relayId = await command([
+        "docker",
+        "run",
+        "-d",
+        "--network",
+        ingressNetwork,
+        "--user",
+        "1000:1000",
+        "--read-only",
+        "--memory",
+        "128m",
+        "--cpus",
+        "1",
+        "--pids-limit",
+        "64",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges:true",
+        "--restart",
+        "no",
+        "-p",
+        "127.0.0.1::3000",
+        ...labels("production-ingress"),
+        "--mount",
+        `type=volume,src=${httpVolume},dst=/run/wrenly-http,readonly`,
+        "wrenly/deployment-ingress:1",
+      ]);
+      const relayImage = await docker
+        .getImage("wrenly/deployment-ingress:1")
+        .inspect();
+      expect(
+        (
+          await findRuntimeIngress(
+            { ...base, action: "find-runtime-ingress", imageId: relayImage.Id },
+            host.dockerId,
+            signal,
+          )
+        ).running,
+      ).toBe(true);
+      const info = await docker.getContainer(relayId).inspect(),
+        port = info.NetworkSettings.Ports["3000/tcp"]![0]!.HostPort;
+      const request = async (path: string): Promise<string> => {
+        const response = await fetch(`http://127.0.0.1:${port}${path}`, {
+          signal,
+        });
+        expect(response.status).toBe(200);
+        return response.text();
+      };
+      expect(await request("/create")).toBe("saved");
+      expect(await request("/read")).toContain("publishing CRUD fixture");
+      expect(await request("/update")).toBe("updated");
+      expect(await request("/read")).toContain("publishing CRUD updated");
+      // A bare restart receives no saved password. This explicit new test intent
+      // re-verifies the same app/broker before handing settings to its fresh PID1.
+      await command(["docker", "restart", "--time", "1", appId]);
+      await startRuntimeApplication(
+        {
+          ...base,
+          nonce: crypto.randomUUID(),
+          action: "start-runtime-application",
+          containerId: appId,
+          imageId: appImage.Id,
+          framework: "nextjs",
+          runtimeRole: credentials.runtime,
+          appKey: null,
+          brokerId: broker.containerId,
+          brokerImageId: brokerImage.Id,
+          networkId: network.network!.id,
+          upstream,
+          addresses: [publishingAddress],
+        },
+        host.dockerId,
+        signal,
+        resolver,
+      );
+      expect(await request("/read")).toContain("publishing CRUD updated");
+      expect(await request("/delete")).toBe("deleted");
+      expect(await request("/read")).toBe("[]");
+      const appInspection = await docker.getContainer(appId).inspect();
+      expect(appInspection.HostConfig.NetworkMode).toBe("none");
+      expect(JSON.stringify(appInspection)).not.toContain(
+        credentials.runtime.password,
+      );
+      expect(
+        info.Mounts.every(
+          (mount) => mount.Destination !== "/run/wrenly-database",
+        ),
+      ).toBe(true);
+    } finally {
+      for (const id of [relayId, appId, brokerName])
+        if (id)
+          await docker
+            .getContainer(id)
+            .remove({ force: true })
+            .catch(() => {});
+      for (const name of [httpVolume, dbVolume])
+        await docker
+          .getVolume(name)
+          .remove()
+          .catch(() => {});
+      for (const name of [brokerNetwork, ingressNetwork])
+        await docker
+          .getNetwork(name)
+          .remove()
+          .catch(() => {});
+      await docker
+        .getImage(imageTag)
+        .remove()
+        .catch(() => {});
+      await rm(fixture, { recursive: true, force: true });
+    }
+  },
+  90000,
 );

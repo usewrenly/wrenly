@@ -44,3 +44,10 @@ STEPS:
 5. Preserve any pending effect when shutdown, identity drift or deadline prevents confirmation.
 EDGE CASES: Composition alone does not enable database publishing or bypass artifact preparation/admission/recovery gates.
 ERROR STATES: Missing credentials/configuration, unsupported effects or lost leases stop the coordinator with its journal intact.
+
+ACCEPTANCE: A disposable TLS PostgreSQL fixture and the real host helper actions
+must join a trusted guardian, unprivileged HTTP relay and runtime-only broker.
+Perform HTTP create/read/update/delete and prove stored data survives application
+replacement. Keep fixture credentials out of container configuration and prove the
+app has no IP network and the relay has no database socket. This is local runtime
+acceptance; actual framework and Coolify deployment acceptance remain separate.
