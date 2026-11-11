@@ -36,6 +36,14 @@ export async function loadInterruptedDeployment(
         409,
         "Reconciliation requires an interrupted operation settled for at least 65 seconds.",
       );
+    if (
+      deployment.productionDatabaseBinding ||
+      deployment.productionRuntimeJournal
+    )
+      throw new DeploymentStoreError(
+        409,
+        "Database-backed publishing requires its runtime recovery review; stateless reconciliation cannot release it.",
+      );
     const [resources] = await database
       .select()
       .from(deploymentResources)
@@ -76,6 +84,14 @@ export async function finishInterruptedReconciliation(
         .from(deploymentResources)
         .where(eq(deploymentResources.projectId, original.deployment.projectId))
         .for("update");
+      if (
+        current?.productionDatabaseBinding ||
+        current?.productionRuntimeJournal
+      )
+        throw new DeploymentStoreError(
+          409,
+          "Production runtime recovery must inspect all saved effects before releasing publishing.",
+        );
       if (
         !current ||
         !resources ||

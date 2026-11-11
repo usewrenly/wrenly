@@ -1,3 +1,7 @@
+import {
+  validateProductionPublishingJournal,
+  PRODUCTION_PUBLISHING_STEPS,
+} from "@wrenly/db/production-publishing-contract";
 /**
  * Durable publishing persistence.
  * Admission freezes an owned successful revision and reserves capacity; claim-fenced operations record mutation intent and acknowledgement.
@@ -411,13 +415,11 @@ export function admitDeployment(
           "Deployment target differs from this project’s saved target. Explicit migration is required.",
         );
       if (!resources)
-        await transaction
-          .insert(deploymentResources)
-          .values({
-            projectId: project.id,
-            ...target,
-            repositoryName: `wrenly-${project.id}`,
-          });
+        await transaction.insert(deploymentResources).values({
+          projectId: project.id,
+          ...target,
+          repositoryName: `wrenly-${project.id}`,
+        });
       const [saved] = await transaction
         .insert(deployments)
         .values({
@@ -728,13 +730,28 @@ export function completeDeploymentMutation(
 }
 
 /** Separates a finished provider job from HTTP verification without changing its saved remote identity. */
-export function markDeploymentVerifying(database: Database, claim: DeploymentClaim): Promise<void> {
-  return operation("verify routed application", () => database.transaction(async transaction => {
-    const row = await lockClaim(transaction, claim);
-    if (row.mutationIntent || !row.remoteDeploymentUuid || !["deploying", "verifying"].includes(row.status))
-      throw new DeploymentStoreError(409, "A completed remote deployment job is required before URL verification.");
-    await transaction.update(deployments).set({ status: "verifying", updatedAt: new Date() }).where(eq(deployments.id, row.id));
-  }));
+export function markDeploymentVerifying(
+  database: Database,
+  claim: DeploymentClaim,
+): Promise<void> {
+  return operation("verify routed application", () =>
+    database.transaction(async (transaction) => {
+      const row = await lockClaim(transaction, claim);
+      if (
+        row.mutationIntent ||
+        !row.remoteDeploymentUuid ||
+        !["deploying", "verifying"].includes(row.status)
+      )
+        throw new DeploymentStoreError(
+          409,
+          "A completed remote deployment job is required before URL verification.",
+        );
+      await transaction
+        .update(deployments)
+        .set({ status: "verifying", updatedAt: new Date() })
+        .where(eq(deployments.id, row.id));
+    }),
+  );
 }
 
 /** Marks expired work interrupted while preserving remote mutation intent for reconciliation. */
@@ -869,6 +886,28 @@ export function finishDeployment(
           409,
           "Deployment completion lacks confirmed remote evidence.",
         );
+      if (outcome.status === "success" && row.productionDatabaseBinding) {
+        const journal = validateProductionPublishingJournal(
+          row.productionDatabaseBinding,
+          row.productionRuntimeJournal,
+        );
+        const route = journal.completed.at(-1)?.fact;
+        if (
+          journal.pending ||
+          journal.completed.length !== PRODUCTION_PUBLISHING_STEPS.length ||
+          route?.step !== "route-verify" ||
+          new URL(route.url).href !== new URL(outcome.url).href
+        )
+          throw new DeploymentStoreError(
+            409,
+            "Database-backed publishing lacks verified runtime and route evidence.",
+          );
+      }
+      if (!row.productionDatabaseBinding && row.productionRuntimeJournal)
+        throw new DeploymentStoreError(
+          409,
+          "Production runtime journal has no saved database binding.",
+        );
       let url: string | null = null;
       if (outcome.status === "success") {
         const parsed = new URL(outcome.url);
@@ -886,7 +925,8 @@ export function finishDeployment(
         url = parsed.href;
       }
       const status =
-        row.mutationIntent && outcome.status !== "success"
+        (row.mutationIntent || row.productionDatabaseBinding) &&
+        outcome.status !== "success"
           ? "interrupted"
           : outcome.status;
       await transaction

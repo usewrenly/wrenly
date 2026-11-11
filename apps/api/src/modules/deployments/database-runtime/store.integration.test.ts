@@ -1,3 +1,5 @@
+import { finishDeployment } from "../persistence/deployment-store";
+import { loadInterruptedDeployment } from "../persistence/reconciliation-store";
 import { freezeProductionPublishingBinding } from "./binding";
 import { lockDatabaseQueues } from "../../databases/database-store";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
@@ -309,32 +311,28 @@ check(
     await expect(freeze()).rejects.toThrow("applied migrations");
     const operationId = crypto.randomUUID(),
       now = new Date();
-    await database
-      .insert(schema.appDatabaseOperations)
-      .values({
-        id: operationId,
-        databaseId: resourceId,
-        projectId,
-        actorId: actor.userId,
-        requestId: crypto.randomUUID(),
-        requestIdentity: "fixture-applied",
-        kind: "migrate",
-        status: "success",
-        buildId,
-        migrationDigest: manifest.digest,
-        completedAt: now,
-      });
-    await database
-      .insert(schema.appDatabaseMigrations)
-      .values({
-        databaseId: resourceId,
-        operationId,
-        buildId,
-        digest: manifest.digest,
-        manifest: manifest.files,
-        rehearsedSchemaDigest: binding.schemaDigest,
-        completedAt: now,
-      });
+    await database.insert(schema.appDatabaseOperations).values({
+      id: operationId,
+      databaseId: resourceId,
+      projectId,
+      actorId: actor.userId,
+      requestId: crypto.randomUUID(),
+      requestIdentity: "fixture-applied",
+      kind: "migrate",
+      status: "success",
+      buildId,
+      migrationDigest: manifest.digest,
+      completedAt: now,
+    });
+    await database.insert(schema.appDatabaseMigrations).values({
+      databaseId: resourceId,
+      operationId,
+      buildId,
+      digest: manifest.digest,
+      manifest: manifest.files,
+      rehearsedSchemaDigest: binding.schemaDigest,
+      completedAt: now,
+    });
     const frozen = await freeze();
     expect(frozen.resourceId).toBe(resourceId);
     expect(frozen.migrationDigest).toBe(manifest.digest);
@@ -348,6 +346,59 @@ check(
         });
       }),
     ).rejects.toThrow();
+  },
+);
+check(
+  "runtime evidence cannot be bypassed by generic completion or stateless reconciliation",
+  async () => {
+    const id = crypto.randomUUID(),
+      lease = crypto.randomUUID();
+    await database
+      .insert(schema.deployments)
+      .values({
+        id,
+        projectId,
+        buildId,
+        userId: actor.userId,
+        idempotencyKey: crypto.randomUUID(),
+        requestIdentity: "fixture-finalization",
+        stack: "nextjs",
+        files: [],
+        sourceSha256: binding.sourceSha256,
+        status: "verifying",
+        claimToken: lease,
+        leaseExpiresAt: new Date(Date.now() + 600000),
+        artifactImageId: `sha256:${"e".repeat(64)}`,
+        registryDigest: `sha256:${"f".repeat(64)}`,
+        remoteDeploymentUuid: "fixture-job",
+        productionDatabaseBinding: { ...binding, deploymentId: id },
+        productionRuntimeJournal: { version: 1, pending: null, completed: [] },
+      });
+    await expect(
+      finishDeployment(
+        database,
+        { deploymentId: id, token: lease },
+        { status: "success", url: "https://app.example.test/" },
+      ),
+    ).rejects.toThrow("runtime and route evidence");
+    await finishDeployment(
+      database,
+      { deploymentId: id, token: lease },
+      { status: "failed", code: "PROVIDER_FAILURE" },
+    );
+    const [saved] = await database
+      .select()
+      .from(schema.deployments)
+      .where(eq(schema.deployments.id, id));
+    expect(saved?.status).toBe("interrupted");
+    expect(saved?.productionDatabaseBinding?.deploymentId).toBe(id);
+    await database
+      .update(schema.deployments)
+      .set({ updatedAt: new Date(Date.now() - 70000) })
+      .where(eq(schema.deployments.id, id));
+    await expect(loadInterruptedDeployment(database, id)).rejects.toThrow(
+      "stateless reconciliation",
+    );
   },
 );
 check(
