@@ -15,3 +15,4 @@ export type { DatabaseProvider, DatabaseProviderIntent, DatabaseProviderResource
 export { createCoolifyDatabaseProvider } from "./providers/coolify/databases/provider";
 
 export { readCoolifyServerIdentity, type CoolifyServerIdentity } from './providers/coolify/server-identity';
+export { createDatabaseRuntimeComposition, type DatabaseRuntimeCompositionInput, type DatabaseRuntimeComposition } from './providers/coolify/database-runtime/composition';
