@@ -156,7 +156,24 @@ export const ProductionRuntimeNetworkReply = z
       .nullable(),
   })
   .strict();
+export const ProductionRuntimeApplicationInspection =
+  ProductionRuntimeVolumeRequest.extend({
+    action: z.literal("inspect-runtime-application"),
+    containerId: z.string().regex(/^[a-f0-9]{64}$/),
+    imageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  });
+export const ProductionRuntimeApplicationReply = z
+  .object({
+    version: z.literal(1),
+    nonce: z.uuid(),
+    dockerId: ProductionRuntimeHostIdentity.shape.dockerId,
+    containerId: z.string().regex(/^[a-f0-9]{64}$/),
+    imageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    running: z.boolean(),
+  })
+  .strict();
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeApplicationInspection,
   ProductionRuntimeNetworkRequest,
   ProductionRuntimeHostInspection,
   ProductionRuntimeVolumeRequest,

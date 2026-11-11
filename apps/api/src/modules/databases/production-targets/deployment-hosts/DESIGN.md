@@ -79,3 +79,16 @@ STEPS:
 4. Independently inspect and return its exact Docker ID with the original nonce.
 EDGE CASES: Inspection does not adopt a network or retry creation; generated apps never join this bridge.
 ERROR STATES: Unexpected ownership/settings/attachments stop before credentials are sent. Network cleanup is a separate durable action.
+
+COMPONENT: Production application isolation inspection
+PURPOSE: Refuse runtime credential delivery to a changed or incorrectly configured application container.
+INPUTS: Saved deployment/project/resource UUIDs, exact daemon/container/image identities and nonce.
+OUTPUTS: Bounded container/image identity and running flag; no environment, paths or logs returned.
+STEPS:
+1. Validate the complete request and hold the per-deployment host lock.
+2. Inspect only the exact image and container IDs; verify guardian version, entrypoint, original image environment and empty command.
+3. Require blocked networking, read-only root, fixed resource bounds, no host namespaces/devices, and the minimal guardian capabilities.
+4. Verify exactly two deployment-owned Unix socket volumes, with the database mount read-only.
+5. Recheck lock and cancellation before returning the original nonce and safe facts.
+EDGE CASES: Docker may omit an empty image command; normalize only that absence to null. Capability prefixes are normalized, not expanded.
+ERROR STATES: Any mismatch refuses approval. Inspection never starts/restarts an application or delivers credentials; the publishing worker retains those separately journaled responsibilities.

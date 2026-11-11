@@ -46,3 +46,9 @@ broker. It rejects existing networks during creation and rejects custom options
 or attached containers during inspection. This does not give the generated app
 network access: the app uses only its authenticated Unix socket. Publishing must
 save the returned daemon/network identity before it can deliver a runtime role.
+
+`application-inspection.ts` checks the actual container rather than trusting a
+provider status. For example, a correct image with an added environment password,
+network connection or writable database mount is rejected. The reply contains
+only the expected image/container IDs and whether it is running. Inspection itself
+does not start the app or deliver credentials.
