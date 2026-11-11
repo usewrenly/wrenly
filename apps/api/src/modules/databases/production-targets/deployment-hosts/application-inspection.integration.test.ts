@@ -81,6 +81,8 @@ native(
         "no-new-privileges:true",
         "--restart",
         "no",
+        "--tmpfs",
+        "/run/wrenly-bootstrap:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
         ...Object.entries({
           "io.wrenly.deployment-id": deploymentId,
           "io.wrenly.project-id": projectId,

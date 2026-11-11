@@ -57,6 +57,7 @@ export function createDatabaseRuntimeComposition(
         labels: { ...labels, "io.wrenly.role": "production-application" },
         volumes: ["http:/run/wrenly-http", "database:/run/wrenly-database:ro"],
         tmpfs: [
+          "/run/wrenly-bootstrap:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
           "/tmp:rw,noexec,nosuid,size=64m,uid=1000,gid=1000",
           ...(input.framework === "laravel"
             ? [

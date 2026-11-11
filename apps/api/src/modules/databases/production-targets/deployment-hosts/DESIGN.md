@@ -132,3 +132,16 @@ STEPS:
 6. Require the exact trusted readiness marker, re-inspect the running container, then recheck DNS and lock before acknowledgement.
 EDGE CASES: The helper has its own bounded deadline. Generated child output is discarded by the guardian and cannot forge readiness.
 ERROR STATES: Unknown startup preserves the resource for explicit inspection; no automatic credential replay, restart or application cleanup.
+
+COMPONENT: Provider-started guardian handoff
+PURPOSE: Allow Coolify to start an isolated guardian before the helper attaches, without resending credentials to an already-started generated app.
+INPUTS: Exact verified guardian container and a root-only memory-backed startup state directory.
+OUTPUTS: Waiting/consumed/ready state read only by the fixed host helper; generated code cannot write it.
+STEPS:
+1. Mount a dedicated root-owned mode-0700 tmpfs at /run/wrenly-bootstrap; require it in container inspection.
+2. PID1 verifies the directory ownership/type/mode and creates its state file exclusively before reading stdin.
+3. Wait up to two minutes for the separately authorized helper; mark the input consumed before parsing or starting generated code.
+4. The helper may attach to a provider-started running guardian only when the exact root-owned state is waiting. Ready/consumed/unknown states refuse replay.
+5. Readiness changes state to ready before emitting the fixed trusted marker.
+EDGE CASES: A stopped guardian may be started once under saved intent. The generated user has no access to the bootstrap tmpfs. A bare restart still cannot recover credentials automatically.
+ERROR STATES: Missing/unsafe state storage, consumed input, lost acknowledgement or failed startup requires inspection; no implicit credential resend.

@@ -45,6 +45,7 @@ const Container = z.object({
     NanoCpus: z.literal(2000000000),
     PidsLimit: z.literal(256),
     RestartPolicy: z.object({ Name: z.literal("no") }),
+    Tmpfs: z.record(z.string(), z.string()),
     Binds: Strings.nullable().optional(),
     Devices: z.array(z.unknown()).nullable().optional(),
     DeviceRequests: z.array(z.unknown()).nullable().optional(),
@@ -128,6 +129,23 @@ export function inspectProductionApplicationContainer(
     )
       throw new Error("Application startup changed.");
     const host = container.HostConfig;
+    const bootstrapOptions = new Set(
+      (host.Tmpfs["/run/wrenly-bootstrap"] ?? "").split(","),
+    );
+    if (
+      ![
+        "rw",
+        "noexec",
+        "nosuid",
+        "nodev",
+        "size=1m",
+        "uid=0",
+        "gid=0",
+        "mode=0700",
+      ].every((option) => bootstrapOptions.has(option)) ||
+      bootstrapOptions.size !== 8
+    )
+      throw new Error("Guardian state storage changed.");
     if (
       !equal(capabilities(host.CapDrop), ["ALL"]) ||
       !equal(capabilities(host.CapAdd), ["CHOWN", "SETGID", "SETUID"]) ||

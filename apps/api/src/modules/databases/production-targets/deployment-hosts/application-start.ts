@@ -113,13 +113,28 @@ export async function startRuntimeApplication(
       containerId: input.containerId,
       imageId: input.imageId,
     };
-    if (inspectProductionApplicationContainer(container, image, scope).running)
-      throw new Error(
-        "An active application requires inspection, never credential replay.",
-      );
+    const wasRunning = inspectProductionApplicationContainer(
+      container,
+      image,
+      scope,
+    ).running;
     lock.assertHeld();
     signal.throwIfAborted();
-    await runRuntimeHostDocker(["start", input.containerId], signal);
+    if (!wasRunning)
+      await runRuntimeHostDocker(["start", input.containerId], signal);
+    const waiting = await runRuntimeHostDocker(
+      [
+        "exec",
+        "--user",
+        "0:0",
+        input.containerId,
+        "cat",
+        "/run/wrenly-bootstrap/state",
+      ],
+      signal,
+    );
+    if (waiting !== "waiting")
+      throw new Error("Guardian already consumed its runtime settings.");
     child = Bun.spawn(
       [
         "docker",

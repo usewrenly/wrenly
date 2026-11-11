@@ -51,6 +51,10 @@ function fixture() {
       NanoCpus: 2000000000,
       PidsLimit: 256,
       RestartPolicy: { Name: "no" },
+      Tmpfs: {
+        "/run/wrenly-bootstrap":
+          "rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
+      },
       Binds: null,
       Devices: [],
       DeviceRequests: [],
@@ -136,6 +140,10 @@ test("application inspection rejects retargeting, added secrets, privileges and 
     },
     (value) => {
       value.container.Config.User = "1000:1000";
+    },
+    (value) => {
+      value.container.HostConfig.Tmpfs["/run/wrenly-bootstrap"] =
+        "rw,size=1m,uid=1000,gid=1000,mode=0777";
     },
     (value) => {
       value.container.Mounts.push({

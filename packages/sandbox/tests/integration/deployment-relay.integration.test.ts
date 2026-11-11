@@ -165,7 +165,7 @@ native(
         throw new Error("Guardian fixture bundle failed.");
       await Bun.write(
         join(directory, "node_modules/next/dist/bin/next"),
-        'if(process.getuid()!==1000||!/^wrenly_[a-f0-9]{32}_runtime$/.test(process.env.PGUSER??"")||!/^a{64}$/.test(process.env.PGPASSWORD??""))process.exit(1); try{process.setuid(0);process.exit(2)}catch(error){if(error.code!=="EPERM")process.exit(3)} try{process.kill(1,0);process.exit(4)}catch(error){if(error.code!=="EPERM")process.exit(5)} Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
+        'if(process.getuid()!==1000||!/^wrenly_[a-f0-9]{32}_runtime$/.test(process.env.PGUSER??"")||!/^a{64}$/.test(process.env.PGPASSWORD??""))process.exit(1); try{await Bun.file("/run/wrenly-bootstrap/state").text();process.exit(6)}catch(error){if(!["EACCES","EPERM"].includes(error.code))process.exit(7)} try{process.setuid(0);process.exit(2)}catch(error){if(error.code!=="EPERM")process.exit(3)} try{process.kill(1,0);process.exit(4)}catch(error){if(error.code!=="EPERM")process.exit(5)} Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
       );
       const image = await docker.getImage("oven/bun:alpine").inspect();
       await docker.createVolume({ Name: volumeName, Labels: labels });
@@ -183,7 +183,11 @@ native(
           NetworkMode: "none",
           ReadonlyRootfs: true,
           Binds: [`${directory}:/app:ro`, `${volumeName}:/run/wrenly-http`],
-          Tmpfs: { "/tmp": "rw,noexec,nosuid,size=16m" },
+          Tmpfs: {
+            "/tmp": "rw,noexec,nosuid,size=16m",
+            "/run/wrenly-bootstrap":
+              "rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
+          },
           Memory: 128 * 1024 * 1024,
           PidsLimit: 64,
         },
@@ -246,6 +250,20 @@ native(
       await attached.exited;
       expect((await container.inspect()).State.Running).toBe(false);
       await container.start();
+      const rejected = Bun.spawn(
+        [
+          "docker",
+          "--host",
+          "unix:///var/run/docker.sock",
+          "attach",
+          "--sig-proxy=false",
+          container.id,
+        ],
+        { stdin: "pipe", stdout: "ignore", stderr: "ignore" },
+      );
+      rejected.stdin.write("{}");
+      rejected.stdin.end();
+      await rejected.exited;
       const restarted = await container.wait();
       expect(restarted.StatusCode).toBe(125);
     } finally {

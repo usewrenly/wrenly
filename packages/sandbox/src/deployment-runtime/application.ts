@@ -1,9 +1,12 @@
 /** Trusted production PID1. Runtime settings arrive on stdin and exist only in the generated child's process environment. */
+import { lstat, writeFile } from "node:fs/promises";
 import { applicationDatabaseEnvironment } from "../databases/application-runtime/environment";
 import { LARAVEL_START_COMMAND } from "../source-policy/laravel-runtime";
 import { startApplicationHttpBridge } from "./application-http";
 const INPUT_BYTES = 8192;
-const INPUT_TIMEOUT_MS = 5000;
+const INPUT_TIMEOUT_MS = 120_000;
+const BOOTSTRAP_DIRECTORY = "/run/wrenly-bootstrap";
+const BOOTSTRAP_STATE = `${BOOTSTRAP_DIRECTORY}/state`;
 const STARTUP_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5000;
 const PROBE_TIMEOUT_MS = 500;
@@ -31,6 +34,15 @@ export async function runProductionApplication(): Promise<never> {
   process.once("SIGINT", stop);
   let exitCode: number;
   try {
+    const directory = await lstat(BOOTSTRAP_DIRECTORY);
+    if (
+      !directory.isDirectory() ||
+      directory.isSymbolicLink() ||
+      directory.uid !== 0 ||
+      directory.mode & 0o077
+    )
+      throw new Error("Unsafe guardian state storage.");
+    await writeFile(BOOTSTRAP_STATE, "waiting", { flag: "wx", mode: 0o600 });
     inputTimer = setTimeout(() => process.exit(125), INPUT_TIMEOUT_MS);
     const reader = Bun.stdin.stream().getReader();
     const chunks: Uint8Array[] = [];
@@ -48,6 +60,7 @@ export async function runProductionApplication(): Promise<never> {
       reader.releaseLock();
     }
     clearTimeout(inputTimer);
+    await writeFile(BOOTSTRAP_STATE, "consumed", { flag: "w", mode: 0o600 });
     const input: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     if (
       !object(input) ||
@@ -167,6 +180,7 @@ export async function runProductionApplication(): Promise<never> {
       await Bun.sleep(PROBE_INTERVAL_MS);
     }
     if (!ready) throw new Error("Application readiness was not established.");
+    await writeFile(BOOTSTRAP_STATE, "ready", { flag: "w", mode: 0o600 });
     process.stdout.write("WRENLY_PRODUCTION_APPLICATION_READY_V1\n");
     exitCode = await child.exited;
   } catch {
