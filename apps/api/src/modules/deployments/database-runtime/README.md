@@ -40,3 +40,9 @@ the exact guardian image and isolation; it never guesses Coolify container names
 `service-adapter.ts` creates and starts only the saved credential-free composition.
 Changing server placement or image digests refuses the effect before a provider call.
 These adapters do not yet activate the Production executor.
+
+`route-adapter.ts` checks the single configured HTTP relay URL, then independently
+checks the broker, app and relay on the deployment host. It probes the public page
+and exact deployment marker without forwarding provider or database credentials.
+A provider's green status alone never completes publishing. This is route proof;
+real application database reads/writes remain a separate acceptance requirement.

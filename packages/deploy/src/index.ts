@@ -16,4 +16,4 @@ export { createCoolifyDatabaseProvider } from "./providers/coolify/databases/pro
 
 export { readCoolifyServerIdentity, type CoolifyServerIdentity } from './providers/coolify/server-identity';
 export { createDatabaseRuntimeComposition, type DatabaseRuntimeCompositionInput, type DatabaseRuntimeComposition } from './providers/coolify/database-runtime/composition';
-export { createDatabaseRuntimeService, verifyDatabaseRuntimeService, startDatabaseRuntimeService } from './providers/coolify/database-runtime/service';
+export { createDatabaseRuntimeService, verifyDatabaseRuntimeService, startDatabaseRuntimeService, readDatabaseRuntimeServiceRoute } from './providers/coolify/database-runtime/service';

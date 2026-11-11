@@ -4,6 +4,7 @@ import {
   createDatabaseRuntimeService,
   verifyDatabaseRuntimeService,
   startDatabaseRuntimeService,
+  readDatabaseRuntimeServiceRoute,
 } from "../../../../src/providers/coolify/database-runtime/service";
 import { createDatabaseRuntimeComposition } from "../../../../src/providers/coolify/database-runtime/composition";
 const input = {
@@ -83,4 +84,83 @@ test("verification never adopts foreign or modified compositions and start is ex
     new AbortController().signal,
   );
   expect(mutations).toBe(1);
+});
+
+test("route discovery exposes only the saved relay and rechecks composition on the route response", async () => {
+  const good = {
+    uuid: "service-fixture",
+    name: `wrenly-${input.deploymentId}`,
+    docker_compose_raw: createDatabaseRuntimeComposition(input).document,
+    connect_to_docker_network: false,
+    applications: [
+      { name: "application", fqdn: null },
+      { name: "ingress", fqdn: "https://fixture.example/" },
+    ],
+  };
+  const signal = new AbortController().signal;
+  expect(
+    await readDatabaseRuntimeServiceRoute(
+      { request: async () => good },
+      "service-fixture",
+      input,
+      signal,
+    ),
+  ).toBe("https://fixture.example/");
+  expect(
+    await readDatabaseRuntimeServiceRoute(
+      {
+        request: async () => ({
+          ...good,
+          applications: [
+            { name: "application", fqdn: null },
+            { name: "ingress", fqdn: null },
+          ],
+        }),
+      },
+      "service-fixture",
+      input,
+      signal,
+    ),
+  ).toBeNull();
+  for (const changed of [
+    {
+      ...good,
+      applications: [
+        { name: "application", fqdn: "https://direct.example" },
+        { name: "ingress", fqdn: "https://fixture.example/" },
+      ],
+    },
+    {
+      ...good,
+      applications: [
+        { name: "application", fqdn: null },
+        {
+          name: "ingress",
+          fqdn: "https://fixture.example/,https://other.example/",
+        },
+      ],
+    },
+    {
+      ...good,
+      applications: [
+        { name: "application", fqdn: null },
+        { name: "ingress", fqdn: "https://fixture.example/?token=fixture" },
+      ],
+    },
+    {
+      ...good,
+      applications: [...good.applications, { name: "other", fqdn: null }],
+    },
+    { ...good, docker_compose_raw: "changed" },
+  ]) {
+    let reads = 0;
+    await expect(
+      readDatabaseRuntimeServiceRoute(
+        { request: async () => (++reads === 1 ? good : changed) },
+        "service-fixture",
+        input,
+        signal,
+      ),
+    ).rejects.toThrow("route could not be verified");
+  }
 });

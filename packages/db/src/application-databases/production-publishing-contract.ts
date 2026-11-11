@@ -179,6 +179,7 @@ export function validateProductionPublishingJournal(
         !["http:", "https:"].includes(url.protocol) ||
         url.username ||
         url.password ||
+        url.search ||
         url.hash ||
         fact.sourceSha256 !== binding.sourceSha256
       )

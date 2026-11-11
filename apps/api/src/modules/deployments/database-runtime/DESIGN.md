@@ -17,3 +17,17 @@ Discover applications read-only by all resource labels, require exactly one matc
 and independently inspect its image, mounts and isolation before delivering stdin.
 Service requests use the frozen image digests and placement; no database credential
 enters the provider payload. A missing or ambiguous match preserves pending intent.
+
+COMPONENT: Production route verification
+PURPOSE: Accept a published URL only after independent host and HTTP proofs.
+INPUTS: Saved route-verification intent, prior broker/service/app acknowledgements,
+trusted ingress image, fixed provider client and current publishing fence.
+OUTPUTS: Credential-free URL/source acknowledgement after exact deployment marker verification.
+STEPS:
+1. Require the saved composition digests and all earlier runtime identities.
+2. Read the exact service and allow a single ingress domain only; reject direct app exposure.
+3. Re-inspect the broker, generated app and credential-free ingress through the fixed host helper.
+4. Require all three running and the broker socket ready; probe the public root and deployment marker without credentials or redirects.
+5. Recheck the publishing fence before returning the safe acknowledgement.
+EDGE CASES: A missing route or not-ready HTTP endpoint can be polled within the worker's bounded deadline. No provider mutation is retried.
+ERROR STATES: Changed isolation, ambiguous routes, foreign marker or cancelled claims preserve pending intent.
