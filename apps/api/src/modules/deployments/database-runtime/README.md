@@ -21,3 +21,9 @@ pretend the original failed; recovery must inspect the original resource first.
 These are internal coordinator components. Database-backed publishing remains
 unavailable until the executor, recovery, setup/UI and joined acceptance are connected.
 A completed broker startup test does not establish public routing or database CRUD.
+
+`executor.ts` runs the bounded ordered sequence under the worker's lock/lease.
+It reloads the saved intent before calling an adapter and reloads the acknowledgement
+before advancing. A connection loss or cancellation preserves the pending step.
+The adapter must still provide the real host/provider proof; an injected unit-test
+adapter is not evidence that a public deployment is ready.
