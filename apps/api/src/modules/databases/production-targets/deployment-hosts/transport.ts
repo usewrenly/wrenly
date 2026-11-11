@@ -281,3 +281,40 @@ export async function executeRemoteRuntimeVolumeRequest(input: {
     );
   }
 }
+
+/** Checks a journaled broker-network acknowledgement without adopting a foreign deployment network. */
+export async function executeRemoteRuntimeNetworkRequest(input: {
+  target: ProductionRuntimeHostTarget;
+  addresses: string[];
+  privateKey: string;
+  request: import("@wrenly/db/production-host-contract").ProductionRuntimeNetworkRequest;
+  signal: AbortSignal;
+  lookup?: RuntimeHostLookup;
+}): Promise<
+  import("zod").infer<
+    typeof import("@wrenly/db/production-host-contract").ProductionRuntimeNetworkReply
+  >
+> {
+  try {
+    const { ProductionRuntimeNetworkRequest, ProductionRuntimeNetworkReply } =
+      await import("@wrenly/db/production-host-contract");
+    const request = ProductionRuntimeNetworkRequest.parse(input.request);
+    const reply = ProductionRuntimeNetworkReply.parse(
+      await executeRuntimeHostRequest({ ...input, request }),
+    );
+    if (
+      reply.nonce !== request.nonce ||
+      reply.dockerId !== request.expectedDockerId ||
+      (reply.network &&
+        reply.network.name !==
+          `wrenly-deployment-network-${request.deploymentId}`) ||
+      (request.action === "create-runtime-network" && !reply.network)
+    )
+      throw new Error("Host network reply identity changed.");
+    return reply;
+  } catch {
+    throw new Error(
+      "Deployment broker network could not be confirmed. Inspect the saved operation before retrying.",
+    );
+  }
+}

@@ -52,3 +52,14 @@ provider status. For example, a correct image with an added environment password
 network connection or writable database mount is rejected. The reply contains
 only the expected image/container IDs and whether it is running. Inspection itself
 does not start the app or deliver credentials.
+
+`broker.ts` gives a published app its runtime database connection. Only the trusted
+broker joins the private network; the generated app reaches its authenticated Unix
+socket. The password arrives on stdin and its configuration is held in container
+memory-backed storage. Docker environment/command fields and host files never hold
+it. `broker-inspection.ts` checks an interrupted broker without sending another
+password or restarting it. A healthy socket is one step: the complete publishing
+flow must still prove the expected database and real application reads/writes.
+
+The API build now includes `dist/runtime-host.js`. Installing that helper is part
+of deployment-host setup, not permission to enable the unfinished publishing flow.

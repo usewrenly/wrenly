@@ -92,3 +92,29 @@ STEPS:
 5. Recheck lock and cancellation before returning the original nonce and safe facts.
 EDGE CASES: Docker may omit an empty image command; normalize only that absence to null. Capability prefixes are normalized, not expanded.
 ERROR STATES: Any mismatch refuses approval. Inspection never starts/restarts an application or delivers credentials; the publishing worker retains those separately journaled responsibilities.
+
+COMPONENT: Runtime-only Production broker startup
+PURPOSE: Open one authenticated Unix database socket without exposing runtime passwords through Docker configuration or host files.
+INPUTS: Saved deployment/daemon/project/resource identities, exact trusted broker image and network IDs, pinned private TLS endpoint, runtime role and optional CA on stdin.
+OUTPUTS: Non-secret broker/container/image/network/volume acknowledgement; socket readiness is not database CRUD proof.
+STEPS:
+1. Validate the matching runtime role and format the fixed verified-TLS broker settings in memory.
+2. Hold the deployment lock, recheck every DNS answer against the saved private set, and verify exact owned empty network/socket volume and trusted image entrypoint.
+3. Refuse an existing broker; create one fixed unprivileged, read-only, bounded container with no credential environment, custom command, bind mount or logs.
+4. Start it once and attach through the explicit Docker socket with signal forwarding disabled; deliver settings only through stdin to memory-backed files.
+5. Require the exact container/image to stay running and its Unix socket healthcheck to pass; recheck DNS/lock before acknowledging.
+6. On unknown effects, preserve resources for explicit inspection. Terminate and await the attach process without forwarding termination to the broker.
+EDGE CASES: The helper accepts runtime credentials only, never reader/migrator/management roles. Bare container restarts cannot reuse saved secrets.
+ERROR STATES: Lost replies, DNS changes, readiness failures and ownership changes retain caller recovery intent; no automatic creation or credential retry.
+
+COMPONENT: Interrupted broker inspection
+PURPOSE: Inspect an exact saved broker without replaying startup or credentials.
+INPUTS: Saved container/image/network/resource identities and pinned endpoint, with no password.
+OUTPUTS: Safe identity, running and socket-ready facts.
+STEPS:
+1. Hold the deployment lock and inspect the exact container/image.
+2. Check fixed user, entrypoint, original image environment, privilege/resource/network limits and the sole socket volume.
+3. Independently inspect network and volume labels/options; refuse foreign network attachments.
+4. Return readiness only while the exact broker is running; a stopped broker stays stopped.
+EDGE CASES: Socket health does not establish upstream TLS, permissions or application behavior; joined database validation remains required.
+ERROR STATES: Mismatch refuses recovery acknowledgement and never resends credentials.

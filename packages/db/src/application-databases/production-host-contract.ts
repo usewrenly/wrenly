@@ -172,7 +172,60 @@ export const ProductionRuntimeApplicationReply = z
     running: z.boolean(),
   })
   .strict();
+export const ProductionRuntimeBrokerRequest =
+  ProductionRuntimeVolumeRequest.extend({
+    action: z.literal("create-runtime-broker"),
+    imageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    networkId: z.string().regex(/^[a-f0-9]{64}$/),
+    upstream: z
+      .object({
+        hostname: ProductionRuntimeHostTarget.shape.host,
+        address: z.ipv4(),
+        port: z.number().int().min(1).max(65535),
+      })
+      .strict(),
+    addresses: z.array(z.ipv4()).min(1).max(16),
+    runtimeRole: z
+      .object({
+        user: z.string().max(64),
+        password: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict(),
+    certificateAuthority: z.string().max(32768).optional(),
+  });
+export const ProductionRuntimeBrokerReply = z
+  .object({
+    version: z.literal(1),
+    nonce: z.uuid(),
+    dockerId: ProductionRuntimeHostIdentity.shape.dockerId,
+    containerId: z.string().regex(/^[a-f0-9]{64}$/),
+    imageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    networkId: z.string().regex(/^[a-f0-9]{64}$/),
+    volumeName: z.string().max(128),
+  })
+  .strict();
+export const ProductionRuntimeBrokerInspection =
+  ProductionRuntimeVolumeRequest.extend({
+    action: z.literal("inspect-runtime-broker"),
+    containerId: z.string().regex(/^[a-f0-9]{64}$/),
+    imageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    networkId: z.string().regex(/^[a-f0-9]{64}$/),
+    upstream: z
+      .object({
+        hostname: ProductionRuntimeHostTarget.shape.host,
+        address: z.ipv4(),
+        port: z.number().int().min(1).max(65535),
+      })
+      .strict(),
+  });
+export const ProductionRuntimeBrokerInspectionReply =
+  ProductionRuntimeBrokerReply.extend({
+    running: z.boolean(),
+    socketReady: z.boolean(),
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeBrokerInspection,
+  ProductionRuntimeBrokerRequest,
   ProductionRuntimeApplicationInspection,
   ProductionRuntimeNetworkRequest,
   ProductionRuntimeHostInspection,
