@@ -7,6 +7,9 @@ import {
  * Admission freezes an owned successful revision and reserves capacity; claim-fenced operations record mutation intent and acknowledgement.
  * Execution snapshots and encrypted runtime secrets are server-only, distinct from safe status reads.
  */
+import { freezeProductionPublishingBinding } from "../database-runtime/binding";
+import { accessContext } from "../../auth/access/access-context";
+import type { ProductionPublishingBinding } from "@wrenly/db/production-publishing-contract";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import { hasDatabaseWork } from "../../databases/database-activity";
 import { validateLaravelSource } from "../../../../../../packages/sandbox/src/source-policy/laravel-runtime";
@@ -257,6 +260,7 @@ export function admitDeployment(
     buildId: string;
     idempotencyKey: string;
     target: DeploymentTarget;
+    allowProductionDatabase?: boolean;
   },
 ): Promise<{ deploymentId: string; replayed: boolean }> {
   return operation("admit", async () => {
@@ -377,12 +381,36 @@ export function admitDeployment(
           "This build contains invalid or private deployment source. Review its files and runtime configuration.",
         );
       }
+      const target = parseTarget(input.target);
+      const deploymentId = crypto.randomUUID();
+      let productionBinding: ProductionPublishingBinding | undefined;
       try {
-        if (readAppDatabaseManifest(source.files, project.stack))
-          throw new DeploymentStoreError(
-            409,
-            "This revision declares a database. Publishing requires a separately verified Production database binding; that integration is not enabled yet.",
+        if (readAppDatabaseManifest(source.files, project.stack)) {
+          const principal = accessContext.getStore()?.principal;
+          if (
+            !input.allowProductionDatabase ||
+            !principal ||
+            principal.userId !== input.userId ||
+            (project.stack !== "nextjs" && project.stack !== "laravel")
+          )
+            throw new DeploymentStoreError(
+              409,
+              "This revision needs enabled Production publishing, a ready Production database and reviewed applied migrations.",
+            );
+          productionBinding = await freezeProductionPublishingBinding(
+            transaction,
+            {
+              deploymentId,
+              projectId: project.id,
+              buildId: build.id,
+              sourceSha256: source.sha256,
+              files: source.files,
+              stack: project.stack,
+              serverId: target.coolifyServerUuid,
+              principal,
+            },
           );
+        }
       } catch (error) {
         if (error instanceof DeploymentStoreError) throw error;
         throw new DeploymentStoreError(
@@ -390,7 +418,6 @@ export function admitDeployment(
           "Review this revision’s database manifest and frozen migrations before publishing.",
         );
       }
-      const target = parseTarget(input.target);
       if (
         target.registryOrigin &&
         !["nextjs", "laravel"].includes(project.stack)
@@ -423,6 +450,11 @@ export function admitDeployment(
       const [saved] = await transaction
         .insert(deployments)
         .values({
+          id: deploymentId,
+          productionDatabaseBinding: productionBinding ?? null,
+          productionRuntimeJournal: productionBinding
+            ? { version: 1, pending: null, completed: [] }
+            : null,
           projectId: project.id,
           buildId: build.id,
           userId: input.userId,
@@ -880,7 +912,7 @@ export function finishDeployment(
         (row.mutationIntent ||
           !row.registryDigest ||
           !row.artifactImageId ||
-          !row.remoteDeploymentUuid)
+          (!row.productionDatabaseBinding && !row.remoteDeploymentUuid))
       )
         throw new DeploymentStoreError(
           409,

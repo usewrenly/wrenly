@@ -52,3 +52,17 @@ It reloads claim-bound credentials before each effect. Container discovery and
 readiness may be polled for a bounded time; creation, service start and credential
 delivery are each invoked once after their durable intent. It remains unmounted
 until admission, recovery and joined Production acceptance are complete.
+
+Admission can explicitly enable the Production path after startup owns the complete
+runtime module. A database declaration then requires the current owner session,
+ready Production resource, matching applied migrations and verified deployment host.
+The binding and empty runtime journal are saved in the same transaction as the new
+deployment. Existing deployments retain their saved binding on exact request replay;
+a browser cannot choose the Production target or bypass a failed readiness check.
+
+The image executor selects the database path from the saved binding, never from the
+current prompt. Before any Git or registry effect, it requires the full Production
+runtime adapter. The image is prepared with the exact migration digest and trusted
+stdin guardian. After private promotion, the ordered runtime coordinator replaces
+stateless application creation and environment delivery. Its route proof, rather
+than a stateless Coolify job UUID, is the completion evidence for this topology.

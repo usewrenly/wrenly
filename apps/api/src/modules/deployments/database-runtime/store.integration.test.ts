@@ -9,6 +9,9 @@ import { createProductionProjectCredentials } from "@wrenly/db/production-projec
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import type { z } from "zod";
+import { accessContext } from "../../auth/access/access-context";
+import { admitDeployment } from "../persistence/deployment-store";
 import { finishDeployment } from "../persistence/deployment-store";
 import { loadInterruptedDeployment } from "../persistence/reconciliation-store";
 import { freezeProductionPublishingBinding } from "./binding";
@@ -28,6 +31,12 @@ import {
   acknowledgeProductionRuntimeEffect,
   loadProductionPublishingRuntime,
 } from "./store";
+import {
+  beginProductionPublishingEffect,
+  acknowledgeProductionPublishingEffect,
+  type ProductionPublishingJournal,
+  ProductionPublishingReceipt,
+} from "@wrenly/db/production-publishing-contract";
 import type { ProductionPublishingBinding } from "@wrenly/db/production-publishing-contract";
 const url = process.env.WRENLY_TEST_PRODUCTION_PUBLISHING_URL;
 if (url) {
@@ -351,6 +360,70 @@ check(
     expect(frozen.resourceId).toBe(resourceId);
     expect(frozen.migrationDigest).toBe(manifest.digest);
     expect(frozen.sourceSha256).toBe(source.sha256);
+    // Admission must save the exact proof atomically; the original executor fixture is restored afterwards.
+    await database
+      .update(schema.deployments)
+      .set({ status: "success" })
+      .where(eq(schema.deployments.id, deploymentId));
+    const request = {
+      projectId,
+      userId: actor.userId,
+      buildId,
+      idempotencyKey: crypto.randomUUID(),
+      allowProductionDatabase: true,
+      target: {
+        gitInstanceUrl: "http://gitea.fixture",
+        repositoryOwner: "fixture",
+        coolifyInstanceUrl: "http://coolify.fixture",
+        coolifyProjectUuid: "fixture",
+        coolifyServerUuid: "fixture-server",
+        coolifyEnvironmentName: "production",
+      },
+    };
+    let admittedId: string | undefined;
+    try {
+      await expect(admitDeployment(database, request)).rejects.toThrow(
+        "Production",
+      );
+      await accessContext.run({ principal: actor }, async () => {
+        await expect(
+          admitDeployment(database, {
+            ...request,
+            allowProductionDatabase: false,
+          }),
+        ).rejects.toThrow("Production");
+        const admitted = await admitDeployment(database, request);
+        admittedId = admitted.deploymentId;
+        const [saved] = await database
+          .select()
+          .from(schema.deployments)
+          .where(eq(schema.deployments.id, admittedId));
+        expect(saved?.productionDatabaseBinding?.resourceId).toBe(resourceId);
+        expect(saved?.productionDatabaseBinding?.deploymentId).toBe(admittedId);
+        expect(saved?.productionDatabaseBinding?.sourceSha256).toBe(
+          source.sha256,
+        );
+        expect(saved?.productionRuntimeJournal).toEqual({
+          version: 1,
+          pending: null,
+          completed: [],
+        });
+        expect(await admitDeployment(database, request)).toEqual({
+          deploymentId: admittedId,
+          replayed: true,
+        });
+      });
+    } finally {
+      if (admittedId)
+        await database
+          .delete(schema.deployments)
+          .where(eq(schema.deployments.id, admittedId));
+      await database
+        .update(schema.deployments)
+        .set({ status: "preparing" })
+        .where(eq(schema.deployments.id, deploymentId));
+    }
+
     await expect(
       database.transaction(async (tx) => {
         await lockDatabaseQueues(tx);
@@ -411,6 +484,116 @@ check(
     await expect(loadInterruptedDeployment(database, id)).rejects.toThrow(
       "stateless reconciliation",
     );
+  },
+);
+check(
+  "complete Production route evidence finishes without a stateless deployment job",
+  async () => {
+    const id = crypto.randomUUID(),
+      lease = crypto.randomUUID(),
+      savedBinding = { ...binding, deploymentId: id };
+    const image = `sha256:${"e".repeat(64)}`;
+    const facts: z.infer<typeof ProductionPublishingReceipt>["fact"][] = [
+      {
+        step: "http-volume",
+        name: `wrenly-deployment-http-${id}`,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        step: "database-volume",
+        name: `wrenly-deployment-db-${id}`,
+        createdAt: new Date().toISOString(),
+      },
+      { step: "broker-network", networkId: "1".repeat(64) },
+      {
+        step: "broker-start",
+        networkId: "1".repeat(64),
+        containerId: "2".repeat(64),
+        imageId: image,
+        volumeName: `wrenly-deployment-db-${id}`,
+      },
+      {
+        step: "service-create",
+        serviceId: "fixture-service",
+        compositionSha256: "3".repeat(64),
+        appImageId: image,
+        appRegistryDigest: image,
+        ingressRegistryDigest: `sha256:${"4".repeat(64)}`,
+      },
+      { step: "service-start", serviceId: "fixture-service" },
+      {
+        step: "application-start",
+        containerId: "5".repeat(64),
+        imageId: image,
+      },
+      {
+        step: "route-verify",
+        url: "https://production.example.test/",
+        sourceSha256: savedBinding.sourceSha256,
+      },
+    ];
+    let journal: ProductionPublishingJournal = {
+      version: 1,
+      completed: [],
+      pending: null,
+    };
+    for (const fact of facts) {
+      journal = beginProductionPublishingEffect(
+        savedBinding,
+        journal,
+        lease,
+        new Date(),
+      );
+      if (!journal.pending) throw new Error("Missing fixture intent");
+      journal = acknowledgeProductionPublishingEffect(
+        savedBinding,
+        journal,
+        {
+          effect: journal.pending,
+          fact,
+          completedAt: new Date().toISOString(),
+        },
+        lease,
+      );
+    }
+    await database
+      .insert(schema.deployments)
+      .values({
+        id,
+        projectId,
+        buildId,
+        userId: actor.userId,
+        idempotencyKey: crypto.randomUUID(),
+        requestIdentity: "fixture-complete-production",
+        stack: "nextjs",
+        files: [],
+        sourceSha256: savedBinding.sourceSha256,
+        status: "verifying",
+        claimToken: lease,
+        leaseExpiresAt: new Date(Date.now() + 600000),
+        artifactImageId: image,
+        registryDigest: image,
+        productionDatabaseBinding: savedBinding,
+        productionRuntimeJournal: journal,
+      });
+    await expect(
+      finishDeployment(
+        database,
+        { deploymentId: id, token: lease },
+        { status: "success", url: "https://foreign.example.test/" },
+      ),
+    ).rejects.toThrow("route evidence");
+    await finishDeployment(
+      database,
+      { deploymentId: id, token: lease },
+      { status: "success", url: "https://production.example.test/" },
+    );
+    const [row] = await database
+      .select()
+      .from(schema.deployments)
+      .where(eq(schema.deployments.id, id));
+    expect(row?.status).toBe("success");
+    expect(row?.remoteDeploymentUuid).toBeNull();
   },
 );
 check(

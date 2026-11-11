@@ -186,7 +186,16 @@ export async function beginProductionRuntimeEffect(
       );
       await tx
         .update(deployments)
-        .set({ productionRuntimeJournal: next, updatedAt: new Date() })
+        .set({
+          productionRuntimeJournal: next,
+          updatedAt: new Date(),
+          ...(next.completed.at(-1)?.fact.step === "service-start"
+            ? { status: "deploying" as const }
+            : {}),
+          ...(next.completed.at(-1)?.fact.step === "application-start"
+            ? { status: "verifying" as const }
+            : {}),
+        })
         .where(eq(deployments.id, claim.deploymentId));
       return next.pending!;
     });
@@ -218,7 +227,16 @@ export async function acknowledgeProductionRuntimeEffect(
       );
       await tx
         .update(deployments)
-        .set({ productionRuntimeJournal: next, updatedAt: new Date() })
+        .set({
+          productionRuntimeJournal: next,
+          updatedAt: new Date(),
+          ...(next.completed.at(-1)?.fact.step === "service-start"
+            ? { status: "deploying" as const }
+            : {}),
+          ...(next.completed.at(-1)?.fact.step === "application-start"
+            ? { status: "verifying" as const }
+            : {}),
+        })
         .where(
           and(
             eq(deployments.id, claim.deploymentId),
