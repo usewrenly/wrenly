@@ -158,6 +158,17 @@ export async function executeDeployment(
         token: environment.WRENLY_COOLIFY_API_KEY!,
         authentication: "Bearer",
       });
+    if (productionBinding) {
+      const environmentSettings = await prepareDeploymentRuntimeEnvironment(
+        database,
+        claim,
+        environment.WRENLY_DEPLOY_ENCRYPTION_KEY!,
+      );
+      assertProductionRuntimeEnvironment(
+        deployment.stack as "nextjs" | "laravel",
+        environmentSettings,
+      );
+    }
     stage = "source_identity";
     const identity = await git.request(
       "GET",
@@ -268,15 +279,6 @@ export async function executeDeployment(
     });
     if (productionBinding && adapters.production) {
       stage = "runtime_environment";
-      const environmentSettings = await prepareDeploymentRuntimeEnvironment(
-        database,
-        claim,
-        environment.WRENLY_DEPLOY_ENCRYPTION_KEY!,
-      );
-      assertProductionRuntimeEnvironment(
-        preparation.stack,
-        environmentSettings,
-      );
       stage = "deployment_readiness";
       const url = await adapters.production.run({
         database,
