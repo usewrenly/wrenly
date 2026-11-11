@@ -1,5 +1,6 @@
 /** Builds a Unix-only broker configuration for one project on the private Production server. */
 import { isIP } from "node:net";
+import { applicationDatabaseEnvironment } from "./application-runtime/environment";
 import {
   validateProductionProjectCredentials,
   type ProductionProjectCredentials,
@@ -59,9 +60,37 @@ export function productionDatabaseSocketConfiguration(input: {
     input.resourceId,
     input.credentials,
   );
-  productionSocketHostMapping(input.upstream);
   if (!["migrator", "runtime", "reader"].includes(input.role))
     throw new Error("Invalid Production socket role.");
+  return scopedProductionSocketConfiguration({
+    database: credentials.database,
+    role: credentials[input.role],
+    upstream: input.upstream,
+    certificateAuthority: input.certificateAuthority,
+  });
+}
+/** Deployment hosts receive only this runtime role; migrator/reader/management secrets stay instance-side. */
+export function productionDatabaseRuntimeSocketConfiguration(input: {
+  resourceId: string;
+  runtimeRole: { user: string; password: string };
+  upstream: ProductionSocketUpstream;
+  certificateAuthority?: string;
+}): ProductionSocketConfiguration {
+  applicationDatabaseEnvironment("nextjs", input.resourceId, input.runtimeRole);
+  return scopedProductionSocketConfiguration({
+    database: `wrenly_${input.resourceId.replaceAll("-", "")}`,
+    role: input.runtimeRole,
+    upstream: input.upstream,
+    certificateAuthority: input.certificateAuthority,
+  });
+}
+function scopedProductionSocketConfiguration(input: {
+  database: string;
+  role: { user: string; password: string };
+  upstream: ProductionSocketUpstream;
+  certificateAuthority?: string;
+}): ProductionSocketConfiguration {
+  productionSocketHostMapping(input.upstream);
   const ca = input.certificateAuthority;
   if (
     ca !== undefined &&
@@ -75,11 +104,11 @@ export function productionDatabaseSocketConfiguration(input: {
     throw new Error(
       "Production socket requires a bounded certificate authority certificate.",
     );
-  const role = credentials[input.role];
+  const role = input.role;
   return {
     // Generated clients keep the existing local database alias; upstream identity is never client-selectable.
     configuration:
-      `[databases]\napp = host=${input.upstream.hostname} port=${input.upstream.port} dbname=${credentials.database} user=${role.user} password=${role.password}\n\n` +
+      `[databases]\napp = host=${input.upstream.hostname} port=${input.upstream.port} dbname=${input.database} user=${role.user} password=${role.password}\n\n` +
       `[pgbouncer]\nlisten_addr =\nlisten_port = ${DATABASE_SOCKET_PORT}\nunix_socket_dir = ${DATABASE_SOCKET_DIRECTORY}\nunix_socket_mode = 0777\n` +
       `auth_type = scram-sha-256\nauth_file = /run/wrenly-db-config/users.txt\npool_mode = session\nmax_client_conn = ${MAX_CONNECTIONS}\n` +
       `default_pool_size = ${MAX_CONNECTIONS}\nmax_db_connections = ${MAX_CONNECTIONS}\nmax_user_connections = ${MAX_CONNECTIONS}\n` +

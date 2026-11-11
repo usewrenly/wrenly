@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { createProductionProjectCredentials } from "@wrenly/db/production-project-credentials";
 import {
   productionDatabaseSocketConfiguration,
+  productionDatabaseRuntimeSocketConfiguration,
   productionSocketHostMapping,
 } from "../../src/databases/production-socket-policy";
 const resourceId = "a7390531-8bc3-4f74-9d70-f9812e7c064d";
@@ -96,4 +97,36 @@ test("omitted custom CA keeps verify-full and uses the trusted toolchain system 
     "server_tls_ca_file = /etc/ssl/certs/ca-certificates.crt",
   );
   expect(result.certificateAuthority).toBeUndefined();
+});
+
+test("deployment socket configuration requires only the exact runtime role", () => {
+  const runtime = productionDatabaseRuntimeSocketConfiguration({
+    resourceId,
+    runtimeRole: credentials.runtime,
+    upstream,
+    certificateAuthority,
+  });
+  expect(runtime).toEqual(
+    productionDatabaseSocketConfiguration({
+      resourceId,
+      credentials,
+      role: "runtime",
+      upstream,
+      certificateAuthority,
+    }),
+  );
+  expect(JSON.stringify(runtime)).not.toContain(credentials.migrator.password);
+  expect(JSON.stringify(runtime)).not.toContain(credentials.reader.password);
+  for (const runtimeRole of [
+    credentials.migrator,
+    credentials.reader,
+    { ...credentials.runtime, user: "postgres" },
+  ])
+    expect(() =>
+      productionDatabaseRuntimeSocketConfiguration({
+        resourceId,
+        runtimeRole,
+        upstream,
+      }),
+    ).toThrow();
 });
