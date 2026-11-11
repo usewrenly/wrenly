@@ -31,3 +31,16 @@ STEPS:
 5. Recheck the publishing fence before returning the safe acknowledgement.
 EDGE CASES: A missing route or not-ready HTTP endpoint can be polled within the worker's bounded deadline. No provider mutation is retried.
 ERROR STATES: Changed isolation, ambiguous routes, foreign marker or cancelled claims preserve pending intent.
+
+COMPONENT: Production runtime service composition
+PURPOSE: Connect the durable coordinator to the real store and fixed host/provider adapters without activating startup.
+INPUTS: Current deployment claim, worker lock/lease fence, verified artifact/toolchain identities and fixed provider placement.
+OUTPUTS: One coordinator whose effects always follow persisted intent and current runtime credential checks.
+STEPS:
+1. Reuse the store's binding/journal, intent and acknowledgement transactions.
+2. Reload claim-bound runtime credentials immediately before each selected effect.
+3. Dispatch provisioning and service mutations once; never retry these calls.
+4. Poll only read-only container discovery and route readiness, under a deadline and the current publishing fence.
+5. Preserve any pending effect when shutdown, identity drift or deadline prevents confirmation.
+EDGE CASES: Composition alone does not enable database publishing or bypass artifact preparation/admission/recovery gates.
+ERROR STATES: Missing credentials/configuration, unsupported effects or lost leases stop the coordinator with its journal intact.

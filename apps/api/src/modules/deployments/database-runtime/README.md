@@ -46,3 +46,9 @@ checks the broker, app and relay on the deployment host. It probes the public pa
 and exact deployment marker without forwarding provider or database credentials.
 A provider's green status alone never completes publishing. This is route proof;
 real application database reads/writes remain a separate acceptance requirement.
+
+`services.ts` composes the durable store and real adapters under the worker's fence.
+It reloads claim-bound credentials before each effect. Container discovery and
+readiness may be polled for a bounded time; creation, service start and credential
+delivery are each invoked once after their durable intent. It remains unmounted
+until admission, recovery and joined Production acceptance are complete.
