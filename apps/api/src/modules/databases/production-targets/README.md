@@ -5,9 +5,10 @@ a booking app's Production database must not accidentally point at the PostgreSQ
 server that holds Wrenly accounts and projects.
 
 This folder checks connections and saves encrypted, owner-confirmed setup requests.
-A single-request worker can verify those saved requests. API startup does not run it
-yet; dashboard actions, resource provisioning and database-backed publishing remain
-unavailable. See `setup/README.md` for saved requests and worker responsibilities.
+The opt-in API activation in `../activation/production-activation.ts` joins the saved
+setup requests, serial control worker, project resource worker and publishing adapters.
+Startup verifies trusted images and schema before accepting requests. The feature is
+off by default. See `setup/README.md` for saved requests and worker responsibilities.
 
 - `target-policy.ts` accepts a strict host/port/database description, requires a TLS
   hostname and `verify-full`, and resolves every address. Only private unicast addresses
@@ -67,5 +68,5 @@ inputs, not configuration variables for a Wrenly installation.
 worker and project resource worker. It verifies migrations and the trusted helper
 before claims can start, and awaits both workers during shutdown or partial startup
 failure. `control-worker.ts` progresses only saved requests; it does not invent a
-new request or retry an uncertain external effect. This explicit factory remains
-unmounted until project transport, recovery, runtime and UI activation are accepted.
+new request or retry an uncertain external effect. `../activation` owns mounting through API startup when Production is explicitly enabled.
+The complete remote publishing/restart acceptance remains separate from these lifecycle checks.

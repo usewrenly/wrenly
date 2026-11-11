@@ -92,7 +92,7 @@ export function createProductionApp(
     cancel: (id, userId) => requestBuildCancellation(db, id, userId),
   })
   const publishing = createDeploymentHttpHandlers({ list: (userId, offset) => listDeploymentHistory(db, userId, offset), enabled: environment.WRENLY_PUBLISHING_ENABLED === 'true', userId: getUserId,
-    admit: (projectId, userId, buildId, idempotencyKey) => admitDeployment(db, { projectId, userId, buildId, idempotencyKey, target: {
+    admit: (projectId, userId, buildId, idempotencyKey) => admitDeployment(db, { projectId, userId, buildId, idempotencyKey, allowProductionDatabase: Boolean(productionDatabases) && environment.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true', target: {
       gitInstanceUrl: new URL(environment.WRENLY_GIT_BASE_URL!).origin, repositoryOwner: environment.WRENLY_GIT_ORG,
       coolifyInstanceUrl: new URL(environment.WRENLY_COOLIFY_API_URL!).origin, coolifyProjectUuid: environment.WRENLY_COOLIFY_PROJECT_UUID!,
       coolifyServerUuid: environment.WRENLY_COOLIFY_SERVER_UUID!, coolifyEnvironmentName: environment.WRENLY_COOLIFY_ENVIRONMENT,

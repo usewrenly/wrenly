@@ -26,13 +26,13 @@ bun build src/modules/databases/production-targets/deployment-hosts/helper.ts \
   --target=bun --env=disable --outfile=dist/runtime-host.js
 ```
 
-This is a verification component, not an enabled production installation path.
+The opt-in Production activation registers this verification component.
 Host registration uses a separate encrypted journal in `store.ts`. Only the current
 instance owner can submit, read or close its checks. Requests keep their original
 values, exact retries return the saved receipt, and expired checks need explicit
 review. `worker.ts` requires the deployment adapter to independently match the
 inspected Docker daemon to the selected Coolify server before marking a host verified.
-The worker is not registered at startup. Runtime bootstrap and database-backed
+The worker starts only with the separately enabled Production module. Runtime bootstrap and database-backed
 publishing still need their saved operation checks before invoking the helper’s volume actions. Installing
 a helper bundle alone does not enable Production databases.
 
@@ -62,7 +62,7 @@ password or restarting it. A healthy socket is one step: the complete publishing
 flow must still prove the expected database and real application reads/writes.
 
 The API build now includes `dist/runtime-host.js`. Installing that helper is part
-of deployment-host setup, not permission to enable the unfinished publishing flow.
+of deployment-host setup; installing it alone does not enable database-backed publishing.
 
 `application-start.ts` starts the saved app guardian after checking its broker and
 container. It sends only the runtime role and framework startup settings. A second

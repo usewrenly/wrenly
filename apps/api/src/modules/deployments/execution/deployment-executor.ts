@@ -67,6 +67,11 @@ const services: DeploymentArtifactServices = {
   ready: verifyDeploymentReadiness,
 };
 
+/** Supplies the same artifact pipeline to stateless and Production publishing; no work starts here. */
+export function createDeploymentArtifactServices(production?: ProductionDeploymentServices): DeploymentArtifactServices {
+  return production ? { ...services, production } : { ...services };
+}
+
 /** Executes once; each uncertain acknowledgement remains fenced for explicit reconciliation. */
 export async function executeDeployment(
   database: typeof db,

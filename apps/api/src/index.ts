@@ -10,6 +10,7 @@ import type { DeploymentWorkerLifecycle } from './modules/deployments/execution/
 import type { PreviewLifecycle } from './modules/previews/execution/production-preview-worker'
 import { parseApiEnvironment } from './config/api-environment'
 import { logger } from './lib/logger'
+import type { ProductionDatabaseActivation } from './modules/databases/activation/production-activation'
 
 const API_IDLE_TIMEOUT_SECONDS = 60
 try {
@@ -54,7 +55,7 @@ try {
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
-  const app = createProductionApp(environment)
+  let app = createProductionApp(environment)
   let acceptingRequests = false
   // Bind the control port before claiming any work: a second API must not interrupt queued previews on startup failure.
   const server = Bun.serve({ hostname: environment.WRENLY_API_HOST, port: environment.WRENLY_API_PORT,
@@ -68,6 +69,7 @@ try {
   let conversationWorker: Awaited<ReturnType<typeof startProductionConversationWorker>> | undefined
   let publishing: DeploymentWorkerLifecycle | undefined
   let databaseModule: PreviewLifecycle | undefined
+  let productionCluster: ProductionDatabaseActivation | undefined
   let previews: PreviewLifecycle | undefined
   let gateway: ReturnType<typeof Bun.serve> | undefined
   let worker: Awaited<ReturnType<typeof startProductionBuildWorker>> | undefined
@@ -100,14 +102,24 @@ try {
         databaseModule = await startProductionDatabaseModule(db, environment, ingressBundle)
       }
     }
+    if (environment.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true') {
+      const { startProductionDatabaseActivation } = await import('./modules/databases/activation/production-activation')
+      const { getUserId } = await import('./modules/auth/access/session')
+      const { accessContext } = await import('./modules/auth/access/access-context')
+      productionCluster = await startProductionDatabaseActivation({database:db,environment,principal:async headers=>{
+        const userId=await getUserId(headers)
+        return userId ? accessContext.getStore()?.principal ?? null : null
+      }})
+    }
     if (environment.WRENLY_PUBLISHING_ENABLED === 'true') {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
-      publishing = await startProductionDeploymentWorker(db, environment)
+      publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
+    app = createProductionApp(environment, { productionDatabases: productionCluster })
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -118,7 +130,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {
@@ -130,7 +142,7 @@ try {
   process.once('SIGTERM', () => { void shutdown() })
   if (setupStatus === 'setup-required') logger.info('Owner setup required. Run bun run setup from apps/api to open protected browser setup.')
   if (setupStatus === 'recovery-required') logger.info('Existing accounts detected; protected owner recovery is required before instance administration.')
-  logger.info('Wrenly API listening', { url: server.url.toString(), runtime: 'bun', localPreviews: Boolean(previews), publishing: Boolean(publishing), developmentDatabases: Boolean(databaseModule) })
+  logger.info('Wrenly API listening', { url: server.url.toString(), runtime: 'bun', localPreviews: Boolean(previews), publishing: Boolean(publishing), developmentDatabases: Boolean(databaseModule), productionDatabases: Boolean(productionCluster) })
 } catch (error) {
   logger.error('API startup failed', { errorName: error instanceof Error ? error.name : 'UnknownError',
     message: error instanceof Error && !('query' in error) ? error.message : 'Startup persistence is unavailable. Check PostgreSQL and migrations.' })

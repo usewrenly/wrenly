@@ -18,7 +18,7 @@ import {
   interruptQuiescentDeployment,
 } from "../persistence/deployment-store";
 import { acquireDeploymentExecutorLock } from "./deployment-executor-lock";
-import { executeDeployment } from "./deployment-executor";
+import { executeDeployment, type DeploymentArtifactServices } from "./deployment-executor";
 import { cleanupPrivateSnapshotWorkspace } from "../../../../../../packages/deploy/src/source-snapshots/git-transport";
 import {
   cleanupRuntimeArtifactPreparation,
@@ -61,6 +61,7 @@ export async function verifyDeploymentWorkerSchema(
 export async function startProductionDeploymentWorker(
   database: typeof db,
   environment: ApiEnvironment,
+  artifacts?: DeploymentArtifactServices,
 ): Promise<DeploymentWorkerLifecycle> {
   await verifyDeploymentWorkerSchema(database);
   if (process.platform !== "linux")
@@ -103,6 +104,7 @@ export async function startProductionDeploymentWorker(
               claim,
               environment,
               shutdown.signal,
+              artifacts,
             );
         }
       } catch (error) {
