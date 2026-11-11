@@ -80,8 +80,8 @@ test("recovery never resubmits another resource or exposes an unvalidated receip
   const receipt = {
     reviewId,
     resourceId,
-    phase: "roles",
-    status: "queued",
+    phase: "roles" as const,
+    status: "queued" as const,
     replayed: true,
   };
   expect(
