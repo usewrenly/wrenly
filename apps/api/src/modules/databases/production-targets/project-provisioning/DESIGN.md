@@ -39,3 +39,14 @@ STEPS:
 5. Preserve queued/creating/created/attached/review-required distinctions; SQL completion is not readiness.
 EDGE CASES: Old/changed connection or project revisions are refused. A missing exact request is distinct from an empty project status.
 ERROR STATES: Unauthorized, malformed, changed or unconfirmed requests return fixed messages with private/no-store headers.
+
+COMPONENT: Explicit Production viewer composition
+PURPOSE: Let the startup owner supply the control-cluster exclusion identity to bounded Production reads.
+INPUTS: Verified module configuration with the control database URL, authenticated viewer selection and lease.
+OUTPUTS: The existing role-scoped read-only socket query; no credentials reach the browser.
+STEPS:
+1. Accept Production reader configuration only as an explicit server composition option.
+2. Pass it to the existing viewer runtime, which checks resource/provider identity and excludes the control cluster.
+3. Retain the same authorization, reader lease, exact resource revision, result bounds and cleanup acknowledgements.
+EDGE CASES: Existing Development composition omits the option and retains its behavior. Omitted Production configuration refuses Production reads.
+ERROR STATES: Unverified destination, changed access or uncertain cleanup suppresses the result.
