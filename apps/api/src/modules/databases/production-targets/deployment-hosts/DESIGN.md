@@ -40,3 +40,16 @@ STEPS:
 7. Persist verified facts only while the original claim and owner session remain current.
 EDGE CASES: Expired checks become review-required, never automatically retried. Closing an interrupted read-only check requires an explicit owner action. Account changes remain fenced while work is unresolved.
 ERROR STATES: Unknown completion remains saved for review; a status read does not decrypt secrets or start remote work. Registration does not activate publishing.
+
+COMPONENT: Host setup HTTP and Coolify placement check
+PURPOSE: Let authenticated setup submit/read/acknowledge a saved request without exposing keys or triggering work from a status read.
+INPUTS: Trusted-origin bounded JSON, current session, exact request UUID and configured deployment-provider client.
+OUTPUTS: Strict private/no-store receipts and safe verified host facts.
+STEPS:
+1. Validate method, origin, body bounds and session before store access.
+2. Recheck the same session after the store call; malformed service outputs fail without being returned.
+3. Keep routes optional until production composition supplies their services.
+4. Read only the configured Coolify server UUID using the bounded provider client.
+5. Require its SSH port and hostname/selected private IP to match the owner-reviewed SSH destination, and recheck the complete DNS set.
+EDGE CASES: Foreign placement, changed DNS, session rotation and lost acknowledgements never silently resubmit.
+ERROR STATES: Provider/credential bodies are never browser responses; failed verification does not enable publishing.

@@ -1,3 +1,5 @@
+import type { InstanceProductionHttpHandlers } from "./modules/databases/production-targets/instance/http"
+import type { RuntimeHostHttpHandlers } from "./modules/databases/production-targets/deployment-hosts/http"
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
 import type { ProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
 import type { DraftHandlers } from "./modules/projects/drafts/draft-http"
@@ -35,6 +37,8 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  productionDatabaseSetup?: InstanceProductionHttpHandlers
+  productionHostSetup?: RuntimeHostHttpHandlers
   projectDatabases?: { status: ProjectHandler; view: ProjectHandler; actions?: DatabaseCommandHandlers; migrationReview?: ProjectHandler; recoveryReview?: ProjectHandler; recovery?: DatabaseCommandHandlers }
   skills?: SkillHandlers
   projectSkills?: ProjectSkillHandlers
@@ -184,6 +188,20 @@ export function createApp(
     app.patch('/api/projects/:id/preview-media',c=>handlers.previewMedia!.save(c.req.raw,c.req.param('id')))
   }
   // Database handlers are explicit dependencies; absence keeps the inactive module unmounted.
+  if (handlers.productionDatabaseSetup) {
+    const setup = handlers.productionDatabaseSetup
+    app.post('/api/instance/production-database', c => setup.submit(c.req.raw))
+    app.get('/api/instance/production-database', c => setup.status(c.req.raw))
+    app.get('/api/instance/production-database/requests/:requestId', c => setup.status(c.req.raw, c.req.param('requestId')))
+    app.post('/api/instance/production-database/acknowledge', c => setup.acknowledge(c.req.raw))
+  }
+  if (handlers.productionHostSetup) {
+    const setup = handlers.productionHostSetup
+    app.post('/api/instance/deployment-host', c => setup.submit(c.req.raw))
+    app.get('/api/instance/deployment-host', c => setup.status(c.req.raw))
+    app.get('/api/instance/deployment-host/requests/:requestId', c => setup.status(c.req.raw, c.req.param('requestId')))
+    app.post('/api/instance/deployment-host/acknowledge', c => setup.acknowledge(c.req.raw))
+  }
   if(handlers.projectDatabases){
     app.get('/api/projects/:id/databases',c=>handlers.projectDatabases!.status(c.req.raw,c.req.param('id')))
     app.get('/api/projects/:id/databases/view',c=>handlers.projectDatabases!.view(c.req.raw,c.req.param('id')))

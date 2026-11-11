@@ -32,3 +32,19 @@ test("invalid helper actions and cancellation never start inspection", async () 
     ),
   ).rejects.toThrow("could not be verified");
 });
+
+const native =
+  process.env.WRENLY_TEST_RUNTIME_HOST_HELPER === "true" ? test : test.skip;
+native(
+  "fixed helper reads a real local daemon without changing Docker resources",
+  async () => {
+    const nonce = crypto.randomUUID();
+    const result = await inspectRuntimeHost(
+      { version: 1, action: "inspect", nonce },
+      AbortSignal.timeout(10_000),
+    );
+    expect(result.nonce).toBe(nonce);
+    expect(result.operatingSystem).toBe("linux");
+    expect(result.dockerId.length).toBeGreaterThan(0);
+  },
+);

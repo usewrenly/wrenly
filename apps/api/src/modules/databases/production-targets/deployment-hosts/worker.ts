@@ -1,6 +1,9 @@
 /** Checks one saved registration. Importing this module never starts an SSH connection or worker. */
 import type { db } from "@wrenly/db";
-import type { ProductionRuntimeHostIdentity } from "@wrenly/db/production-host-contract";
+import type {
+  ProductionRuntimeHostTarget,
+  ProductionRuntimeHostIdentity,
+} from "@wrenly/db/production-host-contract";
 import {
   claimRuntimeHostConnection,
   loadRuntimeHostConnection,
@@ -22,6 +25,8 @@ export async function runRuntimeHostCheckOnce(input: {
   verifyDeploymentServer: (
     serverId: string,
     identity: ProductionRuntimeHostIdentity,
+    target: ProductionRuntimeHostTarget,
+    addresses: string[],
     signal: AbortSignal,
   ) => Promise<void>;
 }): Promise<RuntimeHostReceipt | null> {
@@ -50,7 +55,13 @@ export async function runRuntimeHostCheckOnce(input: {
       signal,
       lookup: input.lookup,
     });
-    await input.verifyDeploymentServer(saved.serverId, inspection, signal);
+    await input.verifyDeploymentServer(
+      saved.serverId,
+      inspection,
+      saved.target,
+      addresses,
+      signal,
+    );
     signal.throwIfAborted();
     outcome = {
       status: "verified",

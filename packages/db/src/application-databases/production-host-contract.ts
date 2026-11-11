@@ -71,3 +71,30 @@ export const ProductionRuntimeHostInput = z
 export type ProductionRuntimeHostInput = z.infer<
   typeof ProductionRuntimeHostInput
 >;
+
+/** Public setup receipts share lifecycle names with database setup, never credential fields. */
+export const ProductionRuntimeHostReceipt = z
+  .object({
+    connectionId: z.uuid(),
+    status: z.enum([
+      "queued",
+      "checking",
+      "verified",
+      "failed",
+      "needs_review",
+    ]),
+    replayed: z.boolean(),
+  })
+  .strict();
+export const ProductionRuntimeHostState = z
+  .object({
+    connectionId: z.uuid(),
+    status: ProductionRuntimeHostReceipt.shape.status,
+    serverId: ProductionRuntimeHostInput.shape.serverId,
+    target: ProductionRuntimeHostTarget,
+    verified: ProductionRuntimeHostIdentity.nullable(),
+  })
+  .strict();
+export const ProductionRuntimeHostAcknowledgement = z
+  .object({ connectionId: z.uuid(), confirmInterruptedCheck: z.literal(true) })
+  .strict();
