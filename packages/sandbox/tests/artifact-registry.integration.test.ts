@@ -36,6 +36,8 @@ integration('private immutable artifact registry', () => {
       tagged = artifact.repository + ':artifact'
       expect(artifact.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
       const ingress = await docker.getImage('wrenly/deployment-ingress:1').inspect()
+      // Set cleanup identity before upload so even a lost verification reply leaves no fixture tag.
+      ingressTag = `${new URL(origin).host}/wrenly/deployment-ingress-${ingress.Id.replace('sha256:', '')}:artifact`
       const trusted = await publishTrustedDeploymentIngress({imageId: ingress.Id, origin, namespace: 'wrenly', username: 'fixture', password: 'fixture-password', signal: new AbortController().signal, beforeEffect: async () => {}})
       ingressTag = trusted.repository + ':artifact'
       expect(trusted.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
