@@ -63,3 +63,9 @@ flow must still prove the expected database and real application reads/writes.
 
 The API build now includes `dist/runtime-host.js`. Installing that helper is part
 of deployment-host setup, not permission to enable the unfinished publishing flow.
+
+`application-start.ts` starts the saved app guardian after checking its broker and
+container. It sends only the runtime role and framework startup settings. A second
+request to an already-running app is refused. The guardian starts the generated
+process as user 1000 and emits its own readiness marker. This proves local startup,
+not the public URL or a successful database transaction.

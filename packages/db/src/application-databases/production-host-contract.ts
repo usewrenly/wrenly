@@ -223,7 +223,20 @@ export const ProductionRuntimeBrokerInspectionReply =
     running: z.boolean(),
     socketReady: z.boolean(),
   });
+export const ProductionRuntimeApplicationStart =
+  ProductionRuntimeApplicationInspection.extend({
+    action: z.literal("start-runtime-application"),
+    framework: z.enum(["nextjs", "laravel"]),
+    runtimeRole: ProductionRuntimeBrokerRequest.shape.runtimeRole,
+    appKey: z.string().max(64).nullable(),
+    brokerId: z.string().regex(/^[a-f0-9]{64}$/),
+    brokerImageId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    networkId: ProductionRuntimeBrokerRequest.shape.networkId,
+    upstream: ProductionRuntimeBrokerRequest.shape.upstream,
+    addresses: ProductionRuntimeBrokerRequest.shape.addresses,
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeApplicationStart,
   ProductionRuntimeBrokerInspection,
   ProductionRuntimeBrokerRequest,
   ProductionRuntimeApplicationInspection,

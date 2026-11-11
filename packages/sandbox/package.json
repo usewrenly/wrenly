@@ -22,7 +22,8 @@
     "./database-preview-runtime": "./src/previews/database-runtime.ts",
     "./production-database-network": "./src/databases/production-network.ts",
     "./production-application-bootstrap": "./src/deployment-runtime/application.ts",
-    "./production-database-socket-policy": "./src/databases/production-socket-policy.ts"
+    "./production-database-socket-policy": "./src/databases/production-socket-policy.ts",
+    "./database-application-environment": "./src/databases/application-runtime/environment.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

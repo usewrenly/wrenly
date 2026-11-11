@@ -118,3 +118,17 @@ STEPS:
 4. Return readiness only while the exact broker is running; a stopped broker stays stopped.
 EDGE CASES: Socket health does not establish upstream TLS, permissions or application behavior; joined database validation remains required.
 ERROR STATES: Mismatch refuses recovery acknowledgement and never resends credentials.
+
+COMPONENT: Production application credential delivery
+PURPOSE: Start the exact isolated guardian once after its runtime broker is verified.
+INPUTS: Saved daemon/deployment/project/resource/container/image/broker identities, frozen framework, matching runtime role, pinned endpoint and stable Laravel key when needed.
+OUTPUTS: Safe running-container acknowledgement after the trusted guardian's fixed readiness marker.
+STEPS:
+1. Validate the role and framework-specific key before Docker access.
+2. Independently inspect the saved broker without credentials and require socket readiness.
+3. Hold the deployment lock, recheck private DNS and inspect the exact app image/container isolation.
+4. Refuse an already-running application; start the stopped guardian once under the caller's saved effect intent.
+5. Attach with signal forwarding disabled and send only bounded runtime settings on stdin.
+6. Require the exact trusted readiness marker, re-inspect the running container, then recheck DNS and lock before acknowledgement.
+EDGE CASES: The helper has its own bounded deadline. Generated child output is discarded by the guardian and cannot forge readiness.
+ERROR STATES: Unknown startup preserves the resource for explicit inspection; no automatic credential replay, restart or application cleanup.

@@ -1,5 +1,9 @@
 /** Broker readiness is socket readiness only; upstream TLS/CRUD acceptance is a separate gate. */
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { startRuntimeApplication } from "./application-start";
 import { inspectRuntimeHost } from "./helper";
 import { executeRuntimeVolumeRequest } from "./volumes";
 import { executeRuntimeNetworkRequest } from "./network";
@@ -37,6 +41,11 @@ native(
     const name = `wrenly-deployment-broker-${deploymentId}`,
       volumeName = `wrenly-deployment-db-${deploymentId}`,
       networkName = `wrenly-deployment-network-${deploymentId}`;
+    const fixtureDirectory = await mkdtemp(
+      join(tmpdir(), "wrenly-production-bootstrap-"),
+    );
+    const appTag = `wrenly-bootstrap-fixture:${deploymentId}`;
+    let appContainerId: string | undefined;
     try {
       await executeRuntimeVolumeRequest(
         { ...base, action: "create-database-volume" },
@@ -100,6 +109,124 @@ native(
         signal,
       );
       expect(checked.socketReady).toBe(true);
+      const build = Bun.spawn(
+        [
+          "bun",
+          "build",
+          join(
+            import.meta.dir,
+            "../../../../../../../packages/sandbox/src/deployment-runtime/application-entry.mts",
+          ),
+          "--target=bun",
+          "--env=disable",
+          `--outfile=${join(fixtureDirectory, "guardian.js")}`,
+        ],
+        { stdout: "ignore", stderr: "ignore" },
+      );
+      if ((await build.exited) !== 0)
+        throw new Error("Guardian acceptance bundle failed.");
+      await Bun.write(
+        join(fixtureDirectory, "next.js"),
+        'if(process.getuid()!==1000||process.env.PGPASSWORD!=="' +
+          "c".repeat(64) +
+          '")process.exit(1); Bun.serve({hostname:"127.0.0.1",port:3000,fetch:()=>new Response("ready")});',
+      );
+      await Bun.write(
+        join(fixtureDirectory, "Dockerfile"),
+        'FROM oven/bun:alpine\nUSER 0:0\nWORKDIR /app\nCOPY guardian.js /wrenly/production-application.js\nCOPY next.js /app/node_modules/next/dist/bin/next\nLABEL io.wrenly.database-runtime-version="1"\nENTRYPOINT ["bun","--no-env-file","/wrenly/production-application.js"]\nCMD []\n',
+      );
+      const imageBuild = Bun.spawn(
+        [
+          "docker",
+          "--host",
+          "unix:///var/run/docker.sock",
+          "build",
+          "-t",
+          appTag,
+          fixtureDirectory,
+        ],
+        { stdout: "ignore", stderr: "pipe" },
+      );
+      const imageBuildError = await new Response(imageBuild.stderr).text();
+      if ((await imageBuild.exited) !== 0)
+        throw new Error(`Disposable image build failed: ${imageBuildError}`);
+      const appImage = JSON.parse(
+        await runRuntimeHostDocker(["image", "inspect", appTag], signal),
+      )[0] as { Id: string };
+      await executeRuntimeVolumeRequest(
+        { ...base, action: "create-http-volume" },
+        host.dockerId,
+        signal,
+      );
+      appContainerId = await runRuntimeHostDocker(
+        [
+          "create",
+          "--network",
+          "none",
+          "--read-only",
+          "--interactive",
+          "--memory",
+          "2g",
+          "--cpus",
+          "2",
+          "--pids-limit",
+          "256",
+          "--cap-drop",
+          "ALL",
+          "--cap-add",
+          "SETUID",
+          "--cap-add",
+          "SETGID",
+          "--cap-add",
+          "CHOWN",
+          "--security-opt",
+          "no-new-privileges:true",
+          "--restart",
+          "no",
+          "--tmpfs",
+          "/tmp:rw,noexec,nosuid,size=16m,uid=1000,gid=1000",
+          ...Object.entries({
+            "io.wrenly.deployment-id": deploymentId,
+            "io.wrenly.project-id": base.projectId,
+            "io.wrenly.database-id": resourceId,
+            "io.wrenly.database-environment": "production",
+            "io.wrenly.role": "production-application",
+          }).flatMap(([key, value]) => ["--label", `${key}=${value}`]),
+          "--mount",
+          `type=volume,src=wrenly-deployment-http-${deploymentId},dst=/run/wrenly-http`,
+          "--mount",
+          `type=volume,src=${volumeName},dst=/run/wrenly-database,readonly`,
+          appTag,
+        ],
+        signal,
+      );
+      const start = {
+        ...base,
+        action: "start-runtime-application",
+        containerId: appContainerId,
+        imageId: appImage.Id,
+        framework: "nextjs",
+        runtimeRole: request.runtimeRole,
+        appKey: null,
+        brokerId: reply.containerId,
+        brokerImageId: image.Id,
+        networkId: network.network!.id,
+        upstream: request.upstream,
+        addresses: request.addresses,
+      };
+      expect(
+        (await startRuntimeApplication(start, host.dockerId, signal, resolver))
+          .running,
+      ).toBe(true);
+      const appInspection = await runRuntimeHostDocker(
+        ["container", "inspect", appContainerId],
+        signal,
+      );
+      expect(appInspection).not.toContain(request.runtimeRole.password);
+      await expect(
+        startRuntimeApplication(start, host.dockerId, signal, resolver),
+      ).rejects.toThrow("could not be confirmed");
+
       await expect(
         inspectRuntimeDatabaseBroker(
           { ...inspectionRequest, projectId: crypto.randomUUID() },
@@ -136,6 +263,19 @@ native(
       expect(stopped.socketReady).toBe(false);
     } finally {
       const cleanup = AbortSignal.timeout(10000);
+      if (appContainerId)
+        await runRuntimeHostDocker(
+          ["container", "rm", "--force", appContainerId],
+          cleanup,
+        );
+      await runRuntimeHostDocker(["image", "rm", appTag], cleanup).catch(
+        () => undefined,
+      );
+      await runRuntimeHostDocker(
+        ["volume", "rm", `wrenly-deployment-http-${deploymentId}`],
+        cleanup,
+      ).catch(() => undefined);
+      await rm(fixtureDirectory, { recursive: true, force: true });
       await runRuntimeHostDocker(
         ["container", "rm", "--force", name],
         cleanup,
