@@ -12,7 +12,8 @@
     "recover-owner": "bun --no-env-file --env-file=../../.env src/modules/auth/setup/recovery-cli.ts",
     "catalog:snapshot": "bun --no-env-file --env-file=../../.env src/modules/models/catalog/catalog-snapshot-cli.ts",
     "recover-password": "bun --no-env-file --env-file=../../.env src/modules/auth/password-recovery/password-recovery-cli.ts",
-    "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts"
+    "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts",
+    "prepare-production-images": "bun --no-env-file --env-file=../../.env src/modules/databases/activation/prepare-images-cli.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.7",
@@ -26,7 +27,8 @@
     "hono": "^4.13.13",
     "sharp": "0.35.5",
     "yaml": "^2.9.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "dockerode": "^4.0.2"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",

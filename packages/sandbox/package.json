@@ -23,7 +23,9 @@
     "./production-database-network": "./src/databases/production-network.ts",
     "./production-application-bootstrap": "./src/deployment-runtime/application.ts",
     "./production-database-socket-policy": "./src/databases/production-socket-policy.ts",
-    "./database-application-environment": "./src/databases/application-runtime/environment.ts"
+    "./database-application-environment": "./src/databases/application-runtime/environment.ts",
+    "./production-deployment-toolchain": "./src/deployment-runtime/toolchain.ts",
+    "./private-image-registry": "./src/artifacts/artifact-registry.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
