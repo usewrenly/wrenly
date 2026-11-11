@@ -23,3 +23,16 @@ STEPS:
 5. Forward shutdown, await the child and close all bridge connections; never restart the child automatically.
 EDGE CASES: Invalid input, missing stable key, early child exit or readiness timeout stops the container. A container restart without a new authorized credential delivery fails closed.
 ERROR STATES: Only fixed diagnostics and readiness markers leave the guardian; no raw credential or application error is returned.
+
+COMPONENT: Production database artifact preparation
+PURPOSE: Make database publishing require a newly prepared exact image containing the trusted startup guardian.
+INPUTS: Selected source, exact reviewed migration digest and repository-owned bounded guardian bundle.
+OUTPUTS: Runtime image with its independent database-runtime provenance label; no credentials enter preparation.
+STEPS:
+1. Reject oversized/empty bundles and changed migrations before Docker work.
+2. Preserve offline compilation and per-deployment workspace verification.
+3. Copy the trusted bundle outside /app, root-owned and read-only, during trusted image assembly.
+4. Set the Production-only guardian entrypoint and provenance label; retain existing stateless and disposable validation entrypoints unchanged.
+5. Verify the committed image's labels before retaining it.
+EDGE CASES: Old images are never relabelled or silently upgraded. Compilation and cleanup retain their existing independent evidence rules.
+ERROR STATES: Failed preparation does not establish an image, database connection or deployment.
