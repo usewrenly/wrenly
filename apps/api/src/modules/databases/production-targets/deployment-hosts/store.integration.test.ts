@@ -335,3 +335,83 @@ check(
     expect(await hasMemberDatabaseWork(database, principal.userId)).toBe(false);
   },
 );
+
+check(
+  "all active publishing phases fence deployment-host replacement",
+  async () => {
+    const projectId = crypto.randomUUID(),
+      buildId = crypto.randomUUID(),
+      deploymentId = crypto.randomUUID();
+    await database
+      .insert(schema.projects)
+      .values({
+        id: projectId,
+        userId: principal.userId,
+        name: "Host fence fixture",
+      });
+    try {
+      await database
+        .insert(schema.builds)
+        .values({
+          id: buildId,
+          projectId,
+          prompt: "fixture",
+          status: "success",
+        });
+      await database
+        .insert(schema.deploymentResources)
+        .values({
+          projectId,
+          gitInstanceUrl: "https://git.internal.test",
+          repositoryOwner: "fixture",
+          repositoryName: "fixture",
+          coolifyInstanceUrl: "https://coolify.internal.test",
+          coolifyProjectUuid: "fixture",
+          coolifyServerUuid: "fixture",
+          coolifyEnvironmentName: "production",
+        });
+      await database
+        .insert(schema.deployments)
+        .values({
+          id: deploymentId,
+          projectId,
+          buildId,
+          userId: principal.userId,
+          idempotencyKey: crypto.randomUUID(),
+          requestIdentity: "fixture",
+          stack: "nextjs",
+          files: [],
+          sourceSha256: "a".repeat(64),
+        });
+      for (const status of [
+        "queued",
+        "preparing",
+        "deploying",
+        "verifying",
+        "interrupted",
+      ] as const) {
+        await database
+          .update(schema.deployments)
+          .set({ status })
+          .where(eq(schema.deployments.id, deploymentId));
+        await expect(
+          admitRuntimeHostConnection(database, principal, input(), directory),
+        ).rejects.toThrow("Finish or review");
+      }
+      expect(
+        await database.select().from(schema.productionRuntimeHosts),
+      ).toHaveLength(0);
+    } finally {
+      await database
+        .delete(schema.deployments)
+        .where(eq(schema.deployments.id, deploymentId));
+      await database
+        .delete(schema.deploymentResources)
+        .where(eq(schema.deploymentResources.projectId, projectId));
+      await database.delete(schema.builds).where(eq(schema.builds.id, buildId));
+      await database
+        .delete(schema.projects)
+        .where(eq(schema.projects.id, projectId));
+    }
+  },
+);

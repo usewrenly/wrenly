@@ -116,7 +116,15 @@ async function requireIdle(tx: Transaction): Promise<void> {
   const [publishing] = await tx
     .select({ id: deployments.id })
     .from(deployments)
-    .where(inArray(deployments.status, ["queued", "deploying", "interrupted"]))
+    .where(
+      inArray(deployments.status, [
+        "queued",
+        "preparing",
+        "deploying",
+        "verifying",
+        "interrupted",
+      ]),
+    )
     .limit(1);
   if (operation || provision || oldCheck || publishing)
     throw new AppDatabaseError(
