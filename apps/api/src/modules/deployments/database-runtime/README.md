@@ -27,3 +27,9 @@ It reloads the saved intent before calling an adapter and reloads the acknowledg
 before advancing. A connection loss or cancellation preserves the pending step.
 The adapter must still provide the real host/provider proof; an injected unit-test
 adapter is not evidence that a public deployment is ready.
+
+`secrets.ts` loads only the selected runtime role, reviewed TLS endpoint/CA and
+host SSH material after rechecking the active publishing claim. The management
+credential is decrypted locally only to recover its CA; it is excluded from the
+returned runtime settings, along with the migrator and reader passwords. Stable
+Laravel keys reuse the existing encrypted deployment key rather than being regenerated.

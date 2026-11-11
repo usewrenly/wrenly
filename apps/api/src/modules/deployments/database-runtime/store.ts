@@ -26,7 +26,7 @@ import {
 } from "../persistence/deployment-store";
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** A saved binding is rechecked before every effect and acknowledgement, never trusted merely because admission once passed. */
-async function held(
+export async function lockProductionPublishingRuntime(
   tx: Transaction,
   claim: DeploymentClaim,
 ): Promise<{
@@ -156,7 +156,9 @@ export async function loadProductionPublishingRuntime(
   journal: ProductionPublishingJournal;
 }> {
   try {
-    return await database.transaction((tx) => held(tx, claim));
+    return await database.transaction((tx) =>
+      lockProductionPublishingRuntime(tx, claim),
+    );
   } catch (error) {
     if (error instanceof DeploymentStoreError) throw error;
     throw new DeploymentStoreError(
@@ -172,7 +174,10 @@ export async function beginProductionRuntimeEffect(
 ): Promise<NonNullable<ProductionPublishingJournal["pending"]>> {
   try {
     return await database.transaction(async (tx) => {
-      const { binding, journal } = await held(tx, claim);
+      const { binding, journal } = await lockProductionPublishingRuntime(
+        tx,
+        claim,
+      );
       const next = beginProductionPublishingEffect(
         binding,
         journal,
@@ -201,7 +206,10 @@ export async function acknowledgeProductionRuntimeEffect(
 ): Promise<void> {
   try {
     await database.transaction(async (tx) => {
-      const { binding, journal } = await held(tx, claim);
+      const { binding, journal } = await lockProductionPublishingRuntime(
+        tx,
+        claim,
+      );
       const next = acknowledgeProductionPublishingEffect(
         binding,
         journal,

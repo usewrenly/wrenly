@@ -1,3 +1,14 @@
+import { loadProductionPublishingRuntimeSecrets } from "./secrets";
+import {
+  loadDatabaseKey,
+  encryptDatabaseSecret,
+} from "../../databases/database-secrets";
+import { sealRuntimeHostCredential } from "../../databases/production-targets/deployment-hosts/credentials";
+import { sealProductionConnection } from "../../databases/production-targets/instance/credentials";
+import { createProductionProjectCredentials } from "@wrenly/db/production-project-credentials";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { finishDeployment } from "../persistence/deployment-store";
 import { loadInterruptedDeployment } from "../persistence/reconciliation-store";
 import { freezeProductionPublishingBinding } from "./binding";
@@ -72,8 +83,10 @@ const binding: ProductionPublishingBinding = {
   serverId: "fixture-server",
   principal: { ...actor, accessRevision },
 };
+let directory = "";
 beforeAll(async () => {
   if (!url) return;
+  directory = await mkdtemp(join(tmpdir(), "wrenly-publishing-secret-test-"));
   await migrate(database, {
     migrationsFolder: resolve(
       import.meta.dir,
@@ -205,6 +218,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await client.end({ timeout: 1 });
+  if (directory) await rm(directory, { recursive: true, force: true });
 });
 check(
   "persisted intent survives failed acknowledgements and prevents remote replay",
@@ -353,27 +367,25 @@ check(
   async () => {
     const id = crypto.randomUUID(),
       lease = crypto.randomUUID();
-    await database
-      .insert(schema.deployments)
-      .values({
-        id,
-        projectId,
-        buildId,
-        userId: actor.userId,
-        idempotencyKey: crypto.randomUUID(),
-        requestIdentity: "fixture-finalization",
-        stack: "nextjs",
-        files: [],
-        sourceSha256: binding.sourceSha256,
-        status: "verifying",
-        claimToken: lease,
-        leaseExpiresAt: new Date(Date.now() + 600000),
-        artifactImageId: `sha256:${"e".repeat(64)}`,
-        registryDigest: `sha256:${"f".repeat(64)}`,
-        remoteDeploymentUuid: "fixture-job",
-        productionDatabaseBinding: { ...binding, deploymentId: id },
-        productionRuntimeJournal: { version: 1, pending: null, completed: [] },
-      });
+    await database.insert(schema.deployments).values({
+      id,
+      projectId,
+      buildId,
+      userId: actor.userId,
+      idempotencyKey: crypto.randomUUID(),
+      requestIdentity: "fixture-finalization",
+      stack: "nextjs",
+      files: [],
+      sourceSha256: binding.sourceSha256,
+      status: "verifying",
+      claimToken: lease,
+      leaseExpiresAt: new Date(Date.now() + 600000),
+      artifactImageId: `sha256:${"e".repeat(64)}`,
+      registryDigest: `sha256:${"f".repeat(64)}`,
+      remoteDeploymentUuid: "fixture-job",
+      productionDatabaseBinding: { ...binding, deploymentId: id },
+      productionRuntimeJournal: { version: 1, pending: null, completed: [] },
+    });
     await expect(
       finishDeployment(
         database,
@@ -399,6 +411,94 @@ check(
     await expect(loadInterruptedDeployment(database, id)).rejects.toThrow(
       "stateless reconciliation",
     );
+  },
+);
+check(
+  "runtime secret selection never returns management, migration or reader passwords",
+  async () => {
+    const [databaseKey, hostKey, instanceKey] = await Promise.all([
+      loadDatabaseKey(join(directory, "database-keys"), false),
+      loadDatabaseKey(join(directory, "production-host-keys"), false),
+      loadDatabaseKey(join(directory, "production-instance-keys"), false),
+    ]);
+    const credentials = createProductionProjectCredentials(resourceId);
+    await database
+      .update(schema.appDatabases)
+      .set({
+        secrets: encryptDatabaseSecret(
+          JSON.stringify(credentials),
+          databaseKey,
+          `${resourceId}:production`,
+        ),
+      })
+      .where(eq(schema.appDatabases.id, resourceId));
+    const [host] = await database
+      .select()
+      .from(schema.productionRuntimeHosts)
+      .where(eq(schema.productionRuntimeHosts.id, hostId));
+    const [server] = await database
+      .select()
+      .from(schema.productionDatabaseConnections)
+      .where(eq(schema.productionDatabaseConnections.id, connectionId));
+    if (!host || !server) throw new Error("Missing fixture setup.");
+    const privateKey =
+      "-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-only\n-----END OPENSSH PRIVATE KEY-----\n";
+    const hostSecret = sealRuntimeHostCredential(
+      {
+        requestId: host.requestId,
+        expectedConnectionId: null,
+        confirmTarget: true,
+        serverId: host.serverId,
+        target: host.target,
+        privateKey,
+      },
+      host,
+      hostKey,
+    );
+    const managementPassword = "fixture-management-only";
+    const serverSecret = sealProductionConnection(
+      {
+        requestId: server.requestId,
+        expectedConnectionId: null,
+        confirmTarget: true,
+        target: server.target,
+        credential: { user: "postgres", password: managementPassword },
+      },
+      server,
+      instanceKey,
+    );
+    await database
+      .update(schema.productionRuntimeHosts)
+      .set({ secret: hostSecret })
+      .where(eq(schema.productionRuntimeHosts.id, hostId));
+    await database
+      .update(schema.productionDatabaseConnections)
+      .set({ secret: serverSecret, pinnedAddresses: ["10.0.0.1"] })
+      .where(eq(schema.productionDatabaseConnections.id, connectionId));
+    const result = await loadProductionPublishingRuntimeSecrets({
+      database,
+      claim,
+      directory,
+      deploymentEncryptionKey: "d".repeat(64),
+    });
+    expect(result.database.runtimeRole).toEqual(credentials.runtime);
+    expect(result.host.privateKey).toBe(privateKey);
+    expect(result.appKey).toBeNull();
+    const serialized = JSON.stringify(result);
+    for (const forbidden of [
+      credentials.migrator.password,
+      credentials.reader.password,
+      managementPassword,
+    ])
+      expect(serialized).not.toContain(forbidden);
+    await expect(
+      loadProductionPublishingRuntimeSecrets({
+        database,
+        claim: { ...claim, token: crypto.randomUUID() },
+        directory,
+        deploymentEncryptionKey: "d".repeat(64),
+      }),
+    ).rejects.toThrow("could not be authenticated");
   },
 );
 check(
