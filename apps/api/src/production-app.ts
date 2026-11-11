@@ -1,3 +1,4 @@
+import type { ProductionClusterModule } from "./modules/databases/production-targets/module";
 import { createPasswordRecoveryHandler } from "./modules/auth/password-recovery/password-recovery-http";
 import { completePasswordRecovery } from "./modules/auth/password-recovery/password-recovery-store";
 /**
@@ -63,7 +64,13 @@ import { createPreviewHttpHandlers } from './modules/previews/http/http'
 import { createApp } from './app'
 
 /** Connects the HTTP router to the existing server-only services. */
-export function createProductionApp(environment: ApiEnvironment): Hono {
+export function createProductionApp(
+  environment: ApiEnvironment,
+  services: { productionDatabases?: Omit<ProductionClusterModule, "stop"> } = {},
+): Hono {
+  // Startup owns workers and supplies their verified handlers only after prerequisites pass.
+  const productionDatabases = environment.WRENLY_APP_DATABASES_ENABLED === 'true'
+    ? services.productionDatabases : undefined;
   const providerConfiguration = createProviderConfigurationService({
     environment: { list: listEnvironmentProviders, resolve: resolveEnvironmentProvider },
     owner: actorId => assertProviderConfigurationOwner(db, actorId), catalog: () => getAvailableCatalog(db),
@@ -132,7 +139,10 @@ export function createProductionApp(environment: ApiEnvironment): Hono {
       deployProject: publishing.create,
       deployments: publishing,
       getModels,
-      projectDatabases: environment.WRENLY_APP_DATABASES_ENABLED === 'true' ? createProductionDatabaseHandlers(db, { directory: environment.WRENLY_DATA_DIR, webUrl: environment.WRENLY_WEB_URL, userId: getUserId }) : undefined,
+      productionDatabaseSetup: productionDatabases?.instanceSetup,
+      productionHostSetup: productionDatabases?.hostSetup,
+      productionProjectCreation: productionDatabases?.projectCreation,
+      projectDatabases: productionDatabases?.projectDatabases ?? (environment.WRENLY_APP_DATABASES_ENABLED === 'true' ? createProductionDatabaseHandlers(db, { directory: environment.WRENLY_DATA_DIR, webUrl: environment.WRENLY_WEB_URL, userId: getUserId }) : undefined),
       builds: buildHandlers,
       conversations: createConversationHttpHandlers({
         userId: getUserId,

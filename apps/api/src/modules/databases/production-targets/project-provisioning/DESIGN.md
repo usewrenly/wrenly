@@ -63,3 +63,11 @@ STEPS:
 4. Project status reads expose the latest current-owner review and its exact original/resumed request identities for lost-response checks.
 EDGE CASES: Missing, expired, refused or foreign reports preserve the blocker; previous SQL is never replayed by inspection.
 ERROR STATES: Unknown admission keeps the same request UUID. Reads and polling never admit continuation.
+
+COMPONENT: Production HTTP composition
+PURPOSE: Mount the verified Production module's handlers without letting HTTP construction start workers or enable database access.
+INPUTS: Existing API environment and optional lifecycle-owned Production handler set.
+OUTPUTS: Production setup, host and project creation routes plus the module's resource handlers, only when database features are enabled.
+STEPS: Require the existing database feature gate; prefer verified module resource handlers; retain Development handlers when no Production module is supplied; pass setup handlers to the existing router without changing their authentication, confirmation or origin checks.
+EDGE CASES: Supplying handlers while the feature is disabled mounts no Production routes. Importing or constructing the HTTP app starts no workers, connections or remote operations.
+ERROR STATES: Missing module leaves Production routes unavailable. Authentication failures remain explicit 401 responses and never reach persistence. Startup retains ownership of activation and cleanup.
