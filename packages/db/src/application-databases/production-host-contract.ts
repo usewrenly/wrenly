@@ -135,7 +135,29 @@ export const ProductionRuntimeVolumeReply = z
     database: ProductionRuntimeVolumeFact.nullable(),
   })
   .strict();
+export const ProductionRuntimeNetworkRequest =
+  ProductionRuntimeVolumeRequest.extend({
+    action: z.enum(["create-runtime-network", "inspect-runtime-network"]),
+  });
+export type ProductionRuntimeNetworkRequest = z.infer<
+  typeof ProductionRuntimeNetworkRequest
+>;
+export const ProductionRuntimeNetworkReply = z
+  .object({
+    version: z.literal(1),
+    nonce: z.uuid(),
+    dockerId: ProductionRuntimeHostIdentity.shape.dockerId,
+    network: z
+      .object({
+        id: z.string().regex(/^[a-f0-9]{64}$/),
+        name: z.string().min(1).max(128),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeNetworkRequest,
   ProductionRuntimeHostInspection,
   ProductionRuntimeVolumeRequest,
 ]);

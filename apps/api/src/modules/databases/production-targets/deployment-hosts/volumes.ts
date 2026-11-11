@@ -12,6 +12,7 @@ const Volume = z.object({
   Scope: z.literal("local"),
   CreatedAt: z.string().min(1).max(64),
   Labels: z.record(z.string(), z.string()),
+  Options: z.record(z.string(), z.string()).nullable().optional(),
 });
 function names(input: ProductionRuntimeVolumeRequest): {
   http: string;
@@ -67,6 +68,7 @@ export async function executeRuntimeVolumeRequest(
       )[0]!;
     if (
       value.Name !== name ||
+      Object.keys(value.Options ?? {}).length !== 0 ||
       Object.entries(labels(input, kind)).some(
         ([key, expected]) => value.Labels[key] !== expected,
       )

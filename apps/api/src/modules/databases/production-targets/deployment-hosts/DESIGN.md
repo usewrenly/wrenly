@@ -67,3 +67,15 @@ STEPS:
 6. Release the lock after every outcome; never delete resources on uncertainty.
 EDGE CASES: Same-host API and helper locks have separate namespaces. Foreign volumes, daemon changes and active helpers refuse progress.
 ERROR STATES: The publishing caller retains durable intent until verified acknowledgement or explicit reconciliation; transport failures never retry creation.
+
+COMPONENT: Deployment broker network
+PURPOSE: Give only the trusted runtime database broker access to the private PostgreSQL endpoint.
+INPUTS: Strict saved deployment/project/resource identity, daemon identity and create-or-inspect action.
+OUTPUTS: Exact local bridge ID/name, or an unconfirmed result preserved for reconciliation.
+STEPS:
+1. Recheck daemon identity and hold the deployment kernel lock.
+2. Derive the name and ownership labels; inspect exact local bridge settings and refuse custom options, IPv6, ingress, attachable or pre-attached containers.
+3. Refuse existing networks on creation; perform one fixed bridge creation after durable caller intent.
+4. Independently inspect and return its exact Docker ID with the original nonce.
+EDGE CASES: Inspection does not adopt a network or retry creation; generated apps never join this bridge.
+ERROR STATES: Unexpected ownership/settings/attachments stop before credentials are sent. Network cleanup is a separate durable action.

@@ -40,3 +40,9 @@ The unit tests exercise request bounds and private-address checks. The optional
 SSH tests start their own temporary SSH server and keys; they do not alter an
 operator's SSH service. They prove that a foreign host key, changed DNS answers,
 and malformed or excessive replies fail closed.
+
+`network.ts` creates an empty deployment-labelled bridge for the trusted database
+broker. It rejects existing networks during creation and rejects custom options
+or attached containers during inspection. This does not give the generated app
+network access: the app uses only its authenticated Unix socket. Publishing must
+save the returned daemon/network identity before it can deliver a runtime role.

@@ -5,6 +5,7 @@ import {
   ProductionRuntimeHostRequest,
 } from "@wrenly/db/production-host-contract";
 import { executeRuntimeVolumeRequest } from "./volumes";
+import { executeRuntimeNetworkRequest } from "./network";
 const MAX_OPERATION_MS = 30_000;
 const MAX_INPUT_BYTES = 128 * 1024;
 const MAX_DOCKER_OUTPUT_BYTES = 16 * 1024;
@@ -127,7 +128,10 @@ if (import.meta.main) {
     const reply =
       input.action === "inspect"
         ? host
-        : await executeRuntimeVolumeRequest(input, host.dockerId, signal);
+        : input.action === "create-runtime-network" ||
+            input.action === "inspect-runtime-network"
+          ? await executeRuntimeNetworkRequest(input, host.dockerId, signal)
+          : await executeRuntimeVolumeRequest(input, host.dockerId, signal);
     process.stdout.write(JSON.stringify(reply) + "\n");
   } catch {
     process.stderr.write("Deployment host inspection could not be verified.\n");
