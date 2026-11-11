@@ -38,7 +38,10 @@ export function sealProductionConnection(
   key: Buffer,
 ): DatabaseSecretEnvelope {
   const value = ProductionConnectionInput.parse(input);
-  if (JSON.stringify(value.target) !== JSON.stringify(scope.target))
+  if (
+    JSON.stringify(value.target) !==
+    JSON.stringify(ProductionConnectionInput.shape.target.parse(scope.target))
+  )
     throw new Error("Connection target changed");
   return encryptDatabaseSecret(
     JSON.stringify({

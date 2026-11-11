@@ -77,3 +77,26 @@ test("replay identity binds passwords, owner and expected connection", () => {
     }),
   ).toThrow();
 });
+
+test("persisted JSONB key order cannot change a connection credential scope", () => {
+  const target = {
+    sslmode: input.target.sslmode,
+    database: input.target.database,
+    port: input.target.port,
+    host: input.target.host,
+    environment: input.target.environment,
+    version: input.target.version,
+  };
+  const stored = { ...scope, target };
+  const sealed = sealProductionConnection(input, stored, key);
+  expect(openProductionConnection(sealed, stored, key).credential).toEqual(
+    input.credential,
+  );
+  expect(() =>
+    sealProductionConnection(
+      input,
+      { ...stored, target: { ...target, database: "foreign" } },
+      key,
+    ),
+  ).toThrow("target changed");
+});
