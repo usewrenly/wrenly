@@ -23,6 +23,8 @@ try {
   await verifyProductionProvisionSchema(db)
   const { verifyInstanceProductionConnectionSchema } = await import('./modules/databases/production-targets/instance/store')
   await verifyInstanceProductionConnectionSchema(db)
+  const { verifyRuntimeHostConnectionSchema } = await import('./modules/databases/production-targets/deployment-hosts/store')
+  await verifyRuntimeHostConnectionSchema(db)
   await verifySkillsSchema(db)
   await verifyBuildWorkerSchema(db)
   await verifyConversationSchema(db)

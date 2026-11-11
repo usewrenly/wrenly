@@ -25,3 +25,18 @@ STEPS:
 5. Decrypt only after the caller rechecks the current owner/session and saved work claim.
 EDGE CASES: A changed connection, actor, server, target, key or ciphertext fails authentication. Exact submissions retain their request fingerprint.
 ERROR STATES: Missing original key or mismatched scope refuses decryption; never create a replacement over saved credentials.
+
+COMPONENT: Durable host registration and verification
+PURPOSE: Preserve exactly what the owner approved and distinguish verified, refused and interrupted checks.
+INPUTS: Current instance owner/session, expected prior connection, request ID, reviewed host/server and dedicated SSH key.
+OUTPUTS: Private receipt and pinned verified machine facts; no secret appears in a status response.
+STEPS:
+1. Lock shared work queues and recheck the active instance owner before touching encryption storage.
+2. Return exact request replay; reject changed requests and stale prior revisions.
+3. Block changes while database or publishing work needs completion or recovery.
+4. Save immutable input and encrypted SSH key, then claim a queued check with a bounded lease.
+5. Recheck claim/session before decryption; pin private DNS, authenticate SSH and inspect the fixed helper.
+6. Require the deployment adapter to independently verify the reviewed server/machine match.
+7. Persist verified facts only while the original claim and owner session remain current.
+EDGE CASES: Expired checks become review-required, never automatically retried. Closing an interrupted read-only check requires an explicit owner action. Account changes remain fenced while work is unresolved.
+ERROR STATES: Unknown completion remains saved for review; a status read does not decrypt secrets or start remote work. Registration does not activate publishing.

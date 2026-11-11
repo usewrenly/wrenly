@@ -24,8 +24,13 @@ bun build src/modules/databases/production-targets/deployment-hosts/helper.ts \
 ```
 
 This is a verification component, not an enabled production installation path.
-Registration, runtime bootstrap and database-backed publishing must use their
-own saved operation checks before this helper gains mutation actions. Installing
+Host registration uses a separate encrypted journal in `store.ts`. Only the current
+instance owner can submit, read or close its checks. Requests keep their original
+values, exact retries return the saved receipt, and expired checks need explicit
+review. `worker.ts` requires the deployment adapter to independently match the
+inspected Docker daemon to the selected Coolify server before marking a host verified.
+The worker is not registered at startup. Runtime bootstrap and database-backed
+publishing still need their saved operation checks before this helper gains mutation actions. Installing
 an inspection bundle alone does not enable Production databases.
 
 The unit tests exercise request bounds and private-address checks. The optional

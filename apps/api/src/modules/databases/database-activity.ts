@@ -4,6 +4,7 @@ import type { db } from "@wrenly/db";
 import {
   appDatabaseOperations,
   productionDatabaseConnections,
+  productionRuntimeHosts,
   productionDatabaseProvisions,
   projects,
 } from "@wrenly/db";
@@ -107,7 +108,22 @@ export async function hasMemberDatabaseWork(
         ),
       )
       .limit(1);
-    return Boolean(connection);
+    if (connection) return true;
+    const [host] = await database
+      .select({ id: productionRuntimeHosts.id })
+      .from(productionRuntimeHosts)
+      .where(
+        and(
+          eq(productionRuntimeHosts.actorId, actorId),
+          inArray(productionRuntimeHosts.status, [
+            "queued",
+            "checking",
+            "needs_review",
+          ]),
+        ),
+      )
+      .limit(1);
+    return Boolean(host);
   } catch {
     throw new AppDatabaseError(
       503,
