@@ -50,3 +50,16 @@ STEPS:
 3. Retain the same authorization, reader lease, exact resource revision, result bounds and cleanup acknowledgements.
 EDGE CASES: Existing Development composition omits the option and retains its behavior. Omitted Production configuration refuses Production reads.
 ERROR STATES: Unverified destination, changed access or uncertain cleanup suppresses the result.
+
+
+COMPONENT: Confirmed setup inspection and continuation HTTP
+PURPOSE: Let the owner inspect one interrupted provisioning phase and explicitly continue only after a current confirmed/absent report.
+INPUTS: Strict request UUID, project revision and exact resource or review UUID; current owner session and trusted origin.
+OUTPUTS: Validated safe receipts and actor-scoped inspection progress, never credentials or SQL.
+STEPS:
+1. Separate inspect from continue actions; authenticate and recheck the complete current session before admission.
+2. Reuse the existing recovery store, kernel lock and native read-only phase proof.
+3. Run saved inspections through the owned control worker. Only a separate owner confirmation may resume remaining phases.
+4. Project status reads expose the latest current-owner review and its exact original/resumed request identities for lost-response checks.
+EDGE CASES: Missing, expired, refused or foreign reports preserve the blocker; previous SQL is never replayed by inspection.
+ERROR STATES: Unknown admission keeps the same request UUID. Reads and polling never admit continuation.

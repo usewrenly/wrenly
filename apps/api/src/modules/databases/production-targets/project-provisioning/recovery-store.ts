@@ -1,3 +1,4 @@
+import { ProductionProjectRecoveryInput } from "@wrenly/db/production-project-contract";
 /** Read-only phase inspection is a separate saved owner action; resuming always requires another explicit confirmation. */
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import { join } from "node:path";
@@ -32,20 +33,14 @@ import {
 const LEASE_MS = 60_000;
 // Keep owner confirmation close to the inspected server state; an old report is not execution authority.
 const REVIEW_TTL_MS = 5 * 60_000;
-const ReviewInput = z
-  .object({
-    requestId: z.uuid(),
-    expectedRevision: z.uuid(),
-    confirmInspect: z.literal(true),
-  })
-  .strict();
-const ResumeInput = z
-  .object({
-    requestId: z.uuid(),
-    expectedRevision: z.uuid(),
-    confirmContinue: z.literal(true),
-  })
-  .strict();
+const ReviewInput = ProductionProjectRecoveryInput.options[0].omit({
+  kind: true,
+  resourceId: true,
+});
+const ResumeInput = ProductionProjectRecoveryInput.options[1].omit({
+  kind: true,
+  reviewId: true,
+});
 type Connection = typeof db;
 type Transaction = Parameters<Parameters<Connection["transaction"]>[0]>[0];
 type Review = typeof reviews.$inferSelect;

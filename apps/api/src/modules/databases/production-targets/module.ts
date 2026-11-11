@@ -1,3 +1,7 @@
+import {
+  admitProductionProvisionReview,
+  resumeProductionProvision,
+} from "./project-provisioning/recovery-store";
 import { accessContext } from "../../auth/access/access-context";
 import { createProductionDatabaseHandlers } from "../http/production-handlers";
 import { createProjectProductionCreationHandlers } from "./project-provisioning/http";
@@ -12,6 +16,7 @@ import { getDatabaseWorkerBundle } from "../database-worker-bundle";
 import { startProductionControlWorker } from "./control-worker";
 import { runInstanceProductionConnectionOnce } from "./instance/worker";
 import { runRuntimeHostCheckOnce } from "./deployment-hosts/worker";
+import { runProductionProvisionReviewOnce } from "./project-provisioning/recovery-worker";
 import { runProjectProductionProvisionOnce } from "./project-provisioning/worker";
 import { attachCompletedProductionProvision } from "./project-provisioning/handoff";
 import { createProductionClusterResourceWorker } from "./data/worker";
@@ -75,6 +80,8 @@ const defaults: Adapters = {
           ),
         host: async (signal) =>
           Boolean(await runRuntimeHostCheckOnce({ ...input, signal })),
+        review: async (signal) =>
+          Boolean(await runProductionProvisionReviewOnce({ ...input, signal })),
         handoff: async (signal) =>
           Boolean(
             await attachCompletedProductionProvision({ ...input, signal }),
@@ -150,6 +157,32 @@ export async function startProductionClusterModule(
   const projectCreation = createProjectProductionCreationHandlers(
     {
       principal: input.principal,
+      recover: async (actor, id, value) => {
+        if (value.kind === "inspect") {
+          const { kind, resourceId, ...confirmation } = value;
+          return {
+            kind,
+            receipt: await admitProductionProvisionReview(
+              input.database,
+              actor,
+              id,
+              resourceId,
+              confirmation,
+            ),
+          };
+        }
+        const { kind, reviewId, ...confirmation } = value;
+        return {
+          kind,
+          receipt: await resumeProductionProvision(
+            input.database,
+            actor,
+            id,
+            reviewId,
+            confirmation,
+          ),
+        };
+      },
       admit: (actor, id, value) =>
         admitProjectProductionProvision(
           input.database,

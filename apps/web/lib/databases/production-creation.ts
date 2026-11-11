@@ -38,7 +38,11 @@ export class ProductionCreationError extends Error {
     );
   }
 }
-async function body(response: Response, signal: AbortSignal): Promise<unknown> {
+/** Reads bounded UTF-8 JSON for the small credential-free creation and recovery receipts. */
+export async function readProductionCreationBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
   if (!response.body) throw new Error("Missing response");
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -91,7 +95,7 @@ export async function readProductionCreation(
       throw new ProductionCreationError("unknown");
     }
     const result = ProductionProjectCreationState.parse(
-      await body(response, deadline),
+      await readProductionCreationBody(response, deadline),
     );
     if (
       result.projectId !== projectId ||
@@ -130,7 +134,7 @@ export async function submitProductionCreation(
       );
     }
     return ProductionProjectCreationReceipt.parse(
-      await body(response, deadline),
+      await readProductionCreationBody(response, deadline),
     );
   } catch (error) {
     if (error instanceof ProductionCreationError) throw error;

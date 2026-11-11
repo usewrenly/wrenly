@@ -188,3 +188,68 @@ test("status rejects foreign projects and invalid progress", async () => {
     ).toBe(503);
   }
 });
+
+test("setup recovery requires a separate exact confirmation and preserves uncertain replies", async () => {
+  let calls = 0;
+  const recovery = {
+    kind: "inspect" as const,
+    requestId: crypto.randomUUID(),
+    expectedRevision: input.expectedRevision,
+    resourceId: receipt.resourceId,
+    confirmInspect: true as const,
+  };
+  const reply = {
+    kind: "inspect",
+    receipt: {
+      reviewId: crypto.randomUUID(),
+      resourceId: receipt.resourceId,
+      phase: "roles",
+      status: "queued",
+      replayed: false,
+    },
+  };
+  const handlers = createProjectProductionCreationHandlers(
+    services({
+      recover: async (_actor, id, saved) => {
+        expect(id).toBe(projectId);
+        expect(saved).toEqual(recovery);
+        calls++;
+        return reply;
+      },
+    }),
+    "http://localhost:3000",
+  );
+  expect(
+    (
+      await handlers.recovery(
+        request(recovery, "https://foreign.test"),
+        projectId,
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await handlers.recovery(
+        request({ ...recovery, confirmInspect: false }),
+        projectId,
+      )
+    ).status,
+  ).toBe(400);
+  expect(calls).toBe(0);
+  const accepted = await handlers.recovery(request(recovery), projectId);
+  expect(accepted.status).toBe(202);
+  expect(await accepted.json()).toEqual(reply);
+  expect(calls).toBe(1);
+  const foreign = createProjectProductionCreationHandlers(
+    services({
+      recover: async () => ({
+        ...reply,
+        receipt: { ...reply.receipt, resourceId: crypto.randomUUID() },
+      }),
+    }),
+    "http://localhost:3000",
+  );
+  expect((await foreign.recovery(request(recovery), projectId)).status).toBe(
+    503,
+  );
+});

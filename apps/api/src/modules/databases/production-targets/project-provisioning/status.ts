@@ -4,6 +4,7 @@ import {
   projects,
   productionDatabaseConnections,
   productionDatabaseProvisions,
+  productionDatabaseProvisionReviews as reviews,
   type db,
 } from "@wrenly/db";
 import { z } from "zod";
@@ -72,8 +73,31 @@ export async function readProjectProductionCreation(
             desc(productionDatabaseProvisions.id),
           )
           .limit(1);
+        const review = saved
+          ? ((
+              await tx
+                .select({
+                  reviewId: reviews.id,
+                  resourceId: reviews.provisionId,
+                  requestId: reviews.requestId,
+                  resumedRequestId: reviews.resumedRequestId,
+                  phase: reviews.phase,
+                  status: reviews.status,
+                })
+                .from(reviews)
+                .where(
+                  and(
+                    eq(reviews.provisionId, saved.id),
+                    eq(reviews.actorId, principal.userId),
+                  ),
+                )
+                .orderBy(desc(reviews.createdAt), desc(reviews.id))
+                .limit(1)
+            )[0] ?? null)
+          : null;
         return ProductionProjectCreationState.parse({
           projectId,
+          review,
           projectRevision: project.revision,
           connectionId:
             connection?.status === "verified" && connection.verified

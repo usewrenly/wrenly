@@ -1,5 +1,6 @@
 "use client";
 /** Reviews one owner request and follows its saved progress without creating work on mount. */
+import { ProductionSetupRecovery } from "./production-setup-recovery";
 import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
@@ -43,6 +44,7 @@ export function ProductionDatabaseCreation({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reload, setReload] = useState(0);
   const controller = useRef<AbortController | null>(null);
   const accepted = useRef(onAccepted);
   accepted.current = onAccepted;
@@ -101,7 +103,7 @@ export function ProductionDatabaseCreation({
       active.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [actorId, projectId]);
+  }, [actorId, projectId, reload]);
   async function submit(): Promise<void> {
     const active = controller.current;
     if (!active || active.signal.aborted || busy) return;
@@ -137,7 +139,8 @@ export function ProductionDatabaseCreation({
       clearPendingProductionCreation(sessionStorage, saved);
       setPending(null);
       setState(current);
-      accepted.current();
+      if (current.creation.status === "attached") accepted.current();
+      else setReload((value) => value + 1);
     } catch (cause) {
       if (!active.signal.aborted)
         setError(
@@ -187,6 +190,23 @@ export function ProductionDatabaseCreation({
               ? "Setup needs review. Your saved request is preserved."
               : `Saved setup: ${creation.status}`}
           </p>
+        ) : null}
+        {creation?.status === "needs_review" && state ? (
+          <ProductionSetupRecovery
+            actorId={actorId}
+            projectId={projectId}
+            state={state}
+            onChange={(current) => {
+              setState(current);
+              if (
+                current.creation &&
+                ["queued", "creating", "created"].includes(
+                  current.creation.status,
+                )
+              )
+                setReload((value) => value + 1);
+            }}
+          />
         ) : null}
         {error ? (
           <p role="alert" className="database-attention">

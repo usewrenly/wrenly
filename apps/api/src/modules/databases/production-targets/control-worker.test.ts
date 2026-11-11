@@ -28,6 +28,7 @@ test("shutdown aborts and awaits active Production control work before any next 
         calls.push("host");
         return false;
       },
+      review: async () => false,
       handoff: async () => false,
       provision: async () => false,
     },
@@ -63,6 +64,10 @@ test("a refused setup stage does not suppress other saved queues and an idle wor
       calls.push("host");
       return false;
     },
+    review: async () => {
+      calls.push("review");
+      return false;
+    },
     handoff: async () => {
       calls.push("handoff");
       return false;
@@ -82,6 +87,12 @@ test("a refused setup stage does not suppress other saved queues and an idle wor
   });
   await reached;
   await worker.stop();
-  expect(calls).toEqual(["connection", "host", "handoff", "provision"]);
+  expect(calls).toEqual([
+    "connection",
+    "host",
+    "review",
+    "handoff",
+    "provision",
+  ]);
   expect(failures).toEqual(["connection"]);
 });

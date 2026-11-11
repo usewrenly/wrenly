@@ -207,6 +207,7 @@ export function createApp(
   if (handlers.productionProjectCreation) {
     const creation = handlers.productionProjectCreation
     app.post('/api/projects/:id/databases/production/creation', c => creation.submit(c.req.raw, c.req.param('id')))
+    app.post('/api/projects/:id/databases/production/creation/recovery', c => creation.recovery(c.req.raw, c.req.param('id')))
     app.get('/api/projects/:id/databases/production/creation', c => creation.status(c.req.raw, c.req.param('id')))
     app.get('/api/projects/:id/databases/production/creation/requests/:requestId', c => creation.status(c.req.raw, c.req.param('id'), c.req.param('requestId')))
   }

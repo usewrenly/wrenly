@@ -4,6 +4,7 @@ const PASS_TIMEOUT_MS = 5 * 60_000;
 export interface ProductionControlStages {
   connection: (signal: AbortSignal) => Promise<boolean>;
   host: (signal: AbortSignal) => Promise<boolean>;
+  review: (signal: AbortSignal) => Promise<boolean>;
   handoff: (signal: AbortSignal) => Promise<boolean>;
   provision: (signal: AbortSignal) => Promise<boolean>;
 }
@@ -22,6 +23,7 @@ export function startProductionControlWorker(input: {
       for (const stage of [
         "connection",
         "host",
+        "review",
         "handoff",
         "provision",
       ] as const) {
