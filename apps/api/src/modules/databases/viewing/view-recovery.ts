@@ -1,3 +1,8 @@
+import { isRecoverableDatabaseRead } from "./view-recovery-policy";
+import {
+  inspectProductionResourceState,
+  type ProductionRecoveryTarget,
+} from "../production-targets/data/recovery";
 /**
  * COMPONENT: Owner-reviewed abandoned read recovery
  * PURPOSE: Close one interrupted read's owned helpers without replaying its query.
@@ -53,33 +58,7 @@ function pointsToRead(operation: Operation, target: string): boolean {
   );
 }
 function requireReadEffects(operation: Operation): void {
-  const effects = [
-    ...operation.completedEffects,
-    ...(operation.effect ? [operation.effect] : []),
-  ];
-  const cleanup = [
-    ...operation.completedCleanupEffects,
-    ...(operation.cleanupEffect ? [operation.cleanupEffect] : []),
-  ];
-  if (
-    operation.kind !== "read" ||
-    effects.length > 2 ||
-    cleanup.length > 1 ||
-    effects.some(
-      (effect) =>
-        !(
-          (effect.kind === "create-socket" &&
-            effect.id === `wrenly-database-socket-${operation.id}`) ||
-          (effect.kind === "read-database" &&
-            effect.id === `wrenly-database-query-${operation.id}`)
-        ),
-    ) ||
-    cleanup.some(
-      (effect) =>
-        effect.kind !== "close-reader-socket" ||
-        effect.id !== `wrenly-database-socket-${operation.id}`,
-    )
-  )
+  if (!isRecoverableDatabaseRead(operation))
     throw new AppDatabaseError(
       409,
       "This operation is not a bounded reader cleanup. Preserve its recovery fence.",
@@ -92,6 +71,7 @@ async function executeReadRecovery(
   projectId: string,
   actorId: string,
   body: unknown,
+  production?: ProductionRecoveryTarget,
 ): Promise<RecoveryResult> {
   const parsed = DatabaseRecovery.safeParse(body);
   if (!parsed.success)
@@ -184,6 +164,7 @@ async function executeReadRecovery(
           provider: appDatabases.provider,
           environment: appDatabases.environment,
           identity: appDatabases.runtimeIdentity,
+          providerIdentity: appDatabases.providerIdentity,
         })
         .from(appDatabases)
         .where(
@@ -199,16 +180,22 @@ async function executeReadRecovery(
         .where(eq(appDatabaseOperations.id, original.id))
         .for("update");
       if (
-        !resource?.identity ||
+        !resource ||
         resource.revision !== input.expectedRevision ||
         resource.status !== "recovery_required" ||
-        resource.provider !== "local" ||
-        resource.environment !== "development" ||
+        !(
+          (resource.provider === "local" &&
+            resource.environment === "development" &&
+            resource.identity) ||
+          (resource.provider === "postgres-cluster" &&
+            resource.environment === "production" &&
+            production)
+        ) ||
         target?.status !== "interrupted"
       )
         throw new AppDatabaseError(
           409,
-          "Review the current interrupted local database read before recovery.",
+          "Review the current interrupted database read before recovery.",
         );
       requireReadEffects(target);
       const pending = await tx
@@ -278,7 +265,10 @@ async function executeReadRecovery(
     if (admittedResource.replay) return admittedResource.replay;
     admitted = true;
     const resource = admittedResource.resource;
-    if (!resource?.identity)
+    if (
+      !resource ||
+      (resource.environment === "development" && !resource.identity)
+    )
       throw new AppDatabaseError(
         409,
         "Saved database identity is unavailable.",
@@ -293,20 +283,23 @@ async function executeReadRecovery(
             renewal = undefined;
           });
     }, HEARTBEAT_MS);
-    const assertHeld = async (): Promise<void> => {
+    const assertLocalHeld = (): void => {
       lock.assertHeld();
       if (lost || Date.now() > deadline)
         throw new AppDatabaseError(
           409,
           "Reader recovery deadline or lease expired.",
         );
+    };
+    const assertHeld = async (): Promise<void> => {
+      assertLocalHeld();
       await assertDatabaseCleanupLease(database, claim);
-      lock.assertHeld();
+      assertLocalHeld();
     };
     const scope = {
       resourceId: claim.resourceId,
       projectId,
-      environment: "development" as const,
+      environment: resource.environment,
     };
     const cleanup = {
       kind: "cleanup-read-runtime" as const,
@@ -316,7 +309,19 @@ async function executeReadRecovery(
     await recordDatabaseCleanupEffect(database, claim, cleanup);
     await cleanupAbandonedDatabaseRead(scope, original.id, assertHeld);
     if (
-      (await inspectManagedDatabaseState(scope, resource.identity!)) !== "ready"
+      (resource.environment === "production" && production
+        ? await inspectProductionResourceState(
+            database,
+            projectId,
+            actorId,
+            resource.id,
+            resource.revision,
+            production,
+          )
+        : await inspectManagedDatabaseState(
+            { ...scope, environment: "development" },
+            resource.identity!,
+          )) !== "ready"
     )
       throw new AppDatabaseError(
         409,
@@ -351,6 +356,10 @@ async function executeReadRecovery(
         !current ||
         current.revision !== input.expectedRevision ||
         current.status !== "recovery_required" ||
+        current.provider !== resource.provider ||
+        current.environment !== resource.environment ||
+        JSON.stringify(current.providerIdentity) !==
+          JSON.stringify(resource.providerIdentity) ||
         JSON.stringify(current.runtimeIdentity) !==
           JSON.stringify(resource.identity) ||
         !recovery ||
@@ -393,7 +402,9 @@ async function executeReadRecovery(
           409,
           "Another database action requires review.",
         );
-      await assertHeld();
+      // The transaction already locked the exact live claim above. Borrowing another
+      // pool connection here can deadlock a small installation's connection pool.
+      assertLocalHeld();
       for (const row of pending.filter((row) => row.id !== claim.id)) {
         // Preserve the original unknown effect: closure never claims its query succeeded.
         await tx
@@ -470,9 +481,16 @@ export async function recoverDatabaseRead(
   projectId: string,
   actorId: string,
   body: unknown,
+  production?: ProductionRecoveryTarget,
 ): Promise<RecoveryResult> {
   try {
-    return await executeReadRecovery(database, projectId, actorId, body);
+    return await executeReadRecovery(
+      database,
+      projectId,
+      actorId,
+      body,
+      production,
+    );
   } catch (error) {
     if (error instanceof AppDatabaseError) throw error;
     throw new AppDatabaseError(

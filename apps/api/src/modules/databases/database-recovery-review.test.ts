@@ -206,3 +206,49 @@ test("Production availability inspection requires only the original exact stop/s
     }),
   ).toEqual([]);
 });
+
+test("Production reader cleanup permits only the exact read helper and socket", () => {
+  const production: Resource = {
+    ...resource,
+    environment: "production",
+    provider: "postgres-cluster",
+    providerIdentity: {
+      version: "1",
+      provider: "postgres-cluster",
+      connectionId: crypto.randomUUID(),
+      clusterId: "12345",
+      database: `wrenly_${resource.id.replaceAll("-", "")}`,
+      networkId: "a".repeat(64),
+    },
+  };
+  const read: Operation = {
+    ...operation,
+    kind: "read",
+    effect: {
+      kind: "read-database",
+      id: `wrenly-database-query-${operation.id}`,
+      startedAt: new Date().toISOString(),
+    },
+    cleanupEffect: {
+      kind: "close-reader-socket",
+      id: `wrenly-database-socket-${operation.id}`,
+      startedAt: new Date().toISOString(),
+    },
+  };
+  expect(databaseRecoveryChoices(production, read)).toEqual(["recover-read"]);
+  expect(
+    databaseRecoveryChoices(production, {
+      ...read,
+      effect: { ...read.effect!, id: "foreign" },
+    }),
+  ).toEqual([]);
+  expect(
+    databaseRecoveryChoices(production, { ...read, kind: "migrate" }),
+  ).toEqual([]);
+  expect(
+    databaseRecoveryChoices(production, {
+      ...read,
+      cleanupEffect: { ...read.cleanupEffect!, kind: "cleanup" },
+    }),
+  ).toEqual([]);
+});

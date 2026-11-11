@@ -1,3 +1,5 @@
+import { recoverDatabaseRead } from "../../viewing/view-recovery";
+import { beginDatabaseRead } from "../../viewing/view-leases";
 import {
   recoverInspectedDatabaseAction,
   recoverUnstartedDatabaseAction,
@@ -1041,7 +1043,7 @@ nativeReadiness(
         );
         expect(afterAvailability?.schemaDigest).toBe(migrated?.schemaDigest);
       }
-      const [readyForRead] = await database
+      let [readyForRead] = await database
         .select()
         .from(schema.appDatabases)
         .where(eq(schema.appDatabases.id, resource!.id));
@@ -1071,6 +1073,55 @@ nativeReadiness(
       );
       expect(view.rows).toEqual([]);
       expect(view.tables).not.toContain("__drizzle_migrations");
+      const abandoned = await accessContext.run(
+        { principal: currentPrincipal },
+        () =>
+          beginDatabaseRead(
+            database,
+            project.id,
+            currentPrincipal.userId,
+            selection,
+          ),
+      );
+      await recordDatabaseEffect(database, abandoned, {
+        kind: "create-socket",
+        id: `wrenly-database-socket-${abandoned.id}`,
+      });
+      await interruptDatabaseAction(database, abandoned);
+      const [needsRecovery] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      expect(needsRecovery?.status).toBe("recovery_required");
+      const readRecovery = await accessContext.run(
+        { principal: currentPrincipal },
+        () =>
+          recoverDatabaseRead(
+            database,
+            project.id,
+            currentPrincipal.userId,
+            {
+              requestId: crypto.randomUUID(),
+              operationId: abandoned.id,
+              expectedRevision: needsRecovery!.revision,
+            },
+            { directory, controlDatabaseUrl: url!, lookup },
+          ),
+      );
+      expect(readRecovery.resourceId).toBe(resource!.id);
+      [readyForRead] = await database
+        .select()
+        .from(schema.appDatabases)
+        .where(eq(schema.appDatabases.id, resource!.id));
+      expect(readyForRead?.status).toBe("ready");
+      expect(readyForRead?.schemaDigest).toBe(needsRecovery?.schemaDigest);
+      const [oldRead] = await database
+        .select()
+        .from(schema.appDatabaseOperations)
+        .where(eq(schema.appDatabaseOperations.id, abandoned.id));
+      expect(oldRead?.status).toBe("failed");
+      expect(oldRead?.errorCode).toBe("RECOVERED_READ_CLEANUP");
+
       await admitProductionDatabaseAction(
         database,
         currentPrincipal,

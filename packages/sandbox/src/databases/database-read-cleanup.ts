@@ -9,8 +9,8 @@
  */
 import Docker from "dockerode";
 import {
-  managedDatabaseLabels,
-  type ManagedDatabaseScope,
+  databaseClientLabels,
+  type DatabaseClientScope,
 } from "./database-resource-policy";
 import { cleanupScopedDatabaseSocket } from "./database-socket";
 import { DatabaseRuntimeError } from "./database-runtime";
@@ -23,14 +23,14 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 /** Caller must save cleanup intent and hold the resource lock/lease before calling. */
 export async function cleanupAbandonedDatabaseRead(
-  scope: ManagedDatabaseScope,
+  scope: DatabaseClientScope,
   operationId: string,
   assertHeld: () => Promise<void>,
 ): Promise<void> {
   try {
     if (!UUID.test(operationId)) throw new Error("Invalid read identity");
     const labels = {
-      ...managedDatabaseLabels(scope, "database-query"),
+      ...databaseClientLabels(scope, "database-query"),
       "io.wrenly.database-operation-id": operationId,
     };
     const helper = docker.getContainer(`wrenly-database-query-${operationId}`);

@@ -1,3 +1,4 @@
+import { isRecoverableDatabaseRead } from "./viewing/view-recovery-policy";
 import { parseProductionResourceBinding } from "@wrenly/db/production-resource-binding";
 import {
   isFailedDisposableRehearsal,
@@ -59,9 +60,7 @@ export function databaseRecoveryChoices(
       resource.status !== "recovery_required" ||
       operation.status !== "interrupted" ||
       operation.databaseId !== resource.id ||
-      operation.projectId !== resource.projectId ||
-      operation.cleanupEffect ||
-      operation.completedCleanupEffects.length
+      operation.projectId !== resource.projectId
     )
       return [];
     try {
@@ -69,6 +68,9 @@ export function databaseRecoveryChoices(
     } catch {
       return [];
     }
+    if (isRecoverableDatabaseRead(operation)) return ["recover-read"];
+    if (operation.cleanupEffect || operation.completedCleanupEffects.length)
+      return [];
     const effects = [
       ...operation.completedEffects,
       ...(operation.effect ? [operation.effect] : []),

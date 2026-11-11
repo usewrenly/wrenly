@@ -80,7 +80,13 @@ export async function admitDatabaseRecovery(
         );
       }
       case "recover-read":
-        return await recoverDatabaseRead(database, projectId, actorId, review);
+        return await recoverDatabaseRead(
+          database,
+          projectId,
+          actorId,
+          review,
+          production,
+        );
     }
   } catch (error) {
     if (
