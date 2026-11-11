@@ -5,6 +5,7 @@ import {
   ProductionRuntimeBrokerInspectionReply,
 } from "@wrenly/db/production-host-contract";
 import { productionSocketHostMapping } from "@wrenly/sandbox/production-database-socket-policy";
+import { assertProductionBrokerMemoryMounts } from "./broker-policy";
 import { acquireRuntimeHostLock } from "./host-lock";
 import { runRuntimeHostDocker } from "./docker-command";
 const Strings = z.array(z.string());
@@ -22,6 +23,9 @@ const Inspect = z.object({
   }),
   HostConfig: z.object({
     NetworkMode: z.string(),
+    Tmpfs: z.record(z.string(), z.string()),
+    Sysctls: z.object({ "net.ipv4.ip_forward": z.literal("0") }).strict(),
+    AutoRemove: z.literal(false),
     ReadonlyRootfs: z.literal(true),
     Privileged: z.literal(false),
     PidMode: z.literal(""),
@@ -115,6 +119,7 @@ export async function inspectRuntimeDatabaseBroker(
     };
     const volumeName = `wrenly-deployment-db-${input.deploymentId}`,
       host = info.HostConfig;
+    assertProductionBrokerMemoryMounts(host.Tmpfs);
     if (
       info.Id !== input.containerId ||
       info.Name !== `/wrenly-deployment-broker-${input.deploymentId}` ||
