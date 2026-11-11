@@ -12,3 +12,16 @@ STEPS:
 6. Remove private temporary transport files in finally; never log raw SSH/remote output.
    EDGE CASES: Changed DNS/host keys, unsolicited extra JSON, timeout and partial output fail closed. Existing local transport remains separate.
    ERROR STATES: Caller preserves the original durable operation intent on any unconfirmed transport result; no automatic SSH retry.
+
+COMPONENT: Deployment-host credential binding
+PURPOSE: Keep the dedicated SSH key private and prevent moving it to a different owner, host or Coolify server.
+INPUTS: Strict owner-confirmed setup input, immutable connection UUID/owner/server/target and a separate instance-local encryption key.
+OUTPUTS: Authenticated ciphertext and keyed replay identity; plaintext is available only to an authorized worker.
+STEPS:
+1. Validate the complete setup input and exact reviewed server/target.
+2. Hash the immutable scope into a purpose distinct from PostgreSQL credentials.
+3. Encrypt only the SSH private key using existing authenticated encryption.
+4. Include every submitted setup field and actor in a keyed request fingerprint.
+5. Decrypt only after the caller rechecks the current owner/session and saved work claim.
+EDGE CASES: A changed connection, actor, server, target, key or ciphertext fails authentication. Exact submissions retain their request fingerprint.
+ERROR STATES: Missing original key or mismatched scope refuses decryption; never create a replacement over saved credentials.

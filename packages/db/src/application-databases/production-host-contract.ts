@@ -47,3 +47,27 @@ export const ProductionRuntimeHostIdentity = z
 export type ProductionRuntimeHostIdentity = z.infer<
   typeof ProductionRuntimeHostIdentity
 >;
+
+/** Setup binds this host to one reviewed Coolify server; changing servers requires a new connection. */
+export const ProductionRuntimeHostInput = z
+  .object({
+    requestId: z.uuid(),
+    expectedConnectionId: z.uuid().nullable(),
+    confirmTarget: z.literal(true),
+    serverId: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z0-9_-]+$/),
+    target: ProductionRuntimeHostTarget,
+    privateKey: z
+      .string()
+      .max(16 * 1024)
+      .regex(
+        /^-----BEGIN OPENSSH PRIVATE KEY-----\n[\s\S]+\n-----END OPENSSH PRIVATE KEY-----\s*$/,
+      ),
+  })
+  .strict();
+export type ProductionRuntimeHostInput = z.infer<
+  typeof ProductionRuntimeHostInput
+>;
