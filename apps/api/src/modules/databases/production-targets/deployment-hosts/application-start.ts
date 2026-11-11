@@ -15,6 +15,8 @@ import {
 } from "./transport";
 const READY_MARKER = "WRENLY_PRODUCTION_APPLICATION_READY_V1\n",
   MAX_REPLY_BYTES = 128;
+const BOOTSTRAP_STATE_TIMEOUT_MS = 2000;
+const BOOTSTRAP_STATE_POLL_MS = 100;
 /** Caller must retain its publishing lease and separately journal this start before invoking SSH. */
 export async function startRuntimeApplication(
   raw: unknown,
@@ -122,17 +124,34 @@ export async function startRuntimeApplication(
     signal.throwIfAborted();
     if (!wasRunning)
       await runRuntimeHostDocker(["start", input.containerId], signal);
-    const waiting = await runRuntimeHostDocker(
-      [
-        "exec",
-        "--user",
-        "0:0",
-        input.containerId,
-        "cat",
-        "/run/wrenly-bootstrap/state",
-      ],
+    // Docker start can return before PID1 creates its private state file. Only
+    // this read is polled; the start and credential delivery are never repeated.
+    const stateSignal = AbortSignal.any([
       signal,
-    );
+      AbortSignal.timeout(BOOTSTRAP_STATE_TIMEOUT_MS),
+    ]);
+    let waiting: string;
+    while (true) {
+      lock.assertHeld();
+      stateSignal.throwIfAborted();
+      try {
+        waiting = await runRuntimeHostDocker(
+          [
+            "exec",
+            "--user",
+            "0:0",
+            input.containerId,
+            "cat",
+            "/run/wrenly-bootstrap/state",
+          ],
+          stateSignal,
+        );
+        break;
+      } catch {
+        stateSignal.throwIfAborted();
+        await Bun.sleep(BOOTSTRAP_STATE_POLL_MS);
+      }
+    }
     if (waiting !== "waiting")
       throw new Error("Guardian already consumed its runtime settings.");
     child = Bun.spawn(
