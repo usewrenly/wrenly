@@ -1,6 +1,6 @@
 /** Reject changed trusted images before Production workers can claim durable work. */
 import Docker from "dockerode";
-const BROKER_TAG = "wrenly/database-socket:1";
+const BROKER_TAG = "wrenly/database-socket:2";
 const INGRESS_TAG = "wrenly/deployment-ingress:1";
 interface ImageFacts {
   Id: string;

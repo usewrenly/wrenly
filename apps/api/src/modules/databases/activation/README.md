@@ -25,6 +25,7 @@ credential-free HTTP relay needed by Production publishing:
 ```bash
 docker build -t wrenly/postgres-runtime:17 packages/sandbox/images/postgres
 docker build -t wrenly/database-socket:1 packages/sandbox/images/database-socket
+docker build -t wrenly/database-socket:2 packages/sandbox/images/database-socket
 docker build -t wrenly/deployment-ingress:1 packages/sandbox/images/deployment-ingress
 bun run --filter @wrenly/api build
 ```
@@ -38,7 +39,8 @@ bun run prepare-production-images --confirm-private-upload
 The command reads the repository-root `.env`, verifies the fixed toolchains and
 uploads only the trusted HTTP relay. It prints three non-secret settings: the local
 broker image ID, local relay image ID and verified private relay registry reference.
-Copy those lines into the root `.env`. It never enables Production itself, writes
+Production uses the TLS-capable `database-socket:2` toolchain; Development keeps its
+separate `database-socket:1` installation tag. Copy those lines into the root `.env`. It never enables Production itself, writes
 credentials into source or opens the control database. Without the confirmation flag
 it prints usage and performs no upload.
 
