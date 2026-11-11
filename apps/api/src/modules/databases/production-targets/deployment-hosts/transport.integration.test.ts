@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { connect } from "node:net";
 import { prepareProjectSshKey } from "../../../../../../../packages/deploy/src/secrets/ssh-keys";
 import { ProductionRuntimeHostIdentity } from "@wrenly/db/production-host-contract";
-import { executeRuntimeHostRequest } from "./transport";
+import {
+  executeRuntimeHostRequest,
+  executeRemoteRuntimeVolumeRequest,
+} from "./transport";
 const address = process.env.WRENLY_TEST_RUNTIME_SSH_ADDRESS;
 if (address && !/^10\.0\.0\.1$/.test(address))
   throw new Error(
@@ -36,7 +39,7 @@ beforeAll(async () => {
   const helper = join(directory, "fixture.py");
   await writeFile(
     helper,
-    'import sys,json\nr=json.load(sys.stdin)\nif r.get("mode")=="oversized": print("x"*140000)\nelif r.get("mode")=="invalid": print("{")\nelse: print(json.dumps({"version":1,"nonce":r["nonce"],"dockerId":"fixture-daemon","operatingSystem":"linux","architecture":"x86_64","helperVersion":1}))\n',
+    'import sys,json\nr=json.load(sys.stdin)\nif r.get("mode")=="oversized": print("x"*140000)\nelif r.get("mode")=="invalid": print("{")\nelif r.get("action") == "create-http-volume": print(json.dumps({"version":1,"nonce":("00000000-0000-4000-8000-000000000000" if r["expectedDockerId"]=="stale-nonce" else r["nonce"]),"dockerId":r["expectedDockerId"],"http":{"name":"wrenly-deployment-http-"+("foreign" if r["expectedDockerId"]=="foreign-volume" else r["deploymentId"]),"createdAt":"2026-11-11T00:00:00Z"},"database":None}))\nelse: print(json.dumps({"version":1,"nonce":r["nonce"],"dockerId":"fixture-daemon","operatingSystem":"linux","architecture":"x86_64","helperVersion":1}))\n',
   );
   const listener = Bun.listen({
     hostname: address,
@@ -143,4 +146,44 @@ check(
       ).rejects.toThrow("could not be confirmed");
   },
   25_000,
+);
+
+check(
+  "remote volume acknowledgement rejects stale nonces and foreign volume names",
+  async () => {
+    const base = {
+      target: {
+        host: "deploy.internal.test",
+        port,
+        user: userInfo().username,
+        hostKey,
+      },
+      addresses: [address!],
+      privateKey: key,
+      signal: AbortSignal.timeout(15000),
+      lookup: async () => [{ address: address!, family: 4 }],
+      request: {
+        version: 1 as const,
+        action: "create-http-volume" as const,
+        nonce: crypto.randomUUID(),
+        expectedDockerId: "fixture-daemon",
+        deploymentId: crypto.randomUUID(),
+        projectId: crypto.randomUUID(),
+        resourceId: crypto.randomUUID(),
+        claimToken: crypto.randomUUID(),
+        confirmDurableIntent: true as const,
+      },
+    };
+    expect((await executeRemoteRuntimeVolumeRequest(base)).http?.name).toBe(
+      `wrenly-deployment-http-${base.request.deploymentId}`,
+    );
+    for (const expectedDockerId of ["stale-nonce", "foreign-volume"])
+      await expect(
+        executeRemoteRuntimeVolumeRequest({
+          ...base,
+          request: { ...base.request, expectedDockerId },
+        }),
+      ).rejects.toThrow("could not be confirmed");
+  },
+  20000,
 );
