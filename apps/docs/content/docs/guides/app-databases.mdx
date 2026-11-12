@@ -6,8 +6,8 @@ description: Use a separate Development database for a generated app, with revie
 <StatusBadge state="development">Experimental · Development only</StatusBadge>
 
 This feature is experimental and off by default. It supports Development with Next.js
-and Laravel. Production databases and publishing database-backed apps are not available
-yet. Try it with test projects and keep verified backups of any data you want to retain.
+and Laravel. The separate Production evaluation path requires additional infrastructure and
+acceptance; it is not a generally ready publishing feature. Try it with test projects and keep verified backups of any data you want to retain.
 
 A notes app needs somewhere to keep its notes. That database is separate from Wrenly's
 accounts, projects and conversation history. Wrenly manages a private PostgreSQL resource
@@ -136,8 +136,9 @@ for operator inspection; reloading the page never resolves them automatically.
 
 ## Production is separate
 
-This opt-in enables **Development**, not Production database provisioning or publishing
-a database-backed app. Those workflows remain unavailable. Development data, credentials
+`WRENLY_APP_DATABASES_ENABLED` enables **Development**. It does not enable the
+separate experimental Production services. See [Production evaluation setup](/docs/guides/production-database-evaluation)
+for its prerequisites, supported checks and remaining limitations. Development data, credentials
 and sockets are never promoted implicitly. Existing stateless Next.js/Laravel publishing
 is independent.
 
@@ -255,8 +256,10 @@ do not apply a rewritten initial migration to make the preview open.
 
 ## Production direction: one dedicated app database server
 
-Production support is still being implemented. The following explains the chosen
-architecture, not a feature you can enable today.
+Production support is still being completed. An explicit evaluation flag connects
+the implemented setup, resource controls and publishing adapters. This remains
+experimental; follow [the evaluation guide](/docs/guides/production-database-evaluation)
+in a test installation rather than treating it as complete Production support.
 
 Imagine two projects: a booking app and a notes app. Each will have its own PostgreSQL
 database and separate accounts for changing tables, running the app and viewing data.

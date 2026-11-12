@@ -13,6 +13,7 @@
     "private-publishing",
     "publishing-setup",
     "app-databases",
+    "production-database-evaluation",
     "---Accounts and teams---",
     "invitations",
     "account-settings"

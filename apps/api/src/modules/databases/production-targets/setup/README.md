@@ -8,7 +8,8 @@ lost browser response does not create another request.
 A successful connection check is **not** a ready application database. Creating
 roles, applying migrations and publishing an app require separate confirmed work.
 This module provides storage functions and a single-request verification worker.
-It does not activate HTTP routes or register that worker at API startup.
+The opt-in Production module composes its protected HTTP routes and worker at API
+startup. Importing this folder alone starts neither.
 
 - `credentials.ts` validates bounded input and encrypts credentials. Encryption
   binds the project, owner, access revision and destination together, so moving
@@ -42,8 +43,8 @@ identity read refuses verification rather than weakening cluster separation.
 `http.ts` provides authenticated submit, receipt lookup and interrupted-check
 acknowledgement handlers. It checks the instance origin for writes, bounds actual
 streamed bytes and returns only a validated receipt after rechecking the session.
-Constructing these handlers does not register routes. They remain unmounted until
-the complete provisioning flow is available.
+Constructing these handlers does not register routes. API startup mounts them only after the explicitly enabled Production module
+verifies its prerequisites. A browser request cannot enable the module.
 
 The owner may explicitly close an interrupted read-only check after its worker lease
 expires. This preserves the original request as failed; it does not repeat the

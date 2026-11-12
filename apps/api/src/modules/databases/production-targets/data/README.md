@@ -8,7 +8,9 @@ The app, migration runner and data viewer each use their own restricted account.
 access revision. A request UUID can be read again after a lost response; it cannot
 be reused for different contents. `worker.ts` owns polling, lease renewal and awaited
 shutdown. Its provider-specific claims keep remote work away from the local adapter.
-These factories are not registered by startup until the full lifecycle is accepted.
+The explicitly enabled Production module registers these factories at startup.
+The feature is experimental: successful activation does not establish complete
+remote publishing or recovery acceptance.
 
 `backup.ts` verifies the original server and role policy, opens a migrator socket,
 then captures an archive from a container with no IP network. The shared backup
@@ -18,9 +20,10 @@ and confirms temporary cleanup before storing a verified backup record. It never
 restores over the Production database or stores application rows in Wrenly's tables.
 
 An interrupted action remains visible and blocks conflicting work. Unknown results
-are not automatically retried. Current implemented actions here are creation readiness
-and verified backup; migration, stop/start, viewer and publishing adapters must be
-connected and tested before Production is enabled for users.
+are not automatically retried. Creation, verified backup, reviewed migration, per-project stop/start and the
+read-only viewer are connected. Publishing has a separate ordered executor.
+Unknown backup/migration cleanup and earlier remote publishing effects still need
+complete recovery acceptance; they must not be cleared by retrying the old action.
 
 Reviewed migrations use the same saved-source, backup and rehearsal sequence as
 Development. The Production adapter changes only how the exact database is reached:
@@ -36,7 +39,9 @@ same database and verifies its original roles and schema before reporting ready.
 The Production viewer uses the existing bounded read lease and query helper. Project
 members may inspect schema; only the project owner may inspect Production rows. The
 adapter opens only a reader-role socket and returns no management or migrator secrets.
-These factories still require explicit host activation and joined deployment acceptance.
+These factories require explicit Production activation. Native tests cover actual
+Next.js and Laravel database reads/writes and explicit app restart; real Coolify
+routing and automatic host/broker reboot recovery remain separate acceptance gates.
 
 HTTP composition is explicit: `http.ts` supplies Production-only action admission
 and the control-cluster identity needed by the viewer and stop/start recovery.
