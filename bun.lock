@@ -33,6 +33,7 @@
         "@babel/preset-typescript": "8.0.1",
         "@repo/eslint-config": "*",
         "@repo/typescript-config": "*",
+        "@types/dockerode": "^3.3.31",
         "@types/node": "^20",
         "eslint": "10.9.1",
       },
