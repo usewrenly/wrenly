@@ -1,68 +1,101 @@
-# Publishing an app that uses a database
+# Publishing an app that uses a Production database
 
-A booking app needs more than a running container: its published code must connect
-to the Production database whose schema was reviewed. This folder saves that exact
-relationship and records each remote setup step before it runs.
+A booking app needs two connections when published: visitors must reach its web
+server, and the app must reach only its own database. This folder connects those
+paths without giving generated code general network access or putting passwords
+in Git, Compose or Docker configuration.
 
-For example, creating a socket volume can succeed just before a connection drops.
-The pending record stays saved. A normal retry cannot create another volume or
-pretend the original failed; recovery must inspect the original resource first.
+For example:
 
-- `binding.ts` reads the successful saved source, applied migration history, ready
-  Production resource and verified deployment host. It returns an immutable snapshot
-  for admission to save under the same queue/account/project locks.
-- `store.ts` rechecks the live owner session, publishing claim/lease, source identity,
-  resource revision/schema and server placement before every effect and acknowledgement.
-- The pure `@wrenly/db/production-publishing-contract` defines the ordered steps and
-  safe receipts. These contain identities and hashes, never passwords or SSH keys.
-- Migration 0046 adds nullable binding/journal fields. Existing stateless deployments
-  have neither and retain their existing executor.
+> Publish the reviewed booking revision → save each infrastructure action → start
+> the trusted database socket and isolated app → verify the exact app through its
+> public route → record success.
 
-These are internal coordinator components. Database-backed publishing remains
-unavailable until the executor, recovery, setup/UI and joined acceptance are connected.
-A completed broker startup test does not establish public routing or database CRUD.
+The generated app has no IP network. A trusted database broker supplies its runtime
+role through a Unix socket. A separate HTTP relay lets visitors reach the app; that
+relay has no database credentials. The trusted guardian starts the generated process
+as user 1000 after a single verified settings handoff.
 
-`executor.ts` runs the bounded ordered sequence under the worker's lock/lease.
-It reloads the saved intent before calling an adapter and reloads the acknowledgement
-before advancing. A connection loss or cancellation preserves the pending step.
-The adapter must still provide the real host/provider proof; an injected unit-test
-adapter is not evidence that a public deployment is ready.
+## Find the responsibilities
 
-`secrets.ts` loads only the selected runtime role, reviewed TLS endpoint/CA and
-host SSH material after rechecking the active publishing claim. The management
-credential is decrypted locally only to recover its CA; it is excluded from the
-returned runtime settings, along with the migrator and reader passwords. Stable
-Laravel keys reuse the existing encrypted deployment key rather than being regenerated.
+| File | Responsibility |
+| --- | --- |
+| `binding.ts` | Freeze the successful source, applied schema, owner and selected host |
+| `store.ts` | Save ordered effects and recheck ownership, resource, host and lease |
+| `secrets.ts` | Select the runtime-only credentials inside the API |
+| `executor.ts`, `services.ts` | Carry out one saved effect at a time |
+| `host-adapter.ts` | Call the fixed host helper for owned socket resources and guardian startup |
+| `service-adapter.ts` | Create/start the fixed Coolify composition without database credentials |
+| `route-adapter.ts` | Independently verify host containers, service composition and served revision |
+| `publishing.ts` | Join artifact preparation and private image promotion to runtime execution |
 
-`host-adapter.ts` translates a saved effect into the fixed host helper protocol.
-Application discovery matches deployment/project/database labels and then verifies
-the exact guardian image and isolation; it never guesses Coolify container names.
-`service-adapter.ts` creates and starts only the saved credential-free composition.
-Changing server placement or image digests refuses the effect before a provider call.
-These adapters do not yet activate the Production executor.
+A saved **effect** is an action recorded before changing remote infrastructure.
+Its **receipt** is the independently checked result. If the reply is lost, the effect
+remains unresolved. The next worker cannot simply repeat it.
 
-`route-adapter.ts` checks the single configured HTTP relay URL, then independently
-checks the broker, app and relay on the deployment host. It probes the public page
-and exact deployment marker without forwarding provider or database credentials.
-A provider's green status alone never completes publishing. This is route proof;
-real application database reads/writes remain a separate acceptance requirement.
+## Saved identity and credentials
 
-`services.ts` composes the durable store and real adapters under the worker's fence.
-It reloads claim-bound credentials before each effect. Container discovery and
-readiness may be polled for a bounded time; creation, service start and credential
-delivery are each invoked once after their durable intent. It remains unmounted
-until admission, recovery and joined Production acceptance are complete.
+Admission saves the binding and empty runtime journal atomically under the existing
+queue/account/project locks. Every effect rechecks the original owner's live session,
+source identity, applied migration set, resource revision and verified host placement.
+Migration 0046 supplies the nullable binding/journal fields; stateless publications
+retain neither field and keep their separate executor. The pure
+`@wrenly/db/production-publishing-contract` owns the shared receipt contract.
 
-Admission can explicitly enable the Production path after startup owns the complete
-runtime module. A database declaration then requires the current owner session,
-ready Production resource, matching applied migrations and verified deployment host.
-The binding and empty runtime journal are saved in the same transaction as the new
-deployment. Existing deployments retain their saved binding on exact request replay;
-a browser cannot choose the Production target or bypass a failed readiness check.
+The executor selects this path from the saved binding, never from the current prompt.
+It requires the Production adapter before any Git or registry effect and prepares the
+artifact with the exact migration digest. Completion requires the verified route;
+a stateless Coolify job ID cannot substitute for these receipts.
 
-The image executor selects the database path from the saved binding, never from the
-current prompt. Before any Git or registry effect, it requires the full Production
-runtime adapter. The image is prepared with the exact migration digest and trusted
-stdin guardian. After private promotion, the ordered runtime coordinator replaces
-stateless application creation and environment delivery. Its route proof, rather
-than a stateless Coolify job UUID, is the completion evidence for this topology.
+`secrets.ts` returns only the runtime role, reviewed TLS endpoint/CA and host SSH
+material. Management credentials are decrypted locally only to recover the CA;
+management, migration and reader passwords never enter the returned runtime settings.
+Laravel reuses its existing encrypted application key instead of generating a new one.
+
+## Read-only route recovery
+
+`../recovery/reconcile-production-route.ts` handles only an interrupted final route
+check. It takes the existing kernel lock and a fresh verification lease, rechecks the
+original owner's current authority and preserves the seven completed runtime receipts.
+Successful proof acknowledges the original route intent and completes the original
+publication. If completion itself lost its acknowledgement, a new read-only check can
+settle it without adding another runtime action.
+
+Unknown earlier changes, stale access, changed resources or another active publication
+remain blocked. This command cannot recreate a service, deliver credentials again or
+repeat application SQL. See the public publishing-operations guide for exact commands.
+
+## Native framework acceptance
+
+The opt-in test uses actual Next.js and Laravel source, not a simulated framework
+server. It creates its own private TLS PostgreSQL fixture, a separate database/runtime
+role, owned socket volumes, trusted broker and real guardian image. The generated app
+stays network-isolated while it creates, reads and updates records. An explicitly
+verified app restart must preserve those records; a second credential delivery to an
+already-ready app must fail.
+
+Build the trusted toolchains first, using the installation guides:
+
+```bash
+docker pull postgres:17-alpine
+docker pull oven/bun:alpine
+docker build -t wrenly/database-socket:2 packages/sandbox/images/database-socket
+docker build -t wrenly/laravel-runtime:13-php8.4 packages/sandbox/images/laravel
+```
+
+From the repository root:
+
+```bash
+WRENLY_DATABASE_URL=postgresql://fixture:fixture-only@127.0.0.1:1/fixture \
+WRENLY_TEST_PRODUCTION_FRAMEWORK_RUNTIME=true \
+bun --no-env-file test apps/api/src/modules/deployments/database-runtime/framework-runtime.integration.test.ts
+```
+
+The placeholder control URL is validated but never contacted by this test. Actual app
+data lives only in its disposable PostgreSQL container. OpenSSL and local Docker are
+required; source installation needs initial package-network access, then compilation
+and generated runtime keep their existing isolation.
+
+This proves the framework/socket/guardian and explicit app-restart path. It does not
+establish real Coolify routing, automatic host-reboot recovery or safe replay of an
+unknown earlier infrastructure mutation. Those require their own joined acceptance.

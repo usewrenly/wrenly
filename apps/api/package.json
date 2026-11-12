@@ -13,7 +13,8 @@
     "catalog:snapshot": "bun --no-env-file --env-file=../../.env src/modules/models/catalog/catalog-snapshot-cli.ts",
     "recover-password": "bun --no-env-file --env-file=../../.env src/modules/auth/password-recovery/password-recovery-cli.ts",
     "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts",
-    "prepare-production-images": "bun --no-env-file --env-file=../../.env src/modules/databases/activation/prepare-images-cli.ts"
+    "prepare-production-images": "bun --no-env-file --env-file=../../.env src/modules/databases/activation/prepare-images-cli.ts",
+    "reconcile-production-route": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-production-route.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.7",

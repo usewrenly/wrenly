@@ -149,3 +149,26 @@ identity. It never creates an application or automatically retries publishing.
 
 Use the `bun run` wrapper: it loads the repository root `.env`. Running the underlying
 TypeScript file directly from `apps/api` does not load that root configuration.
+
+
+## Verify an interrupted Production database publication
+
+The experimental Production database path has a separate final route check. Coolify
+calling a container healthy does not prove that the expected app version is reachable.
+If the saved publication completed its runtime steps and only the final route check
+was interrupted, fix the routing problem first, then run on the API host:
+
+```bash
+bun run reconcile-production-route DEPLOYMENT_UUID --confirm-read-only-verification
+```
+
+Use the original root `.env`, instance data directory and trusted image settings.
+The command checks the original owner's current access, database/host identities,
+exact service composition, application image, broker and served version. It performs
+read-only remote checks: it does not republish, restart a container or rerun SQL.
+After successful verification, the **original** publication becomes successful.
+
+An earlier unknown effect, another running publication, changed access or mismatched
+infrastructure keeps the operation blocked. This command deliberately cannot settle
+an unknown service creation, credential handoff or migration. Do not use the stateless
+`reconcile-deployment` command to bypass those Production database checks.

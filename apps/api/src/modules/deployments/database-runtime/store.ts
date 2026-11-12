@@ -15,6 +15,7 @@ import {
   beginProductionPublishingEffect,
   acknowledgeProductionPublishingEffect,
   type ProductionPublishingJournal,
+  PRODUCTION_PUBLISHING_STEPS,
 } from "@wrenly/db/production-publishing-contract";
 import { parseProductionResourceBinding } from "@wrenly/db/production-resource-binding";
 import { accessContext } from "../../auth/access/access-context";
@@ -24,6 +25,9 @@ import {
   DeploymentStoreError,
   type DeploymentClaim,
 } from "../persistence/deployment-store";
+// Match the existing publishing lease; verification never owns an unbounded recovery claim.
+const ROUTE_RECOVERY_LEASE_MS = 30_000;
+const FINAL_ROUTE_INDEX = PRODUCTION_PUBLISHING_STEPS.length - 1;
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** A saved binding is rechecked before every effect and acknowledgement, never trusted merely because admission once passed. */
 export async function lockProductionPublishingRuntime(
@@ -255,4 +259,121 @@ export async function acknowledgeProductionRuntimeEffect(
       "Production runtime acknowledgement could not be confirmed. Inspect the saved effect before continuing.",
     );
   }
+}
+
+/** Explicit operator recovery may inspect only the final read-only route; it never resumes an unknown mutation. */
+export async function claimInterruptedProductionRoute(
+  database: typeof db,
+  deploymentId: string,
+): Promise<DeploymentClaim> {
+  z.uuid().parse(deploymentId);
+  return database.transaction(async (tx) => {
+    await lockDatabaseQueues(tx);
+    const [candidate] = await tx
+      .select()
+      .from(deployments)
+      .where(eq(deployments.id, deploymentId));
+    const binding = ProductionPublishingBinding.parse(
+      candidate?.productionDatabaseBinding,
+    );
+    const { accessRevision, ...principal } = binding.principal;
+    await accessContext.run({ principal }, () =>
+      requireProductionProjectOwner(
+        tx,
+        binding.projectId,
+        principal,
+        accessRevision,
+      ),
+    );
+    const [row] = await tx
+      .select()
+      .from(deployments)
+      .where(eq(deployments.id, deploymentId))
+      .for("update");
+    if (
+      !row ||
+      row.status !== "interrupted" ||
+      row.cancelRequestedAt ||
+      row.mutationIntent ||
+      (row.leaseExpiresAt && row.leaseExpiresAt.getTime() > Date.now()) ||
+      JSON.stringify(row.productionDatabaseBinding) !==
+        JSON.stringify(candidate?.productionDatabaseBinding)
+    )
+      throw new DeploymentStoreError(
+        409,
+        "Production route recovery requires a settled interrupted operation.",
+      );
+    const journal = validateProductionPublishingJournal(
+      binding,
+      row.productionRuntimeJournal,
+    );
+    if (!(
+      (journal.completed.length === FINAL_ROUTE_INDEX &&
+        journal.pending?.step === "route-verify") ||
+      (journal.completed.length === PRODUCTION_PUBLISHING_STEPS.length &&
+        !journal.pending)
+    ))
+      throw new DeploymentStoreError(
+        409,
+        "Inspect the earlier Production runtime effect; this command verifies routes only.",
+      );
+    const active = await tx
+      .select({ id: deployments.id })
+      .from(deployments)
+      .where(
+        inArray(deployments.status, ["preparing", "deploying", "verifying"]),
+      )
+      .limit(1);
+    if (active.length)
+      throw new DeploymentStoreError(
+        409,
+        "Wait for active publishing work before route recovery.",
+      );
+    const token = crypto.randomUUID();
+    await tx
+      .update(deployments)
+      .set({
+        status: "verifying",
+        claimToken: token,
+        leaseExpiresAt: new Date(Date.now() + ROUTE_RECOVERY_LEASE_MS),
+        updatedAt: new Date(),
+      })
+      .where(eq(deployments.id, deploymentId));
+    const claim = { deploymentId, token };
+    // Recheck every source/resource/host relationship before committing recovery ownership.
+    await lockProductionPublishingRuntime(tx, claim);
+    return claim;
+  });
+}
+
+/** A fresh recovery claim may record the original route intent only after separate exact read-only proof. */
+export async function acknowledgeRecoveredProductionRoute(
+  database: typeof db,
+  claim: DeploymentClaim,
+  receipt: unknown,
+): Promise<void> {
+  await database.transaction(async (tx) => {
+    const { binding, journal } = await lockProductionPublishingRuntime(
+      tx,
+      claim,
+    );
+    if (
+      journal.completed.length !== FINAL_ROUTE_INDEX ||
+      journal.pending?.step !== "route-verify"
+    )
+      throw new DeploymentStoreError(
+        409,
+        "Production route acknowledgement changed.",
+      );
+    const next = acknowledgeProductionPublishingEffect(
+      binding,
+      journal,
+      receipt,
+      journal.pending.claimToken,
+    );
+    await tx
+      .update(deployments)
+      .set({ productionRuntimeJournal: next, updatedAt: new Date() })
+      .where(eq(deployments.id, claim.deploymentId));
+  });
 }

@@ -9,7 +9,8 @@
     "check-types": "turbo run check-types",
     "recover-password": "bun run --cwd apps/api recover-password",
     "reconcile-deployment": "bun run --cwd apps/api reconcile-deployment",
-    "prepare-production-images": "bun run --cwd apps/api prepare-production-images"
+    "prepare-production-images": "bun run --cwd apps/api prepare-production-images",
+    "reconcile-production-route": "bun run --cwd apps/api reconcile-production-route"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",

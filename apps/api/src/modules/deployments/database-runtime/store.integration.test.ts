@@ -1,3 +1,5 @@
+import { reconcileProductionRoute } from "../recovery/reconcile-production-route";
+import { parseApiEnvironment } from "../../../config/api-environment";
 import { loadProductionPublishingRuntimeSecrets } from "./secrets";
 import {
   loadDatabaseKey,
@@ -24,9 +26,11 @@ import postgres from "@wrenly/db/app-database-driver";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as schema from "@wrenly/db/schema";
 import {
+  claimInterruptedProductionRoute,
+  acknowledgeRecoveredProductionRoute,
   beginProductionRuntimeEffect,
   acknowledgeProductionRuntimeEffect,
   loadProductionPublishingRuntime,
@@ -556,26 +560,24 @@ check(
         lease,
       );
     }
-    await database
-      .insert(schema.deployments)
-      .values({
-        id,
-        projectId,
-        buildId,
-        userId: actor.userId,
-        idempotencyKey: crypto.randomUUID(),
-        requestIdentity: "fixture-complete-production",
-        stack: "nextjs",
-        files: [],
-        sourceSha256: savedBinding.sourceSha256,
-        status: "verifying",
-        claimToken: lease,
-        leaseExpiresAt: new Date(Date.now() + 600000),
-        artifactImageId: image,
-        registryDigest: image,
-        productionDatabaseBinding: savedBinding,
-        productionRuntimeJournal: journal,
-      });
+    await database.insert(schema.deployments).values({
+      id,
+      projectId,
+      buildId,
+      userId: actor.userId,
+      idempotencyKey: crypto.randomUUID(),
+      requestIdentity: "fixture-complete-production",
+      stack: "nextjs",
+      files: [],
+      sourceSha256: savedBinding.sourceSha256,
+      status: "verifying",
+      claimToken: lease,
+      leaseExpiresAt: new Date(Date.now() + 600000),
+      artifactImageId: image,
+      registryDigest: image,
+      productionDatabaseBinding: savedBinding,
+      productionRuntimeJournal: journal,
+    });
     await expect(
       finishDeployment(
         database,
@@ -594,6 +596,114 @@ check(
       .where(eq(schema.deployments.id, id));
     expect(row?.status).toBe("success");
     expect(row?.remoteDeploymentUuid).toBeNull();
+  },
+);
+check(
+  "route recovery preserves original intent and refuses earlier effects or active work",
+  async () => {
+    const [completed] = await database
+      .select()
+      .from(schema.deployments)
+      .where(
+        and(
+          eq(schema.deployments.projectId, projectId),
+          eq(schema.deployments.requestIdentity, "fixture-complete-production"),
+        ),
+      );
+    if (!completed) throw new Error("Missing completed route fixture");
+    const original = completed.productionRuntimeJournal!;
+    const receipt = original.completed.at(-1)!;
+    const pending = {
+      ...original,
+      completed: original.completed.slice(0, -1),
+      pending: receipt.effect,
+    };
+    await database
+      .update(schema.deployments)
+      .set({
+        status: "interrupted",
+        leaseExpiresAt: null,
+        productionRuntimeJournal: pending,
+      })
+      .where(eq(schema.deployments.id, completed.id));
+    await expect(
+      claimInterruptedProductionRoute(database, completed.id),
+    ).rejects.toThrow("active publishing");
+    await database
+      .update(schema.deployments)
+      .set({ status: "success" })
+      .where(eq(schema.deployments.id, deploymentId));
+    try {
+      await database
+        .update(schema.deployments)
+        .set({
+          productionRuntimeJournal: beginProductionPublishingEffect(
+            completed.productionDatabaseBinding,
+            { version: 1, completed: [], pending: null },
+            token,
+            new Date(),
+          ),
+        })
+        .where(eq(schema.deployments.id, completed.id));
+      await expect(
+        claimInterruptedProductionRoute(database, completed.id),
+      ).rejects.toThrow("earlier Production runtime effect");
+      await database
+        .update(schema.deployments)
+        .set({ productionRuntimeJournal: pending })
+        .where(eq(schema.deployments.id, completed.id));
+      const recovered = await claimInterruptedProductionRoute(
+        database,
+        completed.id,
+      );
+      expect(recovered.token).not.toBe(receipt.effect.claimToken);
+      await expect(
+        claimInterruptedProductionRoute(database, completed.id),
+      ).rejects.toThrow("settled interrupted");
+      await expect(
+        acknowledgeRecoveredProductionRoute(database, recovered, {
+          ...receipt,
+          fact: { ...receipt.fact, sourceSha256: "f".repeat(64) },
+        }),
+      ).rejects.toThrow();
+      const before = await loadProductionPublishingRuntime(database, recovered);
+      expect(before.journal.pending?.id).toBe(receipt.effect.id);
+      await acknowledgeRecoveredProductionRoute(database, recovered, receipt);
+      await finishDeployment(database, recovered, {
+        status: "success",
+        url: "https://production.example.test/",
+      });
+      const [row] = await database
+        .select()
+        .from(schema.deployments)
+        .where(eq(schema.deployments.id, completed.id));
+      expect(row?.productionRuntimeJournal?.completed.at(-1)?.effect).toEqual(
+        receipt.effect,
+      );
+      expect(row?.status).toBe("success");
+      // Completion itself can lose its acknowledgement; retain all eight original receipts.
+      await database
+        .update(schema.deployments)
+        .set({ status: "interrupted", leaseExpiresAt: null })
+        .where(eq(schema.deployments.id, completed.id));
+      const finalClaim = await claimInterruptedProductionRoute(
+        database,
+        completed.id,
+      );
+      expect(
+        (await loadProductionPublishingRuntime(database, finalClaim)).journal
+          .completed.length,
+      ).toBe(8);
+      await finishDeployment(database, finalClaim, {
+        status: "success",
+        url: "https://production.example.test/",
+      });
+    } finally {
+      await database
+        .update(schema.deployments)
+        .set({ status: "preparing" })
+        .where(eq(schema.deployments.id, deploymentId));
+    }
   },
 );
 check(
@@ -682,6 +792,166 @@ check(
         deploymentEncryptionKey: "d".repeat(64),
       }),
     ).rejects.toThrow("could not be authenticated");
+  },
+);
+check(
+  "route command verifies once, preserves interrupted failures and handles a lost final acknowledgement",
+  async () => {
+    const [completed] = await database
+      .select()
+      .from(schema.deployments)
+      .where(
+        and(
+          eq(schema.deployments.projectId, projectId),
+          eq(schema.deployments.requestIdentity, "fixture-complete-production"),
+        ),
+      );
+    const [placement] = await database
+      .select()
+      .from(schema.deploymentResources)
+      .where(eq(schema.deploymentResources.projectId, projectId));
+    if (!completed || !placement)
+      throw new Error("Missing route command fixture");
+    const original = completed.productionRuntimeJournal!,
+      receipt = original.completed.at(-1)!;
+    const environment = parseApiEnvironment({
+      WRENLY_DATABASE_URL:
+        "postgresql://fixture:fixture-only@127.0.0.1:1/fixture",
+      WRENLY_AUTH_SECRET: "a".repeat(64),
+      WRENLY_APP_URL: "http://localhost:3002",
+      WRENLY_PREVIEW_ENABLED: "true",
+      WRENLY_APP_DATABASES_ENABLED: "true",
+      WRENLY_PUBLISHING_ENABLED: "true",
+      WRENLY_PRODUCTION_DATABASES_ENABLED: "true",
+      WRENLY_DEPLOY_ENCRYPTION_KEY: "d".repeat(64),
+      WRENLY_REGISTRY_URL: "https://registry.fixture",
+      WRENLY_REGISTRY_USERNAME: "fixture",
+      WRENLY_REGISTRY_PASSWORD: "fixture",
+      WRENLY_REGISTRY_NAMESPACE: placement.registryNamespace ?? "wrenly",
+      WRENLY_GIT_BASE_URL: "https://git.fixture",
+      WRENLY_GIT_TOKEN: "fixture",
+      WRENLY_COOLIFY_API_URL: "https://coolify.fixture/api/v1",
+      WRENLY_COOLIFY_API_KEY: "fixture",
+      WRENLY_COOLIFY_PROJECT_UUID: placement.coolifyProjectUuid,
+      WRENLY_COOLIFY_SERVER_UUID: placement.coolifyServerUuid,
+      WRENLY_COOLIFY_ENVIRONMENT: placement.coolifyEnvironmentName,
+      WRENLY_PRODUCTION_BROKER_IMAGE_ID: "sha256:" + "a".repeat(64),
+      WRENLY_PRODUCTION_INGRESS_IMAGE_ID: "sha256:" + "4".repeat(64),
+      WRENLY_PRODUCTION_INGRESS_IMAGE:
+        "registry.fixture/" +
+        (placement.registryNamespace ?? "wrenly") +
+        "/ingress@sha256:" +
+        "4".repeat(64),
+      WRENLY_DATA_DIR: directory,
+    });
+    await database
+      .update(schema.deployments)
+      .set({ status: "success" })
+      .where(eq(schema.deployments.id, deploymentId));
+    await database
+      .update(schema.deploymentResources)
+      .set({
+        registryOrigin: "https://registry.fixture",
+        registryNamespace: environment.WRENLY_REGISTRY_NAMESPACE,
+        coolifyInstanceUrl: "https://coolify.fixture",
+      })
+      .where(eq(schema.deploymentResources.projectId, projectId));
+    const pending = {
+      ...original,
+      completed: original.completed.slice(0, -1),
+      pending: receipt.effect,
+    };
+    try {
+      await database
+        .update(schema.deployments)
+        .set({
+          status: "interrupted",
+          leaseExpiresAt: null,
+          productionRuntimeJournal: pending,
+          registryRepository:
+            "registry.fixture/" +
+            (placement.registryNamespace ?? "wrenly") +
+            "/app",
+        })
+        .where(eq(schema.deployments.id, completed.id));
+      let reads = 0;
+      await expect(
+        reconcileProductionRoute(database, environment, completed.id, {
+          verify: async () => {
+            reads++;
+            return null;
+          },
+        }),
+      ).rejects.toThrow("saved effects are preserved");
+      let [row] = await database
+        .select()
+        .from(schema.deployments)
+        .where(eq(schema.deployments.id, completed.id));
+      expect(row?.status).toBe("interrupted");
+      expect(row?.productionRuntimeJournal?.pending?.id).toBe(
+        receipt.effect.id,
+      );
+      const verified = {
+        verify: async (
+          input: Parameters<
+            typeof import("./route-adapter").verifyProductionRouteEffect
+          >[0],
+        ) => {
+          reads++;
+          await input.assertHeld();
+          expect(input.journal.completed.length).toBe(7);
+          expect(input.effect.id).toBe(receipt.effect.id);
+          return receipt.fact;
+        },
+      };
+      await reconcileProductionRoute(
+        database,
+        environment,
+        completed.id,
+        verified,
+      );
+      [row] = await database
+        .select()
+        .from(schema.deployments)
+        .where(eq(schema.deployments.id, completed.id));
+      expect(row?.status).toBe("success");
+      expect(row?.productionRuntimeJournal?.completed.slice(0, -1)).toEqual(
+        original.completed.slice(0, -1),
+      );
+      expect(row?.productionRuntimeJournal?.completed.at(-1)?.effect).toEqual(
+        receipt.effect,
+      );
+      await database
+        .update(schema.deployments)
+        .set({ status: "interrupted", leaseExpiresAt: null })
+        .where(eq(schema.deployments.id, completed.id));
+      await reconcileProductionRoute(
+        database,
+        environment,
+        completed.id,
+        verified,
+      );
+      [row] = await database
+        .select()
+        .from(schema.deployments)
+        .where(eq(schema.deployments.id, completed.id));
+      expect(row?.status).toBe("success");
+      expect(row?.productionRuntimeJournal?.completed.length).toBe(8);
+      expect(reads).toBe(3);
+    } finally {
+      await database
+        .update(schema.deployments)
+        .set({ status: "preparing" })
+        .where(eq(schema.deployments.id, deploymentId));
+      await database
+        .update(schema.deploymentResources)
+        .set({
+          registryOrigin: placement.registryOrigin,
+          registryNamespace: placement.registryNamespace,
+          coolifyInstanceUrl: placement.coolifyInstanceUrl,
+        })
+        .where(eq(schema.deploymentResources.projectId, projectId));
+    }
   },
 );
 check(
