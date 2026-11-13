@@ -249,7 +249,21 @@ export const ProductionRuntimeBrokerRestart =
     action: z.literal("restart-runtime-broker"),
     containerId: z.string().regex(/^[a-f0-9]{64}$/),
   });
+/** Read-only recovery discovers by all resource labels, then independently checks the complete broker policy. */
+export const ProductionRuntimeBrokerDiscovery =
+  ProductionRuntimeBrokerInspection.omit({ containerId: true }).extend({
+    action: z.literal("find-runtime-broker"),
+  });
+/** Readiness must be written by the root guardian, not inferred from Docker's running flag. */
+export const ProductionRuntimeApplicationReady =
+  ProductionRuntimeApplicationInspection.extend({
+    action: z.literal("verify-runtime-application-ready"),
+  });
+export const ProductionRuntimeApplicationReadyReply =
+  ProductionRuntimeApplicationReply.extend({ ready: z.literal(true) });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeBrokerDiscovery,
+  ProductionRuntimeApplicationReady,
   ProductionRuntimeBrokerRestart,
   ProductionRuntimeIngressDiscovery,
   ProductionRuntimeApplicationDiscovery,

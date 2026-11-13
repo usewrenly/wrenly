@@ -8,9 +8,11 @@ import { executeRuntimeVolumeRequest } from "./volumes";
 import { executeRuntimeNetworkRequest } from "./network";
 import {
   findRuntimeApplication,
+  verifyRuntimeApplicationReady,
   executeRuntimeApplicationInspection,
 } from "./application-inspection";
 import { createRuntimeDatabaseBroker } from "./broker";
+import { findRuntimeDatabaseBroker } from "./broker-discovery";
 import { inspectRuntimeDatabaseBroker } from "./broker-inspection";
 import { findRuntimeIngress } from "./ingress-inspection";
 import { restartRuntimeDatabaseBroker } from "./broker-restart";
@@ -137,44 +139,52 @@ if (import.meta.main) {
     const reply =
       input.action === "inspect"
         ? host
-        : input.action === "restart-runtime-broker"
-          ? await restartRuntimeDatabaseBroker(input, host.dockerId, signal)
-          : input.action === "find-runtime-ingress"
-            ? await findRuntimeIngress(input, host.dockerId, signal)
-            : input.action === "find-runtime-application"
-              ? await findRuntimeApplication(input, host.dockerId, signal)
-              : input.action === "start-runtime-application"
-                ? await startRuntimeApplication(input, host.dockerId, signal)
-                : input.action === "create-runtime-broker"
-                  ? await createRuntimeDatabaseBroker(
-                      input,
-                      host.dockerId,
-                      signal,
-                    )
-                  : input.action === "inspect-runtime-broker"
-                    ? await inspectRuntimeDatabaseBroker(
+        : input.action === "find-runtime-broker"
+          ? await findRuntimeDatabaseBroker(input, host.dockerId, signal)
+          : input.action === "verify-runtime-application-ready"
+            ? await verifyRuntimeApplicationReady(input, host.dockerId, signal)
+            : input.action === "restart-runtime-broker"
+              ? await restartRuntimeDatabaseBroker(input, host.dockerId, signal)
+              : input.action === "find-runtime-ingress"
+                ? await findRuntimeIngress(input, host.dockerId, signal)
+                : input.action === "find-runtime-application"
+                  ? await findRuntimeApplication(input, host.dockerId, signal)
+                  : input.action === "start-runtime-application"
+                    ? await startRuntimeApplication(
                         input,
                         host.dockerId,
                         signal,
                       )
-                    : input.action === "inspect-runtime-application"
-                      ? await executeRuntimeApplicationInspection(
+                    : input.action === "create-runtime-broker"
+                      ? await createRuntimeDatabaseBroker(
                           input,
                           host.dockerId,
                           signal,
                         )
-                      : input.action === "create-runtime-network" ||
-                          input.action === "inspect-runtime-network"
-                        ? await executeRuntimeNetworkRequest(
+                      : input.action === "inspect-runtime-broker"
+                        ? await inspectRuntimeDatabaseBroker(
                             input,
                             host.dockerId,
                             signal,
                           )
-                        : await executeRuntimeVolumeRequest(
-                            input,
-                            host.dockerId,
-                            signal,
-                          );
+                        : input.action === "inspect-runtime-application"
+                          ? await executeRuntimeApplicationInspection(
+                              input,
+                              host.dockerId,
+                              signal,
+                            )
+                          : input.action === "create-runtime-network" ||
+                              input.action === "inspect-runtime-network"
+                            ? await executeRuntimeNetworkRequest(
+                                input,
+                                host.dockerId,
+                                signal,
+                              )
+                            : await executeRuntimeVolumeRequest(
+                                input,
+                                host.dockerId,
+                                signal,
+                              );
     process.stdout.write(JSON.stringify(reply) + "\n");
   } catch {
     process.stderr.write("Deployment host inspection could not be verified.\n");

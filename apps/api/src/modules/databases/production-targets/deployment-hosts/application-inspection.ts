@@ -4,8 +4,10 @@ import {
   ProductionRuntimeApplicationInspection,
   ProductionRuntimeApplicationDiscovery,
   ProductionRuntimeApplicationReply,
+  ProductionRuntimeApplicationReady,
+  ProductionRuntimeApplicationReadyReply,
 } from "@wrenly/db/production-host-contract";
-import { acquireRuntimeHostLock } from "./host-lock";
+import { acquireRuntimeHostLock, type RuntimeHostLock } from "./host-lock";
 import { runRuntimeHostDocker } from "./docker-command";
 const Id = z.string().regex(/^[a-f0-9]{64}$/);
 const ImageId = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -194,11 +196,12 @@ export async function executeRuntimeApplicationInspection(
   raw: unknown,
   dockerId: string,
   signal: AbortSignal,
+  heldLock?: RuntimeHostLock,
 ): Promise<z.infer<typeof ProductionRuntimeApplicationReply>> {
   const input = ProductionRuntimeApplicationInspection.parse(raw);
   if (input.expectedDockerId !== dockerId)
     throw new Error("Deployment Docker identity changed.");
-  const lock = await acquireRuntimeHostLock(input.deploymentId);
+  const lock = heldLock ?? (await acquireRuntimeHostLock(input.deploymentId));
   try {
     lock.assertHeld();
     signal.throwIfAborted();
@@ -248,7 +251,7 @@ export async function executeRuntimeApplicationInspection(
       "Production application isolation could not be verified. Runtime credentials were not approved for delivery.",
     );
   } finally {
-    await lock.release();
+    if (!heldLock) await lock.release();
   }
 }
 
@@ -323,6 +326,56 @@ export async function findRuntimeApplication(
   } catch {
     throw new Error(
       "The exact Production application could not be discovered. No container was started or adopted.",
+    );
+  } finally {
+    await lock.release();
+  }
+}
+
+/** Root-only guardian state proves settings were consumed and HTTP readiness completed; generated code cannot write this file. */
+export async function verifyRuntimeApplicationReady(
+  raw: unknown,
+  dockerId: string,
+  signal: AbortSignal,
+): Promise<z.infer<typeof ProductionRuntimeApplicationReadyReply>> {
+  const input = ProductionRuntimeApplicationReady.parse(raw);
+  if (input.expectedDockerId !== dockerId)
+    throw new Error("Deployment Docker identity changed.");
+  const lock = await acquireRuntimeHostLock(input.deploymentId);
+  const inspect = () =>
+    executeRuntimeApplicationInspection(
+      { ...input, action: "inspect-runtime-application" },
+      dockerId,
+      signal,
+      lock,
+    );
+  try {
+    const before = await inspect();
+    if (!before.running) throw new Error("Application is stopped.");
+    const state = await runRuntimeHostDocker(
+      [
+        "exec",
+        "--user",
+        "0:0",
+        input.containerId,
+        "cat",
+        "/run/wrenly-bootstrap/state",
+      ],
+      signal,
+    );
+    if (state !== "ready") throw new Error("Settings handoff is not ready.");
+    const after = await inspect();
+    lock.assertHeld();
+    signal.throwIfAborted();
+    if (!after.running)
+      throw new Error("Application stopped during inspection.");
+    return ProductionRuntimeApplicationReadyReply.parse({
+      ...after,
+      ready: true,
+    });
+  } catch {
+    throw new Error(
+      "Application settings handoff could not be proved. No settings were resent and no process was started.",
     );
   } finally {
     await lock.release();

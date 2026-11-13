@@ -168,3 +168,15 @@ OUTPUTS: Exact broker readiness proof, or unresolved maintenance attention.
 STEPS: Hold the host lock across exact inspection, DNS check, one start, one stdin delivery and readiness proof. Reuse strict broker policy; create no resource. A running broker is inspection-only and refuses credentials. Verify DNS again before acknowledgement.
 EDGE CASES: Missing/replaced resources fail before start. Lost replies preserve intent. A failed healthcheck never permits a second handoff to a running broker.
 ERROR STATES: Unknown startup remains interrupted; no replacement, credential replay or database SQL.
+
+COMPONENT: Read-only lost-start proof
+PURPOSE: Verify an uncertain broker creation or application settings handoff without starting a process or delivering credentials again.
+INPUTS: Original publishing effect, exact daemon/deployment/project/resource/image/network and pinned upstream metadata.
+OUTPUTS: Independently verified broker identity/readiness or protected guardian-ready proof.
+STEPS:
+1. Hold the host's per-deployment lock; select a broker using all ownership labels and require exactly one full container ID.
+2. Pass that ID through the existing complete broker policy inspector under the same lock. Missing, ambiguous, stopped or unhealthy state is not success.
+3. Application recovery first verifies the exact guardian image, isolation and mounts, then reads only its root-owned bootstrap state at the fixed path.
+4. Require the guardian's ready state and recheck running identity after reading. No stdin settings, start or replacement is permitted.
+EDGE CASES: Generated code runs as UID 1000 and cannot forge root-only guardian state. A running process waiting for input is not ready.
+ERROR STATES: Failed identity/readiness retains the original pending effect and never falls back to a mutation.

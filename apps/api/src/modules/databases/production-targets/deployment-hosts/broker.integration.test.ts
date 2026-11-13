@@ -1,3 +1,5 @@
+import { findRuntimeDatabaseBroker } from "./broker-discovery";
+import { verifyRuntimeApplicationReady } from "./application-inspection";
 import { restartRuntimeDatabaseBroker } from "./broker-restart";
 /** Broker readiness is socket readiness only; upstream TLS/CRUD acceptance is a separate gate. */
 import { expect, test } from "bun:test";
@@ -110,6 +112,26 @@ native(
         signal,
       );
       expect(checked.socketReady).toBe(true);
+      const { containerId: _savedId, ...discovery } = inspectionRequest;
+      void _savedId;
+      const discovered = await findRuntimeDatabaseBroker(
+        { ...discovery, action: "find-runtime-broker" },
+        host.dockerId,
+        signal,
+      );
+      expect(discovered.containerId).toBe(reply.containerId);
+      expect(discovered.socketReady).toBe(true);
+      await expect(
+        findRuntimeDatabaseBroker(
+          {
+            ...discovery,
+            action: "find-runtime-broker",
+            projectId: crypto.randomUUID(),
+          },
+          host.dockerId,
+          signal,
+        ),
+      ).rejects.toThrow("could not be discovered");
       const build = Bun.spawn(
         [
           "bun",
@@ -217,10 +239,31 @@ native(
         upstream: request.upstream,
         addresses: request.addresses,
       };
+      const readyRequest = {
+        ...base,
+        action: "verify-runtime-application-ready",
+        containerId: appContainerId,
+        imageId: appImage.Id,
+      };
+      await expect(
+        verifyRuntimeApplicationReady(readyRequest, host.dockerId, signal),
+      ).rejects.toThrow("could not be proved");
       await runRuntimeHostDocker(["start", appContainerId], signal);
+      await expect(
+        verifyRuntimeApplicationReady(readyRequest, host.dockerId, signal),
+      ).rejects.toThrow("could not be proved");
       expect(
         (await startRuntimeApplication(start, host.dockerId, signal, resolver))
           .running,
+      ).toBe(true);
+      expect(
+        (
+          await verifyRuntimeApplicationReady(
+            readyRequest,
+            host.dockerId,
+            signal,
+          )
+        ).ready,
       ).toBe(true);
       const appInspection = await runRuntimeHostDocker(
         ["container", "inspect", appContainerId],

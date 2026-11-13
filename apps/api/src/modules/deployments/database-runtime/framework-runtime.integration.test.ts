@@ -1,3 +1,4 @@
+import { verifyRuntimeApplicationReady } from "../../databases/production-targets/deployment-hosts/application-inspection";
 import { restartRuntimeDatabaseBroker } from "../../databases/production-targets/deployment-hosts/broker-restart";
 /** Explicit native acceptance with real frameworks and private TLS; never uses an installation's services. */
 import { expect, test } from "bun:test";
@@ -420,6 +421,28 @@ for (const framework of ["nextjs", "laravel"] as const)
             )
           ).running,
         ).toBe(true);
+        const readyScope = {
+          version: 1,
+          action: "verify-runtime-application-ready",
+          nonce: crypto.randomUUID(),
+          expectedDockerId: host.dockerId,
+          deploymentId,
+          projectId,
+          resourceId,
+          claimToken: crypto.randomUUID(),
+          confirmDurableIntent: true,
+          containerId: appId,
+          imageId,
+        };
+        expect(
+          (
+            await verifyRuntimeApplicationReady(
+              readyScope,
+              host.dockerId,
+              signal,
+            )
+          ).ready,
+        ).toBe(true);
         async function probe(
           query: string,
         ): Promise<{ id: number; name: string }> {
@@ -498,6 +521,15 @@ for (const framework of ["nextjs", "laravel"] as const)
               resolver,
             )
           ).running,
+        ).toBe(true);
+        expect(
+          (
+            await verifyRuntimeApplicationReady(
+              readyScope,
+              host.dockerId,
+              signal,
+            )
+          ).ready,
         ).toBe(true);
         expect((await probe("mode=read")).name).toBe("after-update");
       } finally {
