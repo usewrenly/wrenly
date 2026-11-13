@@ -176,9 +176,7 @@ export const MaintenanceView = z
     attempt: z
       .object({
         status: z.enum(["running", "success", "interrupted"]),
-        step: z
-          .enum(["broker-start", "application-start", "route-verify"])
-          .nullable(),
+        step: z.enum(MAINTENANCE_STEPS).nullable(),
         updatedAt: z.iso.datetime(),
       })
       .strict()
