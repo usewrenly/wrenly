@@ -2,6 +2,7 @@
 // This view only reads saved
 // attempts; opening a project never admits a new deployment.
 import Link from "next/link";
+import { MaintenanceControls } from "@/features/deployments/maintenance-controls";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSetupSummary } from "@/lib/onboarding/setup-summary";
@@ -15,6 +16,7 @@ interface DeploymentRecord {
   status: string;
   createdAt: string;
   url: string | null;
+  canManageRuntime: boolean;
 }
 interface HistoryPage {
   deployments: DeploymentRecord[];
@@ -73,6 +75,7 @@ function parseHistory(raw: unknown): HistoryPage {
         status: row.status as string,
         createdAt: row.createdAt as string,
         url,
+        canManageRuntime: row.canManageRuntime === true,
       };
     },
   );
@@ -184,6 +187,12 @@ export default function DeploymentsPage(): React.JSX.Element {
                       </a>
                     ) : null}
                   </div>
+                  {item.canManageRuntime ? (
+                    <MaintenanceControls
+                      projectId={item.projectId}
+                      deploymentId={item.id}
+                    />
+                  ) : null}
                   {item.status === "interrupted" ? (
                     <p className="deployment-attention">
                       Execution could not be confirmed. Open the project for

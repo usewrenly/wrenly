@@ -176,10 +176,34 @@ replacement containers and never resends credentials to an already-running proce
 Native acceptance covers both Next.js and Laravel with private TLS PostgreSQL:
 create a record, update it, stop the exact app and broker, restore them and read the
 same record. Runtime passwords stay out of Docker configuration. This proves the
-framework and host-helper path; it does not establish periodic automatic maintenance
-or completion of the real Coolify acceptance gate.
+framework and host-helper path; it does not complete real Coolify acceptance.
 
-Maintenance scheduling and browser controls are not enabled by these helpers alone.
-Keep Production evaluation opt-in and retain the Experimental label until the complete
-workflow has passed. Apply all checked-in migrations before starting the feature
-branch; migrations 0047 and 0048 add permission receipts and restart attempts.
+## Choose whether Wrenly may maintain a publication
+
+Production evaluation includes optional maintenance controls. Permission starts off
+for every publication. After publishing a database-backed app successfully:
+
+1. Open **Projects → Deployments**, then **Runtime maintenance** for that publication.
+   Only the project owner sees this control.
+2. Read the saved permission and latest check. Choose **Enable maintenance** and
+   confirm. The decision applies only to that exact published revision and its saved
+   containers, images, database and deployment host.
+3. Wrenly checks enabled publications in bounded background batches, about once a
+   minute for a small installation. Closing the browser or signing out does not stop
+   the checks. Suspension, archive, changed infrastructure or unresolved work blocks them.
+4. To stop automatic checks, choose **Pause maintenance** and confirm. Resume requires
+   another owner confirmation. **Revoke permission** is final for that publication;
+   a later publication needs its own permission. These permission changes leave the
+   currently running app untouched.
+
+If a response is lost, keep the pending decision. **Check saved decision** looks up
+its receipt without sending it again. **Retry same decision** preserves its original
+request identifier and reviewed values. A missing receipt does not prove nothing saved.
+
+A check that needs review is not retried automatically. Preserve the saved attempt;
+repeated publishing, credential delivery or SQL execution cannot safely clear it.
+Do not promise unattended recovery from every failure: interrupted-effect recovery
+and disposable real Coolify acceptance remain release gates.
+
+Keep Production evaluation opt-in and retain the Experimental label. Apply all
+checked-in migrations first; 0047 and 0048 add permission receipts and restart attempts.
