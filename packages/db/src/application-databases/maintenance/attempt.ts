@@ -1,6 +1,10 @@
 /** Independent restart journal. Publishing receipts are never rewritten by maintenance. */
 import { z } from "zod";
-const STEPS = ["broker-start", "application-start", "route-verify"] as const;
+export const MAINTENANCE_STEPS = [
+  "broker-start",
+  "application-start",
+  "route-verify",
+] as const;
 export const MaintenanceAttempt = z
   .object({
     id: z.uuid(),
@@ -9,7 +13,7 @@ export const MaintenanceAttempt = z
     leaseExpiresAt: z.iso.datetime(),
     status: z.enum(["running", "success", "interrupted"]),
     pending: z
-      .object({ id: z.uuid(), step: z.enum(STEPS) })
+      .object({ id: z.uuid(), step: z.enum(MAINTENANCE_STEPS) })
       .strict()
       .nullable(),
     completed: z
@@ -17,12 +21,12 @@ export const MaintenanceAttempt = z
         z
           .object({
             id: z.uuid(),
-            step: z.enum(STEPS),
+            step: z.enum(MAINTENANCE_STEPS),
             verifiedAt: z.iso.datetime(),
           })
           .strict(),
       )
-      .max(STEPS.length),
+      .max(MAINTENANCE_STEPS.length),
   })
   .strict()
   .superRefine((value, context) => {
@@ -30,16 +34,18 @@ export const MaintenanceAttempt = z
     const invalid = value.completed.some((receipt, index) => {
       const duplicate = ids.has(receipt.id);
       ids.add(receipt.id);
-      return duplicate || receipt.step !== STEPS[index];
+      return duplicate || receipt.step !== MAINTENANCE_STEPS[index];
     });
     if (
       invalid ||
       (value.pending &&
         (ids.has(value.pending.id) ||
-          value.pending.step !== STEPS[value.completed.length])) ||
+          value.pending.step !== MAINTENANCE_STEPS[value.completed.length])) ||
       (value.status === "success" &&
-        (value.pending || value.completed.length !== STEPS.length)) ||
-      (value.status === "running" && value.completed.length === STEPS.length)
+        (value.pending ||
+          value.completed.length !== MAINTENANCE_STEPS.length)) ||
+      (value.status === "running" &&
+        value.completed.length === MAINTENANCE_STEPS.length)
     )
       context.addIssue({
         code: "custom",
@@ -75,7 +81,7 @@ export function beginMaintenanceEffect(
     throw new Error(
       "Inspect the pending maintenance effect before continuing.",
     );
-  const step = STEPS[attempt.completed.length];
+  const step = MAINTENANCE_STEPS[attempt.completed.length];
   if (!step) throw new Error("Maintenance is already complete.");
   return MaintenanceAttempt.parse({
     ...attempt,
@@ -103,7 +109,8 @@ export function acknowledgeMaintenanceEffect(
     ...attempt,
     pending: null,
     completed,
-    status: completed.length === STEPS.length ? "success" : "running",
+    status:
+      completed.length === MAINTENANCE_STEPS.length ? "success" : "running",
   });
 }
 /** Lease loss preserves the uncertain intent; it never authorizes credential delivery again. */

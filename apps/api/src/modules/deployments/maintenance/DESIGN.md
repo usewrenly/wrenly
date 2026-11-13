@@ -20,3 +20,9 @@ grant revision, current owner/resource/host facts and expiry. Expiry records int
 without erasing the intent or requiring an active grant. Retain all previous attempts.
 Remote effects require separate kernel locks and independently verified receipts;
 these storage helpers alone never perform them.
+
+EXECUTION COORDINATOR: Load a held attempt and enabled grant, persist one intent,
+reload the exact saved grant/journal, perform its independently implemented adapter,
+then acknowledge only that effect. Check cancellation and kernel-lock/lease ownership
+before and after the external call. Bound the loop by the shared step list. Any failure
+returns attention without starting a second attempt or clearing the pending intent.
