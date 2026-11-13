@@ -23,8 +23,8 @@ refuse authority. This function loads no credentials and starts no container.
 
 Migration 0047 adds the permission and owner-action tables. The integration test uses
 only a guarded disposable PostgreSQL database. It proves transaction/replay and access
-rules, not a host restart. Worker attempts, remote restart and browser controls remain
-separate integration steps and are not activated by this storage module.
+rules, not a host restart. Storage does not itself run a host check; the explicit Production activation owns
+the scheduler and its awaited shutdown.
 
 ## Separate restart attempts
 
@@ -48,5 +48,16 @@ lease while the adapter runs; closing a browser does not own or cancel this work
 The host helper's `broker-restart.ts` checks the daemon, image, network, storage and
 isolation policy under one host lock. It starts only the preserved broker and delivers
 its existing runtime role through stdin once. Publishing receipts remain unchanged.
-This is an execution layer, not activation of a periodic scheduler or owner controls;
-those require the remaining admission/lifecycle and end-to-end checks.
+`scheduler.ts` visits saved grants in bounded pages and refuses unfinished attempts.
+`production.ts` reconstructs images and provider settings from the original successful
+publication and matching verified instance configuration. Production activation starts
+this loop only after its existing toolchain/module checks; stop waits for its held work.
+
+`owner-state.ts` and `http.ts` expose a small owner view and decision receipt lookup.
+The deployment-history dialog saves pending choices in account-scoped browser storage
+and checks the same receipt after a lost reply. Neither public response includes the
+execution binding, claims or credentials. Pause and revoke remain available without a
+healthy host. They change permission, not the currently running application's state.
+
+Browser and disposable PostgreSQL tests cover these controls. Unknown-attempt recovery
+and real Coolify end-to-end acceptance remain required; this module stays Experimental.

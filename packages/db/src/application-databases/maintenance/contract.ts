@@ -1,5 +1,6 @@
 /** Non-secret permission for maintaining one approved publication; importing this module opens no connection. */
 import { z } from "zod";
+import { MAINTENANCE_STEPS } from "./attempt";
 import {
   ProductionPublishingBinding,
   ProductionPublishingJournal,
@@ -154,3 +155,45 @@ export function assessProductionMaintenance(
     return { allowed: false, reason: "conflicting-work" };
   return { allowed: true };
 }
+
+/** Browser decisions contain only reviewed revisions; execution authority is constructed on the server. */
+export const MaintenanceDecision = z
+  .object({
+    requestId: z.uuid(),
+    expectedAccessRevision: z.uuid(),
+    expectedGrantRevision: z.uuid().nullable(),
+    state: z.enum(["enabled", "paused", "revoked"]),
+    confirmMaintenance: z.literal(true),
+  })
+  .strict();
+export type MaintenanceDecision = z.infer<typeof MaintenanceDecision>;
+/** Public owner view excludes the saved infrastructure binding, claim tokens and credentials. */
+export const MaintenanceView = z
+  .object({
+    accessRevision: z.uuid(),
+    grantRevision: z.uuid().nullable(),
+    state: z.enum(["disabled", "enabled", "paused", "revoked"]),
+    attempt: z
+      .object({
+        status: z.enum(["running", "success", "interrupted"]),
+        step: z
+          .enum(["broker-start", "application-start", "route-verify"])
+          .nullable(),
+        updatedAt: z.iso.datetime(),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type MaintenanceView = z.infer<typeof MaintenanceView>;
+export const MaintenanceDecisionReceipt = z
+  .object({
+    requestId: z.uuid(),
+    grantRevision: z.uuid(),
+    state: z.enum(["enabled", "paused", "revoked"]),
+    replayed: z.boolean(),
+  })
+  .strict();
+export type MaintenanceDecisionReceipt = z.infer<
+  typeof MaintenanceDecisionReceipt
+>;

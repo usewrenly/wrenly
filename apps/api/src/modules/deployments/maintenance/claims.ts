@@ -74,6 +74,7 @@ export async function claimMaintenance(
   database: typeof db,
   deploymentId: string,
   revision: string,
+  minimumIntervalMs = 0,
 ): Promise<MaintenanceClaim> {
   z.uuid().parse(deploymentId);
   z.uuid().parse(revision);
@@ -99,6 +100,16 @@ export async function claimMaintenance(
         409,
         "Inspect the unfinished maintenance attempt before starting another.",
       );
+    if (
+      !Number.isSafeInteger(minimumIntervalMs) ||
+      minimumIntervalMs < 0 ||
+      previous.some(
+        (row) =>
+          row.deploymentId === deploymentId &&
+          row.updatedAt.getTime() + minimumIntervalMs > Date.now(),
+      )
+    )
+      throw new DeploymentStoreError(409, "Maintenance was checked recently.");
     const now = new Date(),
       id = crypto.randomUUID(),
       token = crypto.randomUUID();

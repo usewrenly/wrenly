@@ -1,3 +1,7 @@
+import { accessContext } from "./modules/auth/access/access-context";
+import { createMaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
+import { changeMaintenancePermission } from "./modules/deployments/maintenance/store";
+import { readMaintenanceOwnerState } from "./modules/deployments/maintenance/owner-state";
 import type { ProductionClusterModule } from "./modules/databases/production-targets/module";
 import { createPasswordRecoveryHandler } from "./modules/auth/password-recovery/password-recovery-http";
 import { completePasswordRecovery } from "./modules/auth/password-recovery/password-recovery-store";
@@ -91,7 +95,7 @@ export function createProductionApp(
     events: (id, userId, after) => getOwnedBuildEvents(db, id, userId, after),
     cancel: (id, userId) => requestBuildCancellation(db, id, userId),
   })
-  const publishing = createDeploymentHttpHandlers({ list: (userId, offset) => listDeploymentHistory(db, userId, offset), enabled: environment.WRENLY_PUBLISHING_ENABLED === 'true', userId: getUserId,
+  const publishing = createDeploymentHttpHandlers({ list: (userId, offset) => listDeploymentHistory(db, userId, offset, Boolean(productionDatabases)), enabled: environment.WRENLY_PUBLISHING_ENABLED === 'true', userId: getUserId,
     admit: (projectId, userId, buildId, idempotencyKey) => admitDeployment(db, { projectId, userId, buildId, idempotencyKey, allowProductionDatabase: Boolean(productionDatabases) && environment.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true', target: {
       gitInstanceUrl: new URL(environment.WRENLY_GIT_BASE_URL!).origin, repositoryOwner: environment.WRENLY_GIT_ORG,
       coolifyInstanceUrl: new URL(environment.WRENLY_COOLIFY_API_URL!).origin, coolifyProjectUuid: environment.WRENLY_COOLIFY_PROJECT_UUID!,
@@ -138,6 +142,17 @@ export function createProductionApp(
       projectSettings: createProjectSettingsHandlers({webUrl:environment.WRENLY_WEB_URL,userId:getUserId,read:(userId,id)=>readProjectSettings(db,userId,id),save:(userId,id,input)=>saveProjectSettings(db,userId,id,input)}),
       deployProject: publishing.create,
       deployments: publishing,
+      runtimeMaintenance: productionDatabases ? createMaintenanceHttpHandlers({
+        principal: async headers => {
+          const actorId = await getUserId(headers);
+          return actorId ? accessContext.getStore()?.principal ?? null : null;
+        },
+        read: (actor, projectId, deploymentId, requestId) => readMaintenanceOwnerState({database: db, actor, projectId, deploymentId, requestId}),
+        save: async (actor, projectId, deploymentId, decision) => {
+          const result = await changeMaintenancePermission(db, actor, projectId, deploymentId, decision);
+          return { requestId: result.grant.requestId, grantRevision: result.grant.revision, state: result.grant.state, replayed: result.replayed };
+        },
+      }, environment.WRENLY_WEB_URL) : undefined,
       getModels,
       productionDatabaseSetup: productionDatabases?.instanceSetup,
       productionHostSetup: productionDatabases?.hostSetup,

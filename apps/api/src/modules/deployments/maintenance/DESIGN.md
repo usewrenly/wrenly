@@ -53,3 +53,23 @@ EDGE CASES:
   - A different member's account is not blocked by an unrelated owner.
 ERROR STATES:
   - An unreadable journal or database fails closed; no account/server change proceeds.
+
+COMPONENT: Owner maintenance controls and scheduled checks
+PURPOSE: Expose separately confirmed permission and run bounded saved-grant checks independently of a browser.
+INPUTS: Current owner session, project/publication IDs, strict decision UUID/revisions; verified server configuration.
+OUTPUTS: Public permission/status projection, immutable decision receipt and independently journaled maintenance attempts.
+STEPS:
+  1. Owner reads lock/check the current account and project; project readers cannot retrieve grants or receipts.
+  2. Return only decision state/revisions and latest result/step/time, never binding, tokens, credentials or raw errors.
+  3. POST uses bounded input and trusted origin; GET receipt lookup only reads the actor's saved action.
+  4. Browser saves the exact pending decision locally before sending; lost replies retain it for receipt lookup or identical retry.
+  5. A server loop visits enabled saved grants in bounded pages. Under queue locks, refuse unfinished attempts and enforce a minimum interval.
+  6. Reconstruct image/provider inputs from saved publication plus matching verified installation settings. Await each held attempt and shutdown.
+EDGE CASES:
+  - Pause/revoke prevents the next remote effect without requiring a healthy host.
+  - An expired or pending attempt is never automatically replayed; it remains visible as needing review.
+  - No grant means no maintenance; opening controls never enables permission.
+ERROR STATES:
+  - Lost browser response retains exact request identity.
+  - Changed configuration or inaccessible saved evidence refuses execution.
+  - Worker failures remain journaled; the scheduler cannot dismiss an uncertain result.

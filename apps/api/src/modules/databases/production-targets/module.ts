@@ -67,7 +67,7 @@ const defaults: Adapters = {
       await getDatabaseWorkerBundle("production");
     } catch {
       throw new Error(
-        "Production database prerequisites could not be verified. Apply checked-in migrations through 0046 and build the trusted API helpers before activation.",
+        "Production database prerequisites could not be verified. Apply checked-in migrations through 0048 and build the trusted API helpers before activation.",
       );
     }
   },

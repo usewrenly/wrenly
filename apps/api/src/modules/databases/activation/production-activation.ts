@@ -1,3 +1,4 @@
+import { startProductionMaintenance } from "../../deployments/maintenance/production";
 /** API startup owns the verified Production module and its publishing adapters as one lifecycle. */
 import type { db } from "@wrenly/db";
 import { verifyProductionInstallationImages } from "@wrenly/sandbox/production-deployment-toolchain";
@@ -24,6 +25,7 @@ interface Input {
 interface Adapters {
   verifyImages: typeof verifyProductionInstallationImages;
   start: typeof startProductionClusterModule;
+  maintenance?: typeof startProductionMaintenance;
 }
 /** Disabled installations perform no Production probe, setup or remote operation. */
 export async function startProductionDatabaseActivation(
@@ -73,5 +75,27 @@ export async function startProductionDatabaseActivation(
     principal: input.principal,
     verifyDeploymentServer: verifier,
   });
-  return { ...module, publishing };
+  try {
+    const maintenance = (adapters.maintenance ?? startProductionMaintenance)(
+      input.database,
+      environment,
+    );
+    let stopping: Promise<void> | undefined;
+    return {
+      ...module,
+      publishing,
+      stop: () =>
+        (stopping ??= (async () => {
+          // Stop the maintenance worker first; its adapter may still hold a resource lease.
+          try {
+            await maintenance.stop();
+          } finally {
+            await module.stop();
+          }
+        })()),
+    };
+  } catch (error) {
+    await module.stop();
+    throw error;
+  }
 }

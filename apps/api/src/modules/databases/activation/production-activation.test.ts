@@ -38,6 +38,7 @@ test("disabled Production starts no worker or trusted-image probe", async () => 
     await startProductionDatabaseActivation(
       { ...input, environment: parseApiEnvironment(base) },
       {
+        maintenance: () => ({ done: Promise.resolve(), stop: async () => {} }),
         verifyImages: async () => {
           calls++;
         },
@@ -54,6 +55,7 @@ test("a failed trusted-image check starts no Production control work", async () 
   let starts = 0;
   await expect(
     startProductionDatabaseActivation(input, {
+      maintenance: () => ({ done: Promise.resolve(), stop: async () => {} }),
       verifyImages: async () => {
         throw new Error("unverified image");
       },
@@ -68,6 +70,15 @@ test("a failed trusted-image check starts no Production control work", async () 
 test("verified activation returns matching handlers, publishing adapters and one awaited module cleanup", async () => {
   const calls: string[] = [];
   const module = await startProductionDatabaseActivation(input, {
+    maintenance: () => {
+      calls.push("maintenance");
+      return {
+        done: Promise.resolve(),
+        stop: async () => {
+          calls.push("stop-maintenance");
+        },
+      };
+    },
     verifyImages: async (images) => {
       expect(images.brokerImageId).toBe(
         environment.WRENLY_PRODUCTION_BROKER_IMAGE_ID!,
@@ -100,7 +111,13 @@ test("verified activation returns matching handlers, publishing adapters and one
       });
     },
   });
-  expect(calls).toEqual(["images", "schema", "control", "resources"]);
+  expect(calls).toEqual([
+    "images",
+    "schema",
+    "control",
+    "resources",
+    "maintenance",
+  ]);
   expect(module?.publishing.production?.prepare).toBeFunction();
   expect(
     (
@@ -116,6 +133,8 @@ test("verified activation returns matching handlers, publishing adapters and one
     "schema",
     "control",
     "resources",
+    "maintenance",
+    "stop-maintenance",
     "stop-control",
     "stop-resources",
   ]);

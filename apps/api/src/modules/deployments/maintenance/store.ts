@@ -16,6 +16,7 @@ import {
 } from "@wrenly/db";
 import {
   ProductionMaintenanceGrant,
+  MaintenanceDecision,
   assessProductionMaintenance,
 } from "@wrenly/db/production-maintenance-contract";
 import {
@@ -33,22 +34,13 @@ import {
 import { DeploymentStoreError } from "../persistence/deployment-store";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-const Decision = z
-  .object({
-    requestId: z.uuid(),
-    expectedAccessRevision: z.uuid(),
-    expectedGrantRevision: z.uuid().nullable(),
-    state: z.enum(["enabled", "paused", "revoked"]),
-    confirmMaintenance: z.literal(true),
-  })
-  .strict();
 export interface MaintenancePermissionReceipt {
   grant: ProductionMaintenanceGrant;
   replayed: boolean;
 }
 
 /** Queue locks precede account/project locks; ownership and the live session are checked even for withdrawal. */
-async function lockOwner(
+export async function lockMaintenanceOwner(
   tx: Transaction,
   projectId: string,
   actor: AccessPrincipal,
@@ -201,13 +193,13 @@ export async function changeMaintenancePermission(
 ): Promise<MaintenancePermissionReceipt> {
   z.uuid().parse(projectId);
   z.uuid().parse(deploymentId);
-  const input = Decision.parse(raw);
+  const input = MaintenanceDecision.parse(raw);
   const identity = createHash("sha256")
     .update(JSON.stringify([projectId, deploymentId, input]))
     .digest("hex");
   try {
     return await database.transaction(async (tx) => {
-      const project = await lockOwner(tx, projectId, actor);
+      const project = await lockMaintenanceOwner(tx, projectId, actor);
       const [replay] = await tx
         .select()
         .from(productionRuntimeMaintenanceActions)

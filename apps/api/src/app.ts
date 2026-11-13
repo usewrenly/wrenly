@@ -1,3 +1,4 @@
+import type { MaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
 import type { ProjectProductionCreationHandlers } from "./modules/databases/production-targets/project-provisioning/http"
 import type { InstanceProductionHttpHandlers } from "./modules/databases/production-targets/instance/http"
 import type { RuntimeHostHttpHandlers } from "./modules/databases/production-targets/deployment-hosts/http"
@@ -38,6 +39,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  runtimeMaintenance?: MaintenanceHttpHandlers
   productionProjectCreation?: ProjectProductionCreationHandlers
   productionDatabaseSetup?: InstanceProductionHttpHandlers
   productionHostSetup?: RuntimeHostHttpHandlers
@@ -249,6 +251,12 @@ export function createApp(
       return context.json({ error: 'Project ID must be a valid UUID' }, 400)
     return handlers.deployProject(context.req.raw, parsed.data)
   })
+  if (handlers.runtimeMaintenance) {
+    const maintenance = handlers.runtimeMaintenance
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance', c => maintenance.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance/actions/:requestId', c => maintenance.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId'), c.req.param('requestId')))
+    app.post('/api/projects/:id/deployments/:deploymentId/maintenance', c => maintenance.save(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+  }
   if (handlers.deployments) {
     const publishing = handlers.deployments
     app.get("/api/deployments", c => publishing.list(c.req.raw))

@@ -1,3 +1,6 @@
+import { parseApiEnvironment } from "../../../config/api-environment";
+import { productionMaintenanceConfiguration } from "./production";
+import { readMaintenanceOwnerState } from "./owner-state";
 import {
   hasMemberDatabaseWork,
   hasUnfinishedMaintenance,
@@ -273,6 +276,9 @@ async function completedPublication(): Promise<void> {
       claimToken: null,
       leaseExpiresAt: null,
       productionRuntimeJournal: journal,
+      artifactImageId: image,
+      registryRepository: "registry.fixture/wrenly/app",
+      registryDigest: image,
     })
     .where(eq(schema.deployments.id, deploymentId));
 }
@@ -317,6 +323,49 @@ check(
     );
     expect(saved.replayed).toBe(false);
     expect(saved.grant.state).toBe("enabled");
+    const ownerView = await readMaintenanceOwnerState({
+      database,
+      actor,
+      projectId,
+      deploymentId,
+    });
+    expect(ownerView).toEqual({
+      accessRevision,
+      grantRevision: saved.grant.revision,
+      state: "enabled",
+      attempt: null,
+    });
+    const receipt = await readMaintenanceOwnerState({
+      database,
+      actor,
+      projectId,
+      deploymentId,
+      requestId: input.requestId,
+    });
+    expect(receipt).toEqual({
+      requestId: input.requestId,
+      grantRevision: saved.grant.revision,
+      state: "enabled",
+      replayed: true,
+    });
+    expect(JSON.stringify(ownerView)).not.toContain("claimToken");
+    await expect(
+      readMaintenanceOwnerState({
+        database,
+        actor: { ...actor, userId: crypto.randomUUID() },
+        projectId,
+        deploymentId,
+      }),
+    ).rejects.toThrow();
+    expect(
+      await readMaintenanceOwnerState({
+        database,
+        actor,
+        projectId,
+        deploymentId,
+        requestId: crypto.randomUUID(),
+      }),
+    ).toBeNull();
     expect(
       await changeMaintenancePermission(
         database,
@@ -354,6 +403,44 @@ check(
       );
     const revision = row!.grant.revision;
     const claim = await claimMaintenance(database, deploymentId, revision);
+    const environment = parseApiEnvironment({
+      WRENLY_DATABASE_URL: "postgresql://fixture:fixture@127.0.0.1:1/fixture",
+      WRENLY_AUTH_SECRET: "a".repeat(64),
+      WRENLY_APP_URL: "http://localhost:3002",
+      WRENLY_WEB_URL: "http://localhost:3000",
+      WRENLY_COOLIFY_API_URL: "http://coolify.fixture/api/v1",
+      WRENLY_COOLIFY_API_KEY: "fixture-only",
+      WRENLY_COOLIFY_SERVER_UUID: "fixture-server",
+      WRENLY_COOLIFY_PROJECT_UUID: "fixture",
+      WRENLY_COOLIFY_ENVIRONMENT: "production",
+      WRENLY_DEPLOY_ENCRYPTION_KEY: "ab".repeat(32),
+      WRENLY_PRODUCTION_BROKER_IMAGE_ID: "sha256:" + "d".repeat(64),
+      WRENLY_PRODUCTION_INGRESS_IMAGE_ID: "sha256:" + "d".repeat(64),
+      WRENLY_PRODUCTION_INGRESS_IMAGE:
+        "registry.fixture/wrenly/ingress@sha256:" + "d".repeat(64),
+    });
+    expect(
+      (await productionMaintenanceConfiguration(database, environment, claim))
+        .images.appImage,
+    ).toBe("registry.fixture/wrenly/app@sha256:" + "d".repeat(64));
+    await expect(
+      productionMaintenanceConfiguration(
+        database,
+        { ...environment, WRENLY_COOLIFY_SERVER_UUID: "another-server" },
+        claim,
+      ),
+    ).rejects.toThrow("changed");
+    await expect(
+      productionMaintenanceConfiguration(
+        database,
+        {
+          ...environment,
+          WRENLY_PRODUCTION_BROKER_IMAGE_ID: "sha256:" + "a".repeat(64),
+        },
+        claim,
+      ),
+    ).rejects.toThrow("changed");
+
     await expect(
       claimMaintenance(database, deploymentId, revision),
     ).rejects.toThrow("unfinished");
@@ -397,6 +484,10 @@ check(
       "application-start",
       "route-verify",
     ]);
+    await expect(
+      claimMaintenance(database, deploymentId, revision, 60000),
+    ).rejects.toThrow("recently");
+
     const uncertain = await claimMaintenance(database, deploymentId, revision);
     const pending = await advanceMaintenance(database, uncertain);
     await database
@@ -445,6 +536,7 @@ check(
       .delete(schema.productionRuntimeMaintenanceAttempts)
       .where(eq(schema.productionRuntimeMaintenanceAttempts.id, uncertain.id));
   },
+  20000,
 );
 check(
   "grant authority survives logout but not account or project changes",
