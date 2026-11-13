@@ -11,7 +11,8 @@
     "reconcile-deployment": "bun run --cwd apps/api reconcile-deployment",
     "prepare-production-images": "bun run --cwd apps/api prepare-production-images",
     "reconcile-production-route": "bun run --cwd apps/api reconcile-production-route",
-    "reconcile-production-setup": "bun run --cwd apps/api reconcile-production-setup"
+    "reconcile-production-setup": "bun run --cwd apps/api reconcile-production-setup",
+    "continue-production-publication": "bun run --cwd apps/api continue-production-publication"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",

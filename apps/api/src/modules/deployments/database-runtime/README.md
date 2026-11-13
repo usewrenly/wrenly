@@ -101,15 +101,23 @@ establish real Coolify routing, automatic host-reboot recovery or safe replay of
 unknown earlier infrastructure mutation. Those require their own joined acceptance.
 
 
-## Inspecting earlier setup resources
+## Recovering interrupted runtime steps
 
-`../recovery/reconcile-production-setup.ts` checks a lost acknowledgement for one
-HTTP socket volume, database socket volume or private broker network. It verifies
-the original pending action through fixed read-only host helpers and records its
-receipt only after exact ownership and daemon checks. Missing or mismatched resources
-stay unresolved. It loads only the host connection, never application credentials.
+`../recovery/reconcile-production-setup.ts` checks a lost acknowledgement for any
+of the seven setup/start stages. `setup-inspection.ts` handles owned socket storage
+and an empty network; `start-inspection.ts` proves broker readiness, pinned service
+placement/composition, running app/relay or root guardian readiness as appropriate.
+`inspection-configuration.ts` reconstructs expected artifact and installation settings.
+Only host credentials and non-secret upstream metadata are selected for these checks.
 
-The publication stays interrupted after that receipt is saved. Inspection neither
-continues publishing nor starts containers. Service creation and credential handoff
-need separate proof; do not infer their success from a container being present.
-The public publishing-operations guide gives the root command and prerequisites.
+A same-name container is insufficient. Broker discovery requires all ownership labels
+and a full independent isolation check. A running app is insufficient to acknowledge
+settings delivery: the trusted root guardian must have recorded readiness in its
+protected state directory. None of these inspections creates, starts or sends settings.
+
+The publication stays interrupted after its original receipt is saved. The separate
+`../recovery/continue-production-publication.ts` command requires explicit confirmation,
+rejects pending effects, rechecks completed resources through `inspect-completed.ts`
+and runs the existing coordinator only for never-started steps. Prior publishing
+receipts remain unchanged. Final success still requires independent public-route proof.
+The public publishing-operations guide gives the commands and prerequisites.

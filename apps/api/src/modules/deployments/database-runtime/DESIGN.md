@@ -64,3 +64,31 @@ STEPS:
   5. Save the matching original receipt, then release verification ownership back to interrupted status. Never resume later remote mutations implicitly.
 EDGE CASES: A newer receipt/claim or changed source/schema/host/session refuses recovery. A lost local acknowledgement is inspected again rather than repeating creation.
 ERROR STATES: Missing or mismatched resources remain blocked. Later credential/service/SQL phases are outside this inspector and cannot be cleared through it.
+
+
+COMPONENT: Interrupted broker and application start inspection
+PURPOSE: Recover original acknowledgements only after independent read-only proof, without repeating settings handoff or service start.
+INPUTS: Original pending broker/service/application effect, exact saved journal, trusted installation images/placement and pinned upstream metadata.
+OUTPUTS: Original step receipt or preserved interruption.
+STEPS:
+1. Reuse the setup recovery claim and original effect identity under current owner/source/resource/host fences.
+2. Load host SSH credentials plus non-secret upstream metadata only; no project database password is decrypted.
+3. Broker creation requires unique full-label discovery followed by complete policy and socket-readiness proof.
+4. Service start requires the saved exact provider composition and independent running app/ingress policy proofs on the pinned daemon.
+5. Application handoff additionally requires the root guardian's protected ready state; a running waiting guardian is insufficient.
+6. Save only the original step receipt and retain interruption; never implicitly continue later mutations.
+EDGE CASES: Image/configuration drift, missing/foreign/ambiguous resources or missing guardian proof leave the blocker intact.
+ERROR STATES: Unknown provider placement or SQL remains review-required. There is no create/start/send fallback.
+
+COMPONENT: Explicit continuation after verified interruption
+PURPOSE: Finish the original publication without repeating a saved completed or unresolved action.
+INPUTS: Settled interrupted publication with no pending effect, original owner authority and explicit command confirmation.
+OUTPUTS: Original successful publication or retained interrupted journal.
+STEPS:
+1. Acquire the existing publishing kernel lock and claim under normal account/project/resource fences; reject every pending effect.
+2. Reconstruct only saved artifact references and unchanged configured placement/toolchains.
+3. Re-inspect completed volume, broker, service and handoff receipts before new work. A broker independently verifies its attached network; the empty-network inspector is not used after attachment.
+4. Run the existing ordered coordinator from its saved receipt count, persisting a fresh intent only for a never-started step.
+5. Renew ownership during bounded remote work, acknowledge exact evidence and finish only after independent public route verification.
+EDGE CASES: Missing earlier resources are not recreated. Changed configuration, authority or a lost new acknowledgement preserves interruption.
+ERROR STATES: An unresolved effect must use inspection first; continuation never dismisses it or repeats SQL/source push/image upload.

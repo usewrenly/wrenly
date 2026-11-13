@@ -15,6 +15,7 @@ import {
   loadProductionPublishingRuntime,
 } from "../database-runtime/store";
 import { loadProductionInspectionHostCredentials } from "../database-runtime/secrets";
+import { productionStartInspectionConfiguration } from "../database-runtime/inspection-configuration";
 import { inspectProductionSetupEffect } from "../database-runtime/setup-inspection";
 const VERIFICATION_MS = 25000;
 /** Only the selected original setup effect can be acknowledged. Absence and uncertainty leave its intent intact. */
@@ -65,6 +66,20 @@ export async function reconcileProductionSetup(
       ...{ binding, journal, effect },
       signal,
       credentials: { host: credentials },
+      ...([
+        "broker-start",
+        "service-create",
+        "service-start",
+        "application-start",
+      ].includes(effect.step)
+        ? {
+            runtime: await productionStartInspectionConfiguration(
+              database,
+              environment,
+              owned,
+            ),
+          }
+        : {}),
       assertHeld,
     });
     if (!fact)

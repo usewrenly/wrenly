@@ -1,5 +1,9 @@
 /** Read-only proofs for uncertain runtime setup. No create/start/credential-delivery request is accepted here. */
 import {
+  inspectProductionStartEffect,
+  type ProductionStartInspectionConfiguration,
+} from "./start-inspection";
+import {
   ProductionRuntimeHostRequest,
   ProductionRuntimeVolumeReply,
   ProductionRuntimeNetworkReply,
@@ -19,6 +23,7 @@ export async function inspectProductionSetupEffect(
   input: Input & {
     credentials: Pick<ProductionPublishingRuntimeSecrets, "host">;
     assertHeld: () => Promise<void>;
+    runtime?: ProductionStartInspectionConfiguration;
     send?: typeof executeRuntimeHostRequest;
   },
 ): Promise<Fact | null> {
@@ -26,6 +31,18 @@ export async function inspectProductionSetupEffect(
   const journal = validateProductionPublishingJournal(binding, input.journal);
   if (JSON.stringify(journal.pending) !== JSON.stringify(effect))
     throw new Error("The original setup intent changed.");
+  if (
+    [
+      "broker-start",
+      "service-create",
+      "service-start",
+      "application-start",
+    ].includes(effect.step)
+  ) {
+    if (!input.runtime)
+      throw new Error("Restore the trusted start inspection configuration.");
+    return inspectProductionStartEffect({ ...input, runtime: input.runtime });
+  }
   if (
     effect.step !== "http-volume" &&
     effect.step !== "database-volume" &&

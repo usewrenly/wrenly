@@ -193,3 +193,29 @@ export async function loadProductionInspectionHostCredentials(input: {
     );
   }
 }
+
+/** Recovery needs pinned routing metadata, never the password or management connection envelope. */
+export async function loadProductionInspectionUpstream(input: {
+  database: typeof db;
+  claim: DeploymentClaim;
+}): Promise<ProductionPublishingRuntimeSecrets["database"]["upstream"]> {
+  return input.database.transaction(async (tx) => {
+    const { binding } = await lockProductionPublishingRuntime(tx, input.claim);
+    const [server] = await tx
+      .select()
+      .from(productionDatabaseConnections)
+      .where(eq(productionDatabaseConnections.id, binding.connectionId));
+    if (
+      !server ||
+      server.status !== "verified" ||
+      server.verified?.clusterId !== binding.clusterId ||
+      !server.pinnedAddresses?.length
+    )
+      throw new Error("Production inspection target changed.");
+    return {
+      hostname: server.target.host,
+      address: server.pinnedAddresses[0]!,
+      port: server.target.port,
+    };
+  });
+}

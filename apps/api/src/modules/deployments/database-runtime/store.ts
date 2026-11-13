@@ -265,7 +265,7 @@ export async function acknowledgeProductionRuntimeEffect(
 async function claimInterruptedProductionInspection(
   database: typeof db,
   deploymentId: string,
-  scope: "route" | "setup",
+  scope: "route" | "setup" | "continue",
 ): Promise<DeploymentClaim> {
   z.uuid().parse(deploymentId);
   return database.transaction(async (tx) => {
@@ -315,7 +315,10 @@ async function claimInterruptedProductionInspection(
         !journal.pending);
     const setup =
       journal.pending && SETUP_RECOVERY_STEPS.includes(journal.pending.step);
-    if (scope === "route" ? !route : !setup)
+    const continuation =
+      !journal.pending &&
+      journal.completed.length < PRODUCTION_PUBLISHING_STEPS.length;
+    if (scope === "route" ? !route : scope === "setup" ? !setup : !continuation)
       throw new DeploymentStoreError(
         409,
         scope === "route"
@@ -387,6 +390,10 @@ const SETUP_RECOVERY_STEPS: readonly string[] = [
   "http-volume",
   "database-volume",
   "broker-network",
+  "broker-start",
+  "service-create",
+  "service-start",
+  "application-start",
 ];
 /** Final route inspection retains its own narrow stage guard. */
 export async function claimInterruptedProductionRoute(
@@ -432,4 +439,16 @@ export async function acknowledgeRecoveredProductionSetup(
       .set({ productionRuntimeJournal: next, updatedAt: new Date() })
       .where(eq(deployments.id, claim.deploymentId));
   });
+}
+
+/** Only an explicit continuation may admit new later intents, and only after every unknown effect was independently settled. */
+export async function claimInterruptedProductionContinuation(
+  database: typeof db,
+  deploymentId: string,
+): Promise<DeploymentClaim> {
+  return claimInterruptedProductionInspection(
+    database,
+    deploymentId,
+    "continue",
+  );
 }

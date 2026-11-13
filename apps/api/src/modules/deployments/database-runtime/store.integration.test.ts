@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { createDatabaseRuntimeComposition } from "@wrenly/deploy";
+import { continueProductionPublication } from "../recovery/continue-production-publication";
 import { reconcileProductionSetup } from "../recovery/reconcile-production-setup";
 import { claimInterruptedProductionSetup } from "./store";
 import { reconcileProductionRoute } from "../recovery/reconcile-production-route";
@@ -964,19 +967,51 @@ check(
       .from(schema.deployments)
       .where(eq(schema.deployments.id, deploymentId));
     if (!source) throw new Error("Missing setup fixture.");
+    const [placement] = await database
+      .select()
+      .from(schema.deploymentResources)
+      .where(eq(schema.deploymentResources.projectId, projectId));
+    if (!placement) throw new Error("Missing placement fixture.");
     const environment = parseApiEnvironment({
       WRENLY_DATABASE_URL: "postgresql://fixture:fixture@127.0.0.1:1/fixture",
       WRENLY_AUTH_SECRET: "a".repeat(64),
       WRENLY_APP_URL: "http://localhost:3002",
       WRENLY_WEB_URL: "http://localhost:3000",
       WRENLY_DATA_DIR: directory,
+      WRENLY_PREVIEW_ENABLED: "true",
+      WRENLY_APP_DATABASES_ENABLED: "true",
+      WRENLY_PUBLISHING_ENABLED: "true",
+      WRENLY_PRODUCTION_DATABASES_ENABLED: "true",
+      WRENLY_DEPLOY_ENCRYPTION_KEY: "d".repeat(64),
+      WRENLY_GIT_BASE_URL: "https://gitea.fixture",
+      WRENLY_GIT_TOKEN: "fixture",
+      WRENLY_REGISTRY_URL: "https://registry.fixture",
+      WRENLY_REGISTRY_USERNAME: "fixture",
+      WRENLY_REGISTRY_PASSWORD: "fixture",
+      WRENLY_REGISTRY_NAMESPACE: "wrenly",
+      WRENLY_COOLIFY_API_URL: "https://coolify.fixture/api/v1",
+      WRENLY_COOLIFY_API_KEY: "fixture",
+      WRENLY_COOLIFY_PROJECT_UUID: placement.coolifyProjectUuid,
+      WRENLY_COOLIFY_SERVER_UUID: placement.coolifyServerUuid,
+      WRENLY_COOLIFY_ENVIRONMENT: placement.coolifyEnvironmentName,
+      WRENLY_PRODUCTION_BROKER_IMAGE_ID: `sha256:${"b".repeat(64)}`,
+      WRENLY_PRODUCTION_INGRESS_IMAGE_ID: `sha256:${"f".repeat(64)}`,
+      WRENLY_PRODUCTION_INGRESS_IMAGE: `registry.fixture/wrenly/ingress@sha256:${"f".repeat(64)}`,
     });
     await database
       .update(schema.deployments)
       .set({ status: "success" })
       .where(eq(schema.deployments.id, deploymentId));
+    await database
+      .update(schema.deploymentResources)
+      .set({
+        registryOrigin: "https://registry.fixture",
+        registryNamespace: "wrenly",
+        coolifyInstanceUrl: "https://coolify.fixture",
+      })
+      .where(eq(schema.deploymentResources.projectId, projectId));
     try {
-      for (let index = 0; index < 3; index++) {
+      for (let index = 0; index < 7; index++) {
         const id = crypto.randomUUID(),
           bound = { ...binding, deploymentId: id };
         const facts = [
@@ -991,6 +1026,38 @@ check(
             createdAt: new Date().toISOString(),
           },
           { step: "broker-network", networkId: "a".repeat(64) },
+          {
+            step: "broker-start",
+            containerId: "a".repeat(64),
+            imageId: `sha256:${"b".repeat(64)}`,
+            networkId: "a".repeat(64),
+            volumeName: `wrenly-deployment-db-${id}`,
+          },
+          {
+            step: "service-create",
+            serviceId: "fixture-service",
+            compositionSha256: createHash("sha256")
+              .update(
+                createDatabaseRuntimeComposition({
+                  deploymentId: id,
+                  projectId,
+                  resourceId,
+                  framework: "nextjs",
+                  appImage: `registry.fixture/wrenly/app@sha256:${"e".repeat(64)}`,
+                  ingressImage: `registry.fixture/wrenly/ingress@sha256:${"f".repeat(64)}`,
+                }).document,
+              )
+              .digest("hex"),
+            appImageId: `sha256:${"c".repeat(64)}`,
+            appRegistryDigest: `sha256:${"e".repeat(64)}`,
+            ingressRegistryDigest: `sha256:${"f".repeat(64)}`,
+          },
+          { step: "service-start", serviceId: "fixture-service" },
+          {
+            step: "application-start",
+            containerId: "a".repeat(64),
+            imageId: `sha256:${"c".repeat(64)}`,
+          },
         ];
         let journal: ProductionPublishingJournal = {
           version: 1,
@@ -1022,19 +1089,20 @@ check(
           new Date(),
         );
         const pending = journal.pending!;
-        await database
-          .insert(schema.deployments)
-          .values({
-            ...source,
-            id,
-            idempotencyKey: crypto.randomUUID(),
-            requestIdentity: `fixture-setup-${index}`,
-            status: "interrupted",
-            claimToken: null,
-            leaseExpiresAt: null,
-            productionDatabaseBinding: bound,
-            productionRuntimeJournal: journal,
-          });
+        await database.insert(schema.deployments).values({
+          ...source,
+          id,
+          idempotencyKey: crypto.randomUUID(),
+          requestIdentity: `fixture-setup-${index}`,
+          status: "interrupted",
+          claimToken: null,
+          leaseExpiresAt: null,
+          artifactImageId: `sha256:${"c".repeat(64)}`,
+          registryRepository: "registry.fixture/wrenly/app",
+          registryDigest: `sha256:${"e".repeat(64)}`,
+          productionDatabaseBinding: bound,
+          productionRuntimeJournal: journal,
+        });
         await expect(
           reconcileProductionSetup(database, environment, id, async () => null),
         ).rejects.toThrow("Saved evidence is preserved");
@@ -1084,15 +1152,77 @@ check(
         await expect(
           claimInterruptedProductionSetup(database, id),
         ).rejects.toThrow("read-only inspector");
+        if (index === 6) {
+          const savedReceipts = row!.productionRuntimeJournal!.completed;
+          let remote = 0;
+          const services: NonNullable<
+            Parameters<typeof continueProductionPublication>[3]
+          >["services"] = (configuration) => ({
+            load: () =>
+              loadProductionPublishingRuntime(database, configuration.claim),
+            begin: () =>
+              beginProductionRuntimeEffect(database, configuration.claim),
+            acknowledge: (receipt) =>
+              acknowledgeProductionRuntimeEffect(
+                database,
+                configuration.claim,
+                receipt,
+              ),
+            assertHeld: configuration.assertHeld,
+            perform: async (input) => {
+              remote++;
+              expect(input.effect.step).toBe("route-verify");
+              expect(input.journal.completed).toEqual(savedReceipts);
+              return {
+                step: "route-verify",
+                sourceSha256: bound.sourceSha256,
+                url: "https://production.example.test/",
+              };
+            },
+          });
+          await expect(
+            continueProductionPublication(database, environment, id, {
+              inspect: async () => {
+                throw new Error("Changed remote resource");
+              },
+              services,
+            }),
+          ).rejects.toThrow("Saved receipts");
+          expect(remote).toBe(0);
+          await continueProductionPublication(database, environment, id, {
+            inspect: async (input) => {
+              expect(input.journal.completed).toEqual(savedReceipts);
+              await input.assertHeld();
+            },
+            services,
+          });
+          const [finished] = await database
+            .select()
+            .from(schema.deployments)
+            .where(eq(schema.deployments.id, id));
+          expect(finished?.status).toBe("success");
+          expect(
+            finished?.productionRuntimeJournal?.completed.slice(0, 7),
+          ).toEqual(savedReceipts);
+          expect(remote).toBe(1);
+        }
       }
     } finally {
+      await database
+        .update(schema.deploymentResources)
+        .set({
+          registryOrigin: placement.registryOrigin,
+          registryNamespace: placement.registryNamespace,
+          coolifyInstanceUrl: placement.coolifyInstanceUrl,
+        })
+        .where(eq(schema.deploymentResources.projectId, projectId));
       await database
         .update(schema.deployments)
         .set({ status: "preparing" })
         .where(eq(schema.deployments.id, deploymentId));
     }
   },
-  20000,
+  40000,
 );
 check(
   "changed resource schema, host or owner session refuses the next effect",
