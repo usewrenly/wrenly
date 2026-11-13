@@ -73,3 +73,17 @@ OUTPUTS: Failed original migration and a separate successful recovery receipt; n
 STEPS: Reuse the existing resource lock, current-authority checks and ordered recovery journal; accept only the exact nine local restore effects before an unacknowledged disposable migration; independently clean the disposable scope; inspect the original private TLS database and role policy read-only; compare its saved schema/native journal digest before completing recovery.
 EDGE CASES: Production never uses a Development runtime identity or starts a stopped database. Prior interrupted recovery cleanup is checked independently.
 ERROR STATES: Missing binding, changed schema, unavailable server, unknown effects or uncertain cleanup preserve the blocker.
+
+
+COMPONENT: Production backup/migration outcome recovery
+PURPOSE: Clean only one interrupted operation's temporary clients and determine its original database outcome without repeating SQL.
+INPUTS: Current owner/session, exact interrupted backup or migration and current resource revision, pinned original binding and frozen migration review.
+OUTPUTS: Independent cleanup and inspection receipts; failed backup/unchanged migration, or separately evidenced applied migration.
+STEPS:
+1. Acquire the original resource's kernel lock and a durable recovery lease; preserve old intents and forbid unrelated active work.
+2. Recognize only fixed operation-owned helper names/effects. Remove exact label-verified temporary helpers/socket/disposable restore; terminate only that resource's migrator sessions through pinned TLS.
+3. Inspect immutable cluster/database/role policy and actual schema/native journals. Backup requires the unchanged saved digest; migration accepts only its frozen before or successfully rehearsed after digest.
+4. Recheck owner, resource revision/binding and all frozen operation/review evidence in one completion transaction. Cleanup receipts do not acknowledge SQL; only an independent exact after-digest may establish an applied migration.
+5. Preserve original unknown effects and recovery history. No backup is called verified merely because cleanup passed; an unchanged migration stays failed. Unknown or partial schema remains blocked.
+EDGE CASES: Lost cleanup or final-save replies retain an independently replayable recovery identity; no automatic SQL or archive capture retry. Missing/foreign helpers, changed targets or journals refuse completion.
+ERROR STATES: Unreachable target, stale authority, uncertain cleanup or nonmatching schema keeps recovery required.

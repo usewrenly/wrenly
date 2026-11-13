@@ -47,6 +47,7 @@ const OPERATIONS: Record<
   "recover-runtime-state": "Check runtime state",
   "validate-application": "Validate application",
   "recover-validation": "Resolve validation",
+  "recover-production-operation": "Resolve Production operation",
   "recover-rehearsal": "Resolve rehearsal",
 };
 const OUTCOMES = {

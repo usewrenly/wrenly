@@ -70,7 +70,7 @@ export const DatabaseResourceStatus = z
               "recover-runtime-state",
               "validate-application",
               "recover-validation",
-              "recover-rehearsal",
+              "recover-production-operation", "recover-rehearsal",
             ]),
             status: z.enum([
               "queued",
@@ -173,7 +173,7 @@ export const DatabaseRecoveryReview = z
           "recover-runtime-state",
           "recover-read",
           "recover-validation",
-          "recover-rehearsal",
+          "recover-production-operation", "recover-rehearsal",
         ]),
       )
       .max(1),

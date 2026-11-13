@@ -22,8 +22,19 @@ restores over the Production database or stores application rows in Wrenly's tab
 An interrupted action remains visible and blocks conflicting work. Unknown results
 are not automatically retried. Creation, verified backup, reviewed migration, per-project stop/start and the
 read-only viewer are connected. Publishing has a separate ordered executor.
-Unknown backup/migration cleanup and earlier remote publishing effects still need
-complete recovery acceptance; they must not be cleared by retrying the old action.
+`operation-recovery.ts` resolves recognized interrupted backup/migration cleanup
+through a separate owner request. For example, a lost migration reply may leave a
+client behind after its SQL completed. Recovery first removes only the original
+operation's owned clients and disposable resources, then checks the original cluster,
+roles, schema and native migration journal. It never sends the SQL again.
+
+A migration becomes successful only when the independently observed result matches
+its frozen, verified rehearsal. A partial or different result stays blocked. Backup
+cleanup leaves the original backup failed: it cannot invent a verified archive.
+The original uncertain effect remains in history alongside the separate cleanup
+acknowledgement and recovery outcome. `operation-recovery-policy.ts` admits only
+known fixed effect identities; foreign resources and missing evidence are refused.
+Exact request replay returns the saved result without another cleanup.
 
 Reviewed migrations use the same saved-source, backup and rehearsal sequence as
 Development. The Production adapter changes only how the exact database is reached:

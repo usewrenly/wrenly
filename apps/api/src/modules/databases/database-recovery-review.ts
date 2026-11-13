@@ -1,3 +1,4 @@
+import { isRecoverableProductionOperation } from "./production-targets/data/operation-recovery-policy";
 import { isRecoverableDatabaseRead } from "./viewing/view-recovery-policy";
 import { parseProductionResourceBinding } from "@wrenly/db/production-resource-binding";
 import {
@@ -69,6 +70,7 @@ export function databaseRecoveryChoices(
       return [];
     }
     if (isRecoverableDatabaseRead(operation)) return ["recover-read"];
+    if (isRecoverableProductionOperation(operation)) return ["recover-production-operation"];
     if (operation.cleanupEffect || operation.completedCleanupEffects.length)
       return [];
     const effects = [
@@ -197,6 +199,11 @@ export async function readDatabaseRecoveryReview(
       if (!resource || !operation)
         throw new AppDatabaseError(404, "Database operation not found.");
       let choices = databaseRecoveryChoices(resource, operation);
+      if (resource.environment === "production" && resource.provider === "postgres-cluster" && operation.status === "interrupted" &&
+        operation.kind === "recover-production-operation" && operation.effect?.kind === "inspect-production-operation") {
+        const [source] = await tx.select().from(appDatabaseOperations).where(and(eq(appDatabaseOperations.id, operation.effect.id), eq(appDatabaseOperations.projectId, projectId), eq(appDatabaseOperations.databaseId, resourceId)));
+        if (source && isRecoverableProductionOperation(source)) choices = ["recover-production-operation"];
+      }
       const [original] =
         operation.kind === "recover-rehearsal" &&
         operation.effect?.kind === "inspect-rehearsal-operation"
@@ -240,6 +247,15 @@ export async function readDatabaseRecoveryReview(
           backup.schemaDigest === review.beforeSchemaDigest
         )
           choices = ["recover-rehearsal"];
+      }
+      if (choices[0] === "recover-production-operation") {
+        const targetId = operation.kind === "recover-production-operation" ? operation.effect?.id : operation.id;
+        const [target] = await tx.select().from(appDatabaseOperations).where(and(eq(appDatabaseOperations.id, targetId ?? operation.id), eq(appDatabaseOperations.databaseId, resourceId), eq(appDatabaseOperations.projectId, projectId)));
+        if (target?.kind === "migrate") {
+          const [frozen] = await tx.select().from(appDatabaseMigrations).where(eq(appDatabaseMigrations.operationId, target.id));
+          const [backup] = frozen?.backupId ? await tx.select().from(appDatabaseBackups).where(eq(appDatabaseBackups.id, frozen.backupId)) : [];
+          if (!frozen?.rehearsedSchemaDigest || !backup?.verifiedAt || backup.databaseId !== resource.id || backup.schemaDigest !== frozen.beforeSchemaDigest) choices = [];
+        }
       }
       if (choices[0] === "recover-validation") {
         const [validation] = await tx

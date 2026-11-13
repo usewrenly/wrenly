@@ -9,6 +9,7 @@ export const DATABASE_RECOVERY_LABELS = {
   "recover-runtime-state": "Inspect the saved runtime state",
   "recover-read": "Clean up an interrupted table read",
   "recover-validation": "Clean up an interrupted application check",
+  "recover-production-operation": "Inspect backup or migration cleanup and its original database outcome",
   "recover-rehearsal": "Verify and recover a failed rehearsal",
 } as const;
 /** Server review chooses the recovery path from durable evidence; callers cannot infer it from a label. */
@@ -29,6 +30,6 @@ export function DatabaseRecoveryReviewPanel({ projectId, resourceId, revision, o
   const kind = review.choices[0];
   if (!kind) return <p>This operation cannot be recovered automatically from its saved evidence. Its database remains protected. Operator inspection is required; do not repeat the old action.</p>;
   return <div><p>{DATABASE_RECOVERY_LABELS[kind]}</p>
-    <p>{kind === "recover-rehearsal" ? "This verifies the original schema. A stopped Development database may be started; Production is inspected read-only and is never started by this action. It never reruns the migration or restores a backup. " : ""}This checks owned resources without repeating the old request. Recovery can still be refused if an executor is active or external resource checks fail. It does not prove the interrupted action succeeded.</p>
+    <p>{kind === "recover-rehearsal" ? "This verifies the original schema. A stopped Development database may be started; Production is inspected read-only and is never started by this action. It never reruns the migration or restores a backup. " : ""}{kind === "recover-production-operation" ? "This removes only the interrupted operation’s temporary clients. A migration is marked complete only if its original schema and native history match the verified rehearsal. An interrupted backup remains failed; this does not create a verified backup. " : ""}This checks owned resources without repeating the old request. Recovery can still be refused if an executor is active or external resource checks fail. Cleanup alone never proves the interrupted action succeeded.</p>
     <Button variant="outline" onClick={() => onConfirm(review)}>Review this recovery action</Button></div>;
 }

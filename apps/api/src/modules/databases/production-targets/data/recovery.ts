@@ -11,6 +11,7 @@ import { parseProductionResourceBinding } from "@wrenly/db/production-resource-b
 import { validateProductionProjectCredentials } from "@wrenly/db/production-project-credentials";
 import { inspectProductionProjectAvailability } from "@wrenly/db/production-project-provisioning";
 import { verifyProductionProjectPolicy } from "@wrenly/db/production-project-recovery";
+import { terminateProductionDatabaseSessions } from "@wrenly/db/app-database-roles";
 import { inspectAppDatabaseSchema } from "@wrenly/db/app-database-catalog";
 import { readProjectCapabilities } from "../../../projects/access/project-access";
 import { loadDatabaseKey, decryptDatabaseSecret } from "../../database-secrets";
@@ -25,14 +26,16 @@ export interface ProductionRecoveryTarget {
   lookup?: DatabaseAddressLookup;
 }
 /** Caller holds the exact operation's resource lock and independently rechecks recovery records before saving. */
-export async function inspectProductionResourceState(
+async function reviewProductionResource(
   database: typeof db,
   projectId: string,
   actorId: string,
   resourceId: string,
   revision: string,
   options: ProductionRecoveryTarget,
-): Promise<"ready" | "stopped"> {
+  expectedDigests?: readonly string[],
+  cleanup?: { assertHeld: () => Promise<void> },
+): Promise<{ state: "ready" | "stopped"; schemaDigest: string | null }> {
   if (!(await readProjectCapabilities(database, projectId, actorId))?.manage)
     throw new Error("Production recovery authority changed.");
   const [resource] = await database
@@ -116,6 +119,30 @@ export async function inspectProductionResourceState(
         credentials,
       ),
   });
+  if (cleanup) {
+    if (state !== "ready")
+      throw new Error(
+        "Production database is not ready for cleanup inspection.",
+      );
+    await cleanup.assertHeld();
+    await withPinnedProductionManagement({
+      ...connection,
+      target: {
+        target: { ...server.target, database: binding.database },
+        addresses: server.pinnedAddresses,
+      },
+      run: (client) =>
+        terminateProductionDatabaseSessions(
+          client,
+          identity,
+          resource.id,
+          credentials,
+          "migrator",
+        ),
+    });
+    await cleanup.assertHeld();
+  }
+  let schemaDigest: string | null = null;
   if (state === "ready")
     await withPinnedProductionManagement({
       ...connection,
@@ -130,11 +157,79 @@ export async function inspectProductionResourceState(
           resource.id,
           credentials,
         );
-        if ((await inspectAppDatabaseSchema(client)) !== resource.schemaDigest)
+        schemaDigest = await inspectAppDatabaseSchema(client);
+        if (
+          !(expectedDigests ?? [resource.schemaDigest]).includes(schemaDigest)
+        )
           throw new Error("Production recovery schema changed.");
       },
     });
   if (!(await readProjectCapabilities(database, projectId, actorId))?.manage)
     throw new Error("Production recovery authority changed.");
-  return state;
+  return { state, schemaDigest };
+}
+
+/** Existing stop/start/read recovery accepts only the original unchanged schema. */
+export async function inspectProductionResourceState(
+  database: typeof db,
+  projectId: string,
+  actorId: string,
+  resourceId: string,
+  revision: string,
+  options: ProductionRecoveryTarget,
+): Promise<"ready" | "stopped"> {
+  return (
+    await inspectProductionResourceOutcome(
+      database,
+      projectId,
+      actorId,
+      resourceId,
+      revision,
+      options,
+    )
+  ).state;
+}
+
+/** Read-only comparison uses only server-derived frozen schema/journal digests. */
+export async function inspectProductionResourceOutcome(
+  database: typeof db,
+  projectId: string,
+  actorId: string,
+  resourceId: string,
+  revision: string,
+  options: ProductionRecoveryTarget,
+  expectedDigests?: readonly string[],
+): Promise<{ state: "ready" | "stopped"; schemaDigest: string | null }> {
+  return reviewProductionResource(
+    database,
+    projectId,
+    actorId,
+    resourceId,
+    revision,
+    options,
+    expectedDigests,
+  );
+}
+
+/** An independently journaled owner recovery closes only this project's migrator sessions before inspecting native history. */
+export async function cleanupProductionResourceOutcome(
+  database: typeof db,
+  projectId: string,
+  actorId: string,
+  resourceId: string,
+  revision: string,
+  options: ProductionRecoveryTarget,
+  expectedDigests: readonly string[],
+  assertHeld: () => Promise<void>,
+): Promise<{ state: "ready" | "stopped"; schemaDigest: string | null }> {
+  return reviewProductionResource(
+    database,
+    projectId,
+    actorId,
+    resourceId,
+    revision,
+    options,
+    expectedDigests,
+    { assertHeld },
+  );
 }

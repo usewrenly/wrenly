@@ -44,19 +44,33 @@ const RECOVERY_DEADLINE_MS = 60_000;
 const HEARTBEAT_MS = 5000;
 const MAX_RECOVERY_ATTEMPTS = 16;
 type Operation = typeof appDatabaseOperations.$inferSelect;
-type RecoveryResult = {
+export type RecoveryResult = {
   operationId: string;
   resourceId: string;
   replayed: boolean;
 };
 
-function pointsToRead(operation: Operation, target: string): boolean {
-  return (
-    operation.kind === "recover-read" &&
-    operation.effect?.kind === "inspect-read-operation" &&
-    operation.effect.id === target
-  );
+export interface DatabaseCleanupRecoveryStrategy {
+  kind: "recover-read" | "recover-production-operation";
+  intent: "inspect-read-operation" | "inspect-production-operation";
+  validate: (operation: Operation) => void;
+  cleanup: (input: {
+    database: typeof db;
+    claim: DatabaseClaim;
+    original: Operation;
+    assertHeld: () => Promise<void>;
+  }) => Promise<void>;
+  inspect: (input: {
+    resource: typeof appDatabases.$inferSelect;
+    original: Operation;
+    assertHeld: () => Promise<void>;
+  }) => Promise<void>;
+  finish?: (
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    original: Operation,
+  ) => Promise<void>;
 }
+
 function requireReadEffects(operation: Operation): void {
   if (!isRecoverableDatabaseRead(operation))
     throw new AppDatabaseError(
@@ -66,13 +80,21 @@ function requireReadEffects(operation: Operation): void {
 }
 
 /** Explicit cleanup only; it never reopens a socket, returns rows or acknowledges old SQL. */
-async function executeReadRecovery(
+export async function executeDatabaseCleanupRecovery(
   database: typeof db,
   projectId: string,
   actorId: string,
   body: unknown,
   production?: ProductionRecoveryTarget,
+  strategy?: DatabaseCleanupRecoveryStrategy,
 ): Promise<RecoveryResult> {
+  const recoveryKind = strategy?.kind ?? "recover-read";
+  const intentKind = strategy?.intent ?? "inspect-read-operation";
+  const validate = strategy?.validate ?? requireReadEffects;
+  const pointsToRead = (operation: Operation, target: string): boolean =>
+    operation.kind === recoveryKind &&
+    operation.effect?.kind === intentKind &&
+    operation.effect.id === target;
   const parsed = DatabaseRecovery.safeParse(body);
   if (!parsed.success)
     throw new AppDatabaseError(
@@ -89,7 +111,7 @@ async function executeReadRecovery(
         : "Project not found.",
     );
   const identity = createHash("sha256")
-    .update(JSON.stringify([projectId, "recover-read", input]))
+    .update(JSON.stringify([projectId, recoveryKind, input]))
     .digest("hex");
   const replay = async (
     connection: Pick<typeof database, "select"> = database,
@@ -105,7 +127,7 @@ async function executeReadRecovery(
       );
     if (!row) return null;
     if (
-      row.kind !== "recover-read" ||
+      row.kind !== recoveryKind ||
       row.projectId !== projectId ||
       row.requestIdentity !== identity
     )
@@ -131,8 +153,9 @@ async function executeReadRecovery(
         eq(appDatabaseOperations.projectId, projectId),
       ),
     );
-  if (!original) throw new AppDatabaseError(404, "Database read not found.");
-  requireReadEffects(original);
+  if (!original)
+    throw new AppDatabaseError(404, "Database operation not found.");
+  validate(original);
   const claim: DatabaseClaim = {
     id: crypto.randomUUID(),
     token: crypto.randomUUID(),
@@ -142,7 +165,7 @@ async function executeReadRecovery(
   const lock = await acquireDatabaseExecutorLock(claim).catch(() => {
     throw new AppDatabaseError(
       409,
-      "The previous reader is still cleaning up. Wait before reviewing recovery again.",
+      "The previous executor is still cleaning up. Wait before reviewing recovery again.",
     );
   });
   let admitted = false;
@@ -157,15 +180,7 @@ async function executeReadRecovery(
       const found = await replay(tx);
       if (found) return { replay: found };
       const [resource] = await tx
-        .select({
-          id: appDatabases.id,
-          revision: appDatabases.revision,
-          status: appDatabases.status,
-          provider: appDatabases.provider,
-          environment: appDatabases.environment,
-          identity: appDatabases.runtimeIdentity,
-          providerIdentity: appDatabases.providerIdentity,
-        })
+        .select()
         .from(appDatabases)
         .where(
           and(
@@ -186,7 +201,7 @@ async function executeReadRecovery(
         !(
           (resource.provider === "local" &&
             resource.environment === "development" &&
-            resource.identity) ||
+            resource.runtimeIdentity) ||
           (resource.provider === "postgres-cluster" &&
             resource.environment === "production" &&
             production)
@@ -195,9 +210,9 @@ async function executeReadRecovery(
       )
         throw new AppDatabaseError(
           409,
-          "Review the current interrupted database read before recovery.",
+          "Review the current interrupted database operation before recovery.",
         );
-      requireReadEffects(target);
+      validate(target);
       const pending = await tx
         .select()
         .from(appDatabaseOperations)
@@ -225,7 +240,7 @@ async function executeReadRecovery(
       )
         throw new AppDatabaseError(
           409,
-          "Another database operation still needs attention before reader recovery.",
+          "Another database operation still needs attention before recovery.",
         );
       lock.assertHeld();
       for (const prior of pending.filter(
@@ -248,14 +263,14 @@ async function executeReadRecovery(
         actorId,
         requestId: input.requestId,
         requestIdentity: identity,
-        kind: "recover-read",
+        kind: recoveryKind,
         status: "running",
         expectedRevision: input.expectedRevision,
         claimToken: claim.token,
         leaseExpiresAt: new Date(Date.now() + DATABASE_LEASE_MS),
-        // This inspection intent points only to the saved read; it is not an SQL command.
+        // This inspection intent points only to the saved operation; it is not an SQL command.
         effect: {
-          kind: "inspect-read-operation",
+          kind: intentKind,
           id: original.id,
           startedAt: new Date().toISOString(),
         },
@@ -267,7 +282,7 @@ async function executeReadRecovery(
     const resource = admittedResource.resource;
     if (
       !resource ||
-      (resource.environment === "development" && !resource.identity)
+      (resource.environment === "development" && !resource.runtimeIdentity)
     )
       throw new AppDatabaseError(
         409,
@@ -288,12 +303,16 @@ async function executeReadRecovery(
       if (lost || Date.now() > deadline)
         throw new AppDatabaseError(
           409,
-          "Reader recovery deadline or lease expired.",
+          "Database recovery deadline or lease expired.",
         );
     };
     const assertHeld = async (): Promise<void> => {
       assertLocalHeld();
       await assertDatabaseCleanupLease(database, claim);
+      if (
+        !(await readProjectCapabilities(database, projectId, actorId))?.manage
+      )
+        throw new AppDatabaseError(403, "Recovery authority changed.");
       assertLocalHeld();
     };
     const scope = {
@@ -306,29 +325,34 @@ async function executeReadRecovery(
       id: `wrenly-database-read-${original.id}`,
     };
     await assertHeld();
-    await recordDatabaseCleanupEffect(database, claim, cleanup);
-    await cleanupAbandonedDatabaseRead(scope, original.id, assertHeld);
-    if (
-      (resource.environment === "production" && production
-        ? await inspectProductionResourceState(
-            database,
-            projectId,
-            actorId,
-            resource.id,
-            resource.revision,
-            production,
-          )
-        : await inspectManagedDatabaseState(
-            { ...scope, environment: "development" },
-            resource.identity!,
-          )) !== "ready"
-    )
-      throw new AppDatabaseError(
-        409,
-        "The saved database is not ready. Its recovery fence is preserved.",
-      );
-    await assertHeld();
-    await acknowledgeDatabaseCleanupEffect(database, claim, cleanup.id);
+    if (strategy) {
+      await strategy.cleanup({ database, claim, original, assertHeld });
+      await strategy.inspect({ resource, original, assertHeld });
+    } else {
+      await recordDatabaseCleanupEffect(database, claim, cleanup);
+      await cleanupAbandonedDatabaseRead(scope, original.id, assertHeld);
+      if (
+        (resource.environment === "production" && production
+          ? await inspectProductionResourceState(
+              database,
+              projectId,
+              actorId,
+              resource.id,
+              resource.revision,
+              production,
+            )
+          : await inspectManagedDatabaseState(
+              { ...scope, environment: "development" },
+              resource.runtimeIdentity!,
+            )) !== "ready"
+      )
+        throw new AppDatabaseError(
+          409,
+          "The saved database is not ready. Its recovery fence is preserved.",
+        );
+      await assertHeld();
+      await acknowledgeDatabaseCleanupEffect(database, claim, cleanup.id);
+    }
     await database.transaction(async (tx) => {
       await lockDatabaseQueues(tx);
       await requireProjectCapability(tx, projectId, actorId, "manage");
@@ -361,20 +385,27 @@ async function executeReadRecovery(
         JSON.stringify(current.providerIdentity) !==
           JSON.stringify(resource.providerIdentity) ||
         JSON.stringify(current.runtimeIdentity) !==
-          JSON.stringify(resource.identity) ||
+          JSON.stringify(resource.runtimeIdentity) ||
         !recovery ||
         !pointsToRead(recovery, original.id) ||
         recovery.cleanupEffect ||
-        !recovery.completedCleanupEffects.some(
-          (effect) => effect.kind === cleanup.kind && effect.id === cleanup.id,
-        ) ||
+        !(strategy
+          ? recovery.completedCleanupEffects.some(
+              (effect) =>
+                effect.kind === "cleanup-production-operation" &&
+                effect.id === original.id,
+            )
+          : recovery.completedCleanupEffects.some(
+              (effect) =>
+                effect.kind === cleanup.kind && effect.id === cleanup.id,
+            )) ||
         target?.status !== "interrupted"
       )
         throw new AppDatabaseError(
           409,
           "Database recovery state changed. Its blocker is preserved.",
         );
-      requireReadEffects(target);
+      validate(target);
       const pending = await tx
         .select()
         .from(appDatabaseOperations)
@@ -406,18 +437,21 @@ async function executeReadRecovery(
       // pool connection here can deadlock a small installation's connection pool.
       assertLocalHeld();
       for (const row of pending.filter((row) => row.id !== claim.id)) {
-        // Preserve the original unknown effect: closure never claims its query succeeded.
+        // Provider-specific verified outcomes are saved separately; cleanup never claims old SQL succeeded.
         await tx
           .update(appDatabaseOperations)
           .set({
             status: "failed",
-            errorCode: "RECOVERED_READ_CLEANUP",
+            errorCode: strategy
+              ? "RECOVERED_PRODUCTION_CLEANUP"
+              : "RECOVERED_READ_CLEANUP",
             claimToken: null,
             leaseExpiresAt: null,
             completedAt: new Date(),
           })
           .where(eq(appDatabaseOperations.id, row.id));
       }
+      if (strategy?.finish) await strategy.finish(tx, target);
       const finished = await tx
         .update(appDatabaseOperations)
         .set({
@@ -484,7 +518,7 @@ export async function recoverDatabaseRead(
   production?: ProductionRecoveryTarget,
 ): Promise<RecoveryResult> {
   try {
-    return await executeReadRecovery(
+    return await executeDatabaseCleanupRecovery(
       database,
       projectId,
       actorId,

@@ -1,3 +1,4 @@
+import { recoverProductionOperation } from "./production-targets/data/operation-recovery";
 /**
  * COMPONENT: Reviewed recovery dispatch
  * PURPOSE: Connect a confirmed browser action to the matching existing recovery service.
@@ -83,6 +84,9 @@ export async function admitDatabaseRecovery(
           production,
         );
       }
+      case "recover-production-operation":
+        if (!production) throw new AppDatabaseError(503, "Production recovery is not configured.");
+        return await recoverProductionOperation(database, projectId, actorId, review, production);
       case "recover-read":
         return await recoverDatabaseRead(
           database,

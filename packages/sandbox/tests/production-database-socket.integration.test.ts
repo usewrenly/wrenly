@@ -1,3 +1,6 @@
+import { inspectAppDatabaseSchema } from "@wrenly/db/app-database-catalog";
+import { terminateProductionDatabaseSessions } from "@wrenly/db/app-database-roles";
+import { cleanupProductionOperationClients } from "../src/databases/database-operation-cleanup";
 import { inspectRuntimeHost } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/helper";
 import { executeRuntimeVolumeRequest } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/volumes";
 import { executeRuntimeNetworkRequest } from "../../../apps/api/src/modules/databases/production-targets/deployment-hosts/network";
@@ -477,6 +480,69 @@ acceptance(
         temporaryCredentials.reader.password + "\n",
       );
       expect(restored).toBe("preserved booking");
+      // The same canonical inspector used by recovery includes native migration
+      // history while excluding row values. Cleanup must preserve both records and schema.
+      const projectClient = postgres({
+        host: "127.0.0.1",
+        port: publishingPort,
+        database: credentials.database,
+        user: "postgres",
+        password: "fixture-only",
+        ssl: {
+          ca: authority,
+          servername: "production.internal.test",
+          rejectUnauthorized: true,
+        },
+        max: 1,
+      });
+      try {
+        const original = drizzle(projectClient);
+        const digest = await inspectAppDatabaseSchema(original);
+        const rows = await original.execute(
+          sql`select system_identifier::text as id from pg_catalog.pg_control_system()`,
+        );
+        await terminateProductionDatabaseSessions(
+          original,
+          { appClusterId: String(rows[0]!.id), controlClusterId: "1" },
+          scope.resourceId,
+          credentials,
+          "migrator",
+        );
+        await cleanupProductionOperationClients({
+          projectId: scope.projectId,
+          resourceId: scope.resourceId,
+          operationId: crypto.randomUUID(),
+          assertHeld: async () => {},
+        });
+        expect(await inspectAppDatabaseSchema(original)).toBe(digest);
+        expect(
+          (await original.execute(sql`select body from public.notes`))[0]!.body,
+        ).toBe("preserved booking");
+        await original.execute(
+          sql`set role ${sql.identifier(credentials.migrator.user)}`,
+        );
+        await original.execute(
+          sql`create table public.__drizzle_migrations(id serial primary key, hash text not null, created_at bigint)`,
+        );
+        await original.execute(
+          sql`insert into public.__drizzle_migrations(hash,created_at) values ('saved-history',1)`,
+        );
+        await original.execute(sql`reset role`);
+        const savedHistory = await inspectAppDatabaseSchema(original);
+        await original.execute(
+          sql`update public.__drizzle_migrations set hash='different-history'`,
+        );
+        expect(await inspectAppDatabaseSchema(original)).not.toBe(savedHistory);
+        await original.execute(
+          sql`update public.__drizzle_migrations set hash='saved-history'`,
+        );
+        expect(await inspectAppDatabaseSchema(original)).toBe(savedHistory);
+        expect(
+          (await original.execute(sql`select body from public.notes`))[0]!.body,
+        ).toBe("preserved booking");
+      } finally {
+        await projectClient.end({ timeout: 1 });
+      }
     } finally {
       for (const socket of opened)
         await cleanupScopedDatabaseSocket(scope, socket.id);

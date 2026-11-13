@@ -860,6 +860,7 @@ export async function interruptExpiredDatabaseActions(
             "validate-application",
             "recover-validation",
             "recover-rehearsal",
+            "recover-production-operation",
           ].includes(row.kind),
       );
       if (persistent.length)
@@ -1107,6 +1108,7 @@ export async function acknowledgeDatabaseEffect(
           "validate-application",
           "recover-validation",
           "recover-rehearsal",
+            "recover-production-operation",
         ].includes(operation.kind)
       )
         throw new Error(
@@ -1246,6 +1248,7 @@ export async function finishDatabaseAction(
           "validate-application",
           "recover-validation",
           "recover-rehearsal",
+            "recover-production-operation",
         ].includes(operation.kind)
       )
         throw new Error(
@@ -1354,6 +1357,7 @@ export async function interruptDatabaseAction(
           "validate-application",
           "recover-validation",
           "recover-rehearsal",
+            "recover-production-operation",
         ].includes(rows[0]?.kind ?? "")
       )
         await transaction
