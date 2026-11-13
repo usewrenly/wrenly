@@ -5,15 +5,50 @@ export const MAINTENANCE_STEPS = [
   "application-start",
   "route-verify",
 ] as const;
+export const STOP_MAINTENANCE_STEPS = [
+  "application-stop",
+  "broker-stop",
+  "verify-stopped",
+] as const;
+export const INSPECT_MAINTENANCE_STEPS = [
+  "broker-inspect",
+  "application-inspect",
+  "route-inspect",
+] as const;
+export const ALL_MAINTENANCE_STEPS = [
+  ...MAINTENANCE_STEPS,
+  ...STOP_MAINTENANCE_STEPS,
+  ...INSPECT_MAINTENANCE_STEPS,
+] as const;
 export const MaintenanceAttempt = z
   .object({
     id: z.uuid(),
     grantRevision: z.uuid(),
     claimToken: z.uuid(),
     leaseExpiresAt: z.iso.datetime(),
-    status: z.enum(["running", "success", "interrupted"]),
+    status: z.enum(["running", "success", "interrupted", "reconciled"]),
+    control: z
+      .object({
+        kind: z.enum(["stop", "inspect"]),
+        actorId: z.string().min(1),
+        sessionId: z.string().min(1),
+        accountRevision: z.uuid(),
+        accessRevision: z.uuid(),
+        requestIdentity: z.string().regex(/^[a-f0-9]{64}$/),
+        originals: z.array(z.uuid()).max(16),
+      })
+      .strict()
+      .optional(),
+    resolution: z
+      .object({
+        controlId: z.uuid(),
+        outcome: z.enum(["ready", "stopped"]),
+        verifiedAt: z.iso.datetime(),
+      })
+      .strict()
+      .optional(),
     pending: z
-      .object({ id: z.uuid(), step: z.enum(MAINTENANCE_STEPS) })
+      .object({ id: z.uuid(), step: z.enum(ALL_MAINTENANCE_STEPS) })
       .strict()
       .nullable(),
     completed: z
@@ -21,7 +56,7 @@ export const MaintenanceAttempt = z
         z
           .object({
             id: z.uuid(),
-            step: z.enum(MAINTENANCE_STEPS),
+            step: z.enum(ALL_MAINTENANCE_STEPS),
             verifiedAt: z.iso.datetime(),
           })
           .strict(),
@@ -30,17 +65,24 @@ export const MaintenanceAttempt = z
   })
   .strict()
   .superRefine((value, context) => {
+    const steps =
+      value.control?.kind === "stop"
+        ? STOP_MAINTENANCE_STEPS
+        : value.control?.kind === "inspect"
+          ? INSPECT_MAINTENANCE_STEPS
+          : MAINTENANCE_STEPS;
     const ids = new Set<string>();
     const invalid = value.completed.some((receipt, index) => {
       const duplicate = ids.has(receipt.id);
       ids.add(receipt.id);
-      return duplicate || receipt.step !== MAINTENANCE_STEPS[index];
+      return duplicate || receipt.step !== steps[index];
     });
     if (
       invalid ||
+      (value.status === "reconciled") !== (value.resolution !== undefined) ||
       (value.pending &&
         (ids.has(value.pending.id) ||
-          value.pending.step !== MAINTENANCE_STEPS[value.completed.length])) ||
+          value.pending.step !== steps[value.completed.length])) ||
       (value.status === "success" &&
         (value.pending ||
           value.completed.length !== MAINTENANCE_STEPS.length)) ||
@@ -81,7 +123,13 @@ export function beginMaintenanceEffect(
     throw new Error(
       "Inspect the pending maintenance effect before continuing.",
     );
-  const step = MAINTENANCE_STEPS[attempt.completed.length];
+  const steps =
+    attempt.control?.kind === "stop"
+      ? STOP_MAINTENANCE_STEPS
+      : attempt.control?.kind === "inspect"
+        ? INSPECT_MAINTENANCE_STEPS
+        : MAINTENANCE_STEPS;
+  const step = steps[attempt.completed.length];
   if (!step) throw new Error("Maintenance is already complete.");
   return MaintenanceAttempt.parse({
     ...attempt,

@@ -1,3 +1,4 @@
+import { stopRuntimeApplication, stopRuntimeDatabaseBroker } from "./runtime-stop";
 /** Fixed deployment-host entrypoint. It never loads instance settings or accepts shell commands. */
 import {
   ProductionRuntimeHostInspection,
@@ -137,7 +138,9 @@ if (import.meta.main) {
       signal,
     );
     const reply =
-      input.action === "inspect"
+      input.action === "stop-runtime-application" ? await stopRuntimeApplication(input, host.dockerId, signal)
+      : input.action === "stop-runtime-broker" ? await stopRuntimeDatabaseBroker(input, host.dockerId, signal)
+      : input.action === "inspect"
         ? host
         : input.action === "find-runtime-broker"
           ? await findRuntimeDatabaseBroker(input, host.dockerId, signal)

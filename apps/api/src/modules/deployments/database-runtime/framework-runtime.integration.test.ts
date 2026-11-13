@@ -1,3 +1,7 @@
+import {
+  stopRuntimeApplication,
+  stopRuntimeDatabaseBroker,
+} from "../../databases/production-targets/deployment-hosts/runtime-stop";
 import { verifyRuntimeApplicationReady } from "../../databases/production-targets/deployment-hosts/application-inspection";
 import { restartRuntimeDatabaseBroker } from "../../databases/production-targets/deployment-hosts/broker-restart";
 /** Explicit native acceptance with real frameworks and private TLS; never uses an installation's services. */
@@ -479,8 +483,27 @@ for (const framework of ["nextjs", "laravel"] as const)
         await expect(
           startRuntimeApplication(startup, host.dockerId, signal, resolver),
         ).rejects.toThrow();
-        await dockerCommand(["stop", appId]);
-        await dockerCommand(["stop", broker.containerId]);
+        const stoppedApp = await stopRuntimeApplication(
+          { ...readyScope, action: "stop-runtime-application" },
+          host.dockerId,
+          signal,
+        );
+        expect(stoppedApp.containerId).toBe(appId);
+        expect(stoppedApp.running).toBe(false);
+        const stoppedBroker = await stopRuntimeDatabaseBroker(
+          {
+            ...base,
+            action: "stop-runtime-broker",
+            containerId: broker.containerId,
+            imageId: brokerImage.Id,
+            networkId: brokerNetwork.network!.id,
+            upstream,
+          },
+          host.dockerId,
+          signal,
+        );
+        expect(stoppedBroker.containerId).toBe(broker.containerId);
+        expect(stoppedBroker.running).toBe(false);
         const restartedBroker = await restartRuntimeDatabaseBroker(
           {
             ...base,

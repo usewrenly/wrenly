@@ -28,10 +28,11 @@ async function verifyRuntimeRoute(
     client: DeploymentProviderClient;
     images: ProductionServiceImages;
     ingressImageId: string;
-    credentials: ProductionPublishingRuntimeSecrets;
+    credentials: Pick<ProductionPublishingRuntimeSecrets, "host"> & { database: Pick<ProductionPublishingRuntimeSecrets["database"], "upstream"> };
     assertHeld: () => Promise<void>;
     send?: typeof executeRuntimeHostRequest;
     ready?: typeof verifyDeploymentReadiness;
+    ownerInspection?: true;
     maintenance?: import("@wrenly/db/production-maintenance-contract").ProductionMaintenanceGrant;
   },
 ): Promise<Awaited<
@@ -45,7 +46,7 @@ async function verifyRuntimeRoute(
   if (
     effect.step !== "route-verify" ||
     (input.maintenance
-      ? input.maintenance.state !== "enabled" ||
+      ? (input.maintenance.state !== "enabled" && !input.ownerInspection) ||
         JSON.stringify(input.maintenance.binding) !== JSON.stringify(binding) ||
         JSON.stringify(input.maintenance.publication) !==
           JSON.stringify(saved) ||
@@ -206,4 +207,14 @@ export async function verifyMaintainedProductionRoute(
       startedAt: new Date().toISOString(),
     },
   });
+}
+
+
+/** A current-session owner control may inspect paused/revoked publications; this function cannot restart or deliver credentials. */
+export async function verifyOwnerControlledProductionRoute(
+  input: Omit<Parameters<typeof verifyMaintainedProductionRoute>[0], "effect"> & { effect: NonNullable<import("@wrenly/db/production-maintenance-attempt").MaintenanceAttempt["pending"]> },
+): ReturnType<typeof verifyRuntimeRoute> {
+  if (input.effect.step !== "route-inspect") throw new Error("Owner route inspection intent changed.");
+  return verifyRuntimeRoute({ ...input, ownerInspection: true, binding: input.grant.binding, journal: input.grant.publication,
+    maintenance: input.grant, effect: { id: input.effect.id, step: "route-verify", claimToken: input.claimToken, startedAt: new Date().toISOString() } });
 }

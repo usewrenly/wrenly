@@ -1,3 +1,7 @@
+import {
+  stopRuntimeApplication,
+  stopRuntimeDatabaseBroker,
+} from "./runtime-stop";
 import { findRuntimeDatabaseBroker } from "./broker-discovery";
 import { verifyRuntimeApplicationReady } from "./application-inspection";
 import { restartRuntimeDatabaseBroker } from "./broker-restart";
@@ -265,6 +269,28 @@ native(
           )
         ).ready,
       ).toBe(true);
+      await expect(
+        stopRuntimeApplication(
+          {
+            ...readyRequest,
+            action: "stop-runtime-application",
+            projectId: crypto.randomUUID(),
+          },
+          host.dockerId,
+          signal,
+        ),
+      ).rejects.toThrow();
+      const appStopped = await stopRuntimeApplication(
+        { ...readyRequest, action: "stop-runtime-application" },
+        host.dockerId,
+        signal,
+      );
+      expect(appStopped.containerId).toBe(appContainerId);
+      expect(appStopped.running).toBe(false);
+      expect(
+        (await startRuntimeApplication(start, host.dockerId, signal, resolver))
+          .running,
+      ).toBe(true);
       const appInspection = await runRuntimeHostDocker(
         ["container", "inspect", appContainerId],
         signal,
@@ -297,10 +323,27 @@ native(
       await expect(
         createRuntimeDatabaseBroker(request, host.dockerId, signal, resolver),
       ).rejects.toThrow("could not be confirmed");
-      await runRuntimeHostDocker(
-        ["container", "stop", "--time", "1", reply.containerId],
+      await expect(
+        stopRuntimeDatabaseBroker(
+          {
+            ...inspectionRequest,
+            action: "stop-runtime-broker",
+            projectId: crypto.randomUUID(),
+          },
+          host.dockerId,
+          signal,
+        ),
+      ).rejects.toThrow();
+      const brokerStopped = await stopRuntimeDatabaseBroker(
+        { ...inspectionRequest, action: "stop-runtime-broker" },
+        host.dockerId,
         signal,
       );
+      expect(brokerStopped.containerId).toBe(reply.containerId);
+      expect(brokerStopped.running).toBe(false);
+      expect(
+        await runRuntimeHostDocker(["volume", "inspect", volumeName], signal),
+      ).toContain(volumeName);
       const stopped = await inspectRuntimeDatabaseBroker(
         inspectionRequest,
         host.dockerId,

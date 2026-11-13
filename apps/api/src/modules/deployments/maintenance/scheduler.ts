@@ -58,7 +58,9 @@ export function maintenanceScheduleStore(
         .limit(1);
       if (
         latest &&
-        (MaintenanceAttempt.parse(latest.journal).status !== "success" ||
+        (!["success", "reconciled"].includes(
+          MaintenanceAttempt.parse(latest.journal).status,
+        ) ||
           latest.updatedAt.getTime() + MAINTENANCE_INTERVAL_MS > Date.now())
       )
         return null;

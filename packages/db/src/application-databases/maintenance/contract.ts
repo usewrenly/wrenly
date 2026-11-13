@@ -1,6 +1,6 @@
 /** Non-secret permission for maintaining one approved publication; importing this module opens no connection. */
 import { z } from "zod";
-import { MAINTENANCE_STEPS } from "./attempt";
+import { ALL_MAINTENANCE_STEPS } from "./attempt";
 import {
   ProductionPublishingBinding,
   ProductionPublishingJournal,
@@ -109,6 +109,7 @@ export type ProductionMaintenanceDecision =
 export function assessProductionMaintenance(
   grantInput: unknown,
   currentInput: unknown,
+  bindingInspectionOnly = false,
 ): ProductionMaintenanceDecision {
   const parsedGrant = ProductionMaintenanceGrant.safeParse(grantInput);
   const parsedCurrent = ProductionMaintenanceEvidence.safeParse(currentInput);
@@ -117,7 +118,10 @@ export function assessProductionMaintenance(
   const grant = parsedGrant.data,
     current = parsedCurrent.data,
     binding = grant.binding;
-  if (grant.state !== "enabled" || current.grantRevision !== grant.revision)
+  if (
+    (!bindingInspectionOnly && grant.state !== "enabled") ||
+    current.grantRevision !== grant.revision
+  )
     return { allowed: false, reason: "permission-inactive" };
   if (
     !current.ownerActive ||
@@ -175,8 +179,8 @@ export const MaintenanceView = z
     state: z.enum(["disabled", "enabled", "paused", "revoked"]),
     attempt: z
       .object({
-        status: z.enum(["running", "success", "interrupted"]),
-        step: z.enum(MAINTENANCE_STEPS).nullable(),
+        status: z.enum(["running", "success", "interrupted", "reconciled"]),
+        step: z.enum(ALL_MAINTENANCE_STEPS).nullable(),
         updatedAt: z.iso.datetime(),
       })
       .strict()
@@ -194,4 +198,28 @@ export const MaintenanceDecisionReceipt = z
   .strict();
 export type MaintenanceDecisionReceipt = z.infer<
   typeof MaintenanceDecisionReceipt
+>;
+
+/** Owner actions are independent of the permission toggle and retain an exact lost-response lookup ID. */
+export const MaintenanceControl = z
+  .object({
+    requestId: z.uuid(),
+    expectedAccessRevision: z.uuid(),
+    expectedGrantRevision: z.uuid().nullable(),
+    kind: z.enum(["stop", "inspect"]),
+    confirmRuntimeControl: z.literal(true),
+  })
+  .strict();
+export type MaintenanceControl = z.infer<typeof MaintenanceControl>;
+export const MaintenanceControlReceipt = z
+  .object({
+    requestId: z.uuid(),
+    kind: z.enum(["stop", "inspect"]),
+    status: z.enum(["running", "success", "interrupted", "reconciled"]),
+    step: z.enum(ALL_MAINTENANCE_STEPS).nullable(),
+    replayed: z.boolean(),
+  })
+  .strict();
+export type MaintenanceControlReceipt = z.infer<
+  typeof MaintenanceControlReceipt
 >;

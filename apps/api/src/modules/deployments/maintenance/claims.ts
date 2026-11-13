@@ -93,7 +93,7 @@ export async function claimMaintenance(
       .for("update");
     if (
       previous.some(
-        (row) => MaintenanceAttempt.parse(row.journal).status !== "success",
+        (row) => !["success", "reconciled"].includes(MaintenanceAttempt.parse(row.journal).status),
       )
     )
       throw new DeploymentStoreError(
@@ -161,6 +161,7 @@ async function held(
     journal.claimToken !== claim.token ||
     journal.grantRevision !== claim.grantRevision ||
     journal.status !== "running" ||
+    journal.control !== undefined ||
     Date.parse(journal.leaseExpiresAt) <= Date.now()
   )
     throw new DeploymentStoreError(

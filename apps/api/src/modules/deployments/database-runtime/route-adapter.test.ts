@@ -1,3 +1,4 @@
+import { verifyOwnerControlledProductionRoute } from "./route-adapter";
 import { ProductionMaintenanceGrant } from "@wrenly/db/production-maintenance-contract";
 import { performMaintenanceHostEffect } from "../maintenance/host-adapter";
 import { expect, test } from "bun:test";
@@ -134,7 +135,9 @@ function fixture() {
     appKey: null,
   };
   const requests: unknown[] = [];
-  const input: Parameters<typeof verifyProductionRouteEffect>[0] = {
+  const input: Parameters<typeof verifyProductionRouteEffect>[0] & {
+    credentials: ProductionPublishingRuntimeSecrets;
+  } = {
     binding,
     journal,
     effect: journal.pending!,
@@ -358,4 +361,28 @@ test("maintenance restarts an exact stopped broker only once and refuses changed
     }),
   ).rejects.toThrow("proof changed");
   expect(starts).toBe(1);
+});
+
+test("current-owner inspection can verify a paused publication without granting restart authority", async () => {
+  const { input, requests, grant } = maintainedFixture();
+  const paused = { ...grant, state: "paused" as const };
+  const result = await verifyOwnerControlledProductionRoute({
+    ...input,
+    grant: paused,
+    effect: { id: input.effect.id, step: "route-inspect" },
+    claimToken: crypto.randomUUID(),
+  });
+  expect(result?.step).toBe("route-verify");
+  expect(requests).toHaveLength(3);
+  expect(JSON.stringify(requests)).not.toContain(
+    input.credentials.database.runtimeRole.password,
+  );
+  await expect(
+    verifyMaintainedProductionRoute({
+      ...input,
+      grant: paused,
+      effect: { id: input.effect.id, step: "route-verify" },
+      claimToken: crypto.randomUUID(),
+    }),
+  ).rejects.toThrow();
 });

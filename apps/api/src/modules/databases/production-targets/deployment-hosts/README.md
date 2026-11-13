@@ -75,3 +75,13 @@ For example, a relay with a database volume, added password environment variable
 root user or host networking is rejected even if Coolify calls it healthy. Discovery
 requires one exact labelled container and independently checks its image, owned
 read-only HTTP volume and bridge networks. It never starts a stopped relay.
+
+
+`runtime-stop.ts` handles the current owner's explicit Stop. Under the same host
+lock, it verifies the original immutable application/broker IDs and full isolation
+policy, stops them with a bounded grace period and inspects them again. It deletes
+nothing and sends no database password. Its caller must first durably pause
+maintenance and save the Stop intent; inspecting this helper's result cannot grant
+restart permission. Install the matching current `runtime-host.js` bundle before
+using these commands. An older helper rejects unknown actions rather than falling
+back to a shell command.

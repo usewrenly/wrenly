@@ -1,3 +1,4 @@
+import type { OwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
 import type { MaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
 import type { ProjectProductionCreationHandlers } from "./modules/databases/production-targets/project-provisioning/http"
 import type { InstanceProductionHttpHandlers } from "./modules/databases/production-targets/instance/http"
@@ -39,6 +40,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  runtimeMaintenanceControl?: OwnerRuntimeControlHandlers
   runtimeMaintenance?: MaintenanceHttpHandlers
   productionProjectCreation?: ProjectProductionCreationHandlers
   productionDatabaseSetup?: InstanceProductionHttpHandlers
@@ -251,6 +253,11 @@ export function createApp(
       return context.json({ error: 'Project ID must be a valid UUID' }, 400)
     return handlers.deployProject(context.req.raw, parsed.data)
   })
+  if (handlers.runtimeMaintenanceControl) {
+    const control = handlers.runtimeMaintenanceControl
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance/controls/:requestId', c => control.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId'), c.req.param('requestId')))
+    app.post('/api/projects/:id/deployments/:deploymentId/maintenance/controls', c => control.save(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+  }
   if (handlers.runtimeMaintenance) {
     const maintenance = handlers.runtimeMaintenance
     app.get('/api/projects/:id/deployments/:deploymentId/maintenance', c => maintenance.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))

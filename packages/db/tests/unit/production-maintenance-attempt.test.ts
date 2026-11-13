@@ -99,3 +99,57 @@ test("malformed receipt order and premature success are refused", () => {
     }).success,
   ).toBe(false);
 });
+
+test("owner controls have separate ordered journals and preserve reconciled pending evidence", () => {
+  for (const kind of ["stop", "inspect"] as const) {
+    let value = MaintenanceAttempt.parse({
+      ...fixture(),
+      control: {
+        kind,
+        actorId: "owner",
+        sessionId: "session",
+        accountRevision: crypto.randomUUID(),
+        accessRevision: crypto.randomUUID(),
+        requestIdentity: "a".repeat(64),
+        originals: [],
+      },
+    });
+    const now = new Date();
+    value = beginMaintenanceEffect(
+      value,
+      value.claimToken,
+      value.grantRevision,
+      now,
+    );
+    expect(value.pending?.step).toBe(
+      kind === "stop" ? "application-stop" : "broker-inspect",
+    );
+    expect(
+      MaintenanceAttempt.safeParse({ ...value, status: "reconciled" }).success,
+    ).toBe(false);
+    const resolved = MaintenanceAttempt.parse({
+      ...value,
+      status: "reconciled",
+      resolution: {
+        controlId: crypto.randomUUID(),
+        outcome: "stopped",
+        verifiedAt: now.toISOString(),
+      },
+    });
+    expect(resolved.pending).toEqual(value.pending);
+    expect(() =>
+      beginMaintenanceEffect(
+        resolved,
+        value.claimToken,
+        value.grantRevision,
+        now,
+      ),
+    ).toThrow("claim");
+    expect(
+      MaintenanceAttempt.safeParse({
+        ...value,
+        pending: { ...value.pending, step: "broker-start" },
+      }).success,
+    ).toBe(false);
+  }
+});

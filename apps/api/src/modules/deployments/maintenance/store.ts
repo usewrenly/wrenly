@@ -74,7 +74,8 @@ export async function lockMaintenanceOwner(
 export async function verifyMaintenancePublication(
   tx: Transaction,
   grant: ProductionMaintenanceGrant,
-  ownMaintenanceAttemptId?: string,
+  ownMaintenanceAttemptId?: string | readonly string[],
+  bindingInspectionOnly = false,
 ): Promise<void> {
   const b = grant.binding;
   await requireDatabaseProjectIdle(tx, b.projectId);
@@ -175,7 +176,7 @@ export async function verifyMaintenancePublication(
     publicationStatus: publication.status,
     binding: publication.productionDatabaseBinding,
     publication: publication.productionRuntimeJournal,
-  });
+  }, bindingInspectionOnly);
   if (!decision.allowed)
     throw new DeploymentStoreError(
       409,

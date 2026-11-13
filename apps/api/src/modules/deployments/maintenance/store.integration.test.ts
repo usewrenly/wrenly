@@ -1,3 +1,4 @@
+import { runOwnerRuntimeControl, readOwnerRuntimeControl } from "./owner-control";
 import { parseApiEnvironment } from "../../../config/api-environment";
 import { productionMaintenanceConfiguration } from "./production";
 import { readMaintenanceOwnerState } from "./owner-state";
@@ -538,6 +539,55 @@ check(
   },
   20000,
 );
+check("owner Stop pauses permission atomically and inspection reconciles unknown attempts without replay", async () => {
+  const [saved] = await database.select().from(schema.productionRuntimeMaintenance).where(eq(schema.productionRuntimeMaintenance.deploymentId, deploymentId));
+  const grant = saved!.grant;
+  const originalClaim = await claimMaintenance(database, deploymentId, grant.revision);
+  const originalIntent = await advanceMaintenance(database, originalClaim);
+  await database.update(schema.productionRuntimeMaintenanceAttempts).set({ journal: { ...originalIntent, status: "interrupted", leaseExpiresAt: new Date(0).toISOString() } }).where(eq(schema.productionRuntimeMaintenanceAttempts.id, originalClaim.id));
+  const calls: string[] = [];
+  const action = { requestId: crypto.randomUUID(), expectedAccessRevision: accessRevision, expectedGrantRevision: grant.revision, kind: "stop", confirmRuntimeControl: true };
+  const services = { perform: async (context: Parameters<Parameters<typeof runOwnerRuntimeControl>[0]["services"]["perform"]>[0]) => {
+    await context.assertHeld();
+    const [permission] = await database.select().from(schema.productionRuntimeMaintenance).where(eq(schema.productionRuntimeMaintenance.deploymentId, deploymentId));
+    expect(permission!.grant.state).toBe("paused"); calls.push(context.effect.step);
+  } };
+  await expect(runOwnerRuntimeControl({ database, actor: { ...actor, userId: crypto.randomUUID() }, projectId, deploymentId, action, services })).rejects.toThrow();
+  expect(calls).toEqual([]);
+  const result = await runOwnerRuntimeControl({ database, actor, projectId, deploymentId, action, services });
+  expect(result.status).toBe("success"); expect(calls).toEqual(["application-stop", "broker-stop", "verify-stopped"]);
+  expect(await runOwnerRuntimeControl({ database, actor, projectId, deploymentId, action, services })).toEqual({ ...result, replayed: true });
+  expect(calls).toHaveLength(3);
+  expect((await readOwnerRuntimeControl({ database, actor, projectId, deploymentId, requestId: action.requestId }))?.status).toBe("success");
+  const [old] = await database.select().from(schema.productionRuntimeMaintenanceAttempts).where(eq(schema.productionRuntimeMaintenanceAttempts.id, originalClaim.id));
+  expect(old!.journal.status).toBe("reconciled"); expect(old!.journal.pending).toEqual(originalIntent.pending); expect(old!.journal.resolution?.outcome).toBe("stopped");
+  expect(await hasDatabaseWork(database, projectId)).toBe(false);
+  // A publication with maintenance never enabled must still have an explicit safe Stop.
+  await database.delete(schema.productionRuntimeMaintenance).where(eq(schema.productionRuntimeMaintenance.deploymentId, deploymentId));
+  const withoutPermission = await runOwnerRuntimeControl({ database, actor, projectId, deploymentId,
+    action: { ...action, requestId: crypto.randomUUID(), expectedGrantRevision: null }, services });
+  expect(withoutPermission.status).toBe("success");
+  const [paused] = await database.select().from(schema.productionRuntimeMaintenance).where(eq(schema.productionRuntimeMaintenance.deploymentId, deploymentId));
+  await expect(claimMaintenance(database, deploymentId, paused!.grant.revision)).rejects.toThrow("inactive");
+  const failed = { ...action, requestId: crypto.randomUUID(), expectedGrantRevision: paused!.grant.revision, kind: "inspect" };
+  let attempts = 0;
+  const lost = { perform: async () => { attempts++; throw new Error("lost host inspection reply"); } };
+  await expect(runOwnerRuntimeControl({ database, actor, projectId, deploymentId, action: failed, services: lost })).rejects.toThrow("could not be confirmed");
+  expect((await readOwnerRuntimeControl({ database, actor, projectId, deploymentId, requestId: failed.requestId }))?.status).toBe("interrupted");
+  expect((await runOwnerRuntimeControl({ database, actor, projectId, deploymentId, action: failed, services: lost })).replayed).toBe(true);
+  expect(attempts).toBe(1); expect(await hasDatabaseWork(database, projectId)).toBe(true);
+  const inspectCalls: string[] = [];
+  const inspected = await runOwnerRuntimeControl({ database, actor, projectId, deploymentId,
+    action: { ...failed, requestId: crypto.randomUUID() }, services: { perform: async context => { await context.assertHeld(); inspectCalls.push(context.effect.step); } } });
+  expect(inspected.status).toBe("success"); expect(inspectCalls).toEqual(["broker-inspect", "application-inspect", "route-inspect"]);
+  expect(await hasDatabaseWork(database, projectId)).toBe(false);
+  const [source] = await database.select().from(schema.productionRuntimeMaintenanceAttempts).where(eq(schema.productionRuntimeMaintenanceAttempts.id, failed.requestId));
+  expect(source!.journal.status).toBe("reconciled"); expect(source!.journal.pending?.step).toBe("broker-inspect");
+  // Restore this fixture's permission for the following independent authority tests.
+  await changeMaintenancePermission(database, actor, projectId, deploymentId, { requestId: crypto.randomUUID(), expectedAccessRevision: accessRevision,
+    expectedGrantRevision: paused!.grant.revision, state: "enabled", confirmMaintenance: true });
+}, 30000);
+
 check(
   "grant authority survives logout but not account or project changes",
   async () => {
@@ -732,6 +782,6 @@ check(
         .where(
           eq(schema.productionRuntimeMaintenanceActions.actorId, actor.userId),
         ),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   },
 );

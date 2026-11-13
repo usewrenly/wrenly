@@ -18,7 +18,10 @@ check(
     let bundle = "",
       writes = 0,
       reads = 0,
-      stored: { requestId: string; state: string } | null = null;
+      stored: { requestId: string; state: string } | null = null,
+      control: { requestId: string; kind: "stop" } | null = null,
+      controlWrites = 0,
+      controlReads = 0;
     let report: { ok?: boolean; error?: string } | undefined;
     const server = Bun.serve({
       hostname: "127.0.0.1",
@@ -34,6 +37,21 @@ check(
           return new Response("ok");
         }
         if (url.pathname.startsWith("/api/")) {
+          if (url.pathname.includes("/controls")) {
+            if (request.method === "POST") {
+              controlWrites++;
+              control = (await request.json()) as typeof control;
+              return Response.json({ error: "reply lost" }, { status: 503 });
+            }
+            controlReads++;
+            return Response.json({
+              requestId: control!.requestId,
+              kind: "stop",
+              status: "success",
+              step: null,
+              replayed: true,
+            });
+          }
           if (request.method === "POST") {
             writes++;
             stored = (await request.json()) as typeof stored;
@@ -93,6 +111,16 @@ await until(()=>button('Check saved decision'));if(button('Pause maintenance'))t
 if(localStorage.getItem(key)!==original)throw Error('Identity changed on remount');button('Check saved decision').click();
 await until(()=>document.body.textContent.includes('Permission saved.'));if(localStorage.getItem(key))throw Error('Confirmed receipt did not clear pending decision');
 await until(()=>button('Pause maintenance'));
+button('Stop published app').click(); await until(()=>button('Confirm Stop')); button('Confirm Stop').click();
+await until(()=>document.body.textContent.includes('action could not be confirmed'));
+const controlKey=${JSON.stringify(`wrenly:runtime-control:fixture-owner:${project}:${deployment}`)};
+const pendingControl=localStorage.getItem(controlKey); if(!pendingControl)throw Error('Stop intent lost');
+root.render(null); await new Promise(r=>setTimeout(r,50)); mount(); await until(()=>button('Runtime maintenance')); button('Runtime maintenance').click();
+await until(()=>button('Check saved action')); if(button('Stop published app'))throw Error('Pending Stop allowed another action');
+if(localStorage.getItem(controlKey)!==pendingControl)throw Error('Stop identity changed');
+button('Check saved action').click(); await until(()=>document.body.textContent.includes('Saved stop: success'));
+button('Keep result and return to controls').click(); await until(()=>button('Stop published app'));
+if(localStorage.getItem(controlKey))throw Error('Confirmed Stop receipt did not clear local intent');
 await fetch('/report',{method:'POST',body:JSON.stringify({ok:true})});
 }catch(error){await fetch('/report',{method:'POST',body:JSON.stringify({error:error.message})});}})();`,
       );
@@ -151,6 +179,8 @@ await fetch('/report',{method:'POST',body:JSON.stringify({ok:true})});
       expect(report).toEqual({ ok: true });
       expect(writes).toBe(1);
       expect(reads).toBe(1);
+      expect(controlWrites).toBe(1);
+      expect(controlReads).toBe(1);
     } finally {
       chrome?.kill();
       await chrome?.exited;

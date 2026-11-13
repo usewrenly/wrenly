@@ -1,3 +1,4 @@
+import type { ProductionMaintenanceGrant } from "@wrenly/db/production-maintenance-contract";
 /** Reconstructs runtime maintenance only from a saved successful publication and matching trusted instance settings. */
 import { and, eq } from "drizzle-orm";
 import { type db, deployments, deploymentResources } from "@wrenly/db";
@@ -12,13 +13,20 @@ import {
 } from "./scheduler";
 import type { MaintenanceClaim } from "./claims";
 
-/** Resolving this configuration does not create an app, change routing or contact a provider. */
+/**
+ * Resolves metadata without contacting a provider or loading application credentials.
+ * Owner controls may pass an already-authorized paused/revoked grant for read-only
+ * route inspection. Background callers must load their live enabled claim instead.
+ */
 export async function productionMaintenanceConfiguration(
   database: typeof db,
   environment: ApiEnvironment,
   claim: MaintenanceClaim,
+  ownerControlGrant?: ProductionMaintenanceGrant,
 ): Promise<Parameters<typeof createMaintenanceServices>[0]> {
-  const grant = await loadMaintenanceAuthorityForClaim(database, claim);
+  const grant =
+    ownerControlGrant ??
+    (await loadMaintenanceAuthorityForClaim(database, claim));
   const [row] = await database
     .select({ publication: deployments, placement: deploymentResources })
     .from(deployments)

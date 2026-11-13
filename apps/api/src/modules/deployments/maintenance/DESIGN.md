@@ -73,3 +73,18 @@ ERROR STATES:
   - Lost browser response retains exact request identity.
   - Changed configuration or inaccessible saved evidence refuses execution.
   - Worker failures remain journaled; the scheduler cannot dismiss an uncertain result.
+
+COMPONENT: Owner runtime stop and interrupted-attempt inspection
+PURPOSE: Let the current owner stop the exact publication or settle an uncertain restart through independent proof.
+INPUTS: Current owner/session, publication/grant/access revisions, request UUID and optional interrupted attempt UUID.
+OUTPUTS: Separately leased owner-control attempt, paused permission before Stop, exact host proofs and retained original restart evidence.
+STEPS:
+  1. Hold the publication kernel lock; under ordered owner/project locks validate exact action replay and immutable publication, with no unrelated work.
+  2. Stop atomically pauses active maintenance and saves its own application-stop/broker-stop/verify-stopped journal before remote work. Inspection saves an independent read-only broker/application/route journal.
+  3. Each step rechecks current owner/session, grant/resource/host revisions and claim lease before the fixed host action. Stop removes no container, image, network, database or volume.
+  4. Inspection proves the exact original IDs, isolation, guardian readiness and original HTTP marker without starting or sending credentials. A stopped original is separately provable without pretending it is ready.
+  5. Only independently completed proof may mark the old attempt reconciled; its old pending and completed effects stay unchanged. Lost owner-control responses replay/check the same saved action; interrupted controls require inspection rather than effect replay.
+EDGE CASES:
+  - Paused/revoked grants allow current-owner inspection but never background restart authority.
+  - Active worker leases or replaced resources refuse control. Stop can be repeated only by a new explicitly confirmed action after uncertainty is resolved.
+ERROR STATES: Unknown host effects preserve the control attempt and permission remains paused; no automatic replay or replacement publication.

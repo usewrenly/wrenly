@@ -261,7 +261,18 @@ export const ProductionRuntimeApplicationReady =
   });
 export const ProductionRuntimeApplicationReadyReply =
   ProductionRuntimeApplicationReply.extend({ ready: z.literal(true) });
+/** Owner Stop targets only the inspected immutable app/broker; no resource is removed. */
+export const ProductionRuntimeApplicationStop =
+  ProductionRuntimeApplicationInspection.extend({
+    action: z.literal("stop-runtime-application"),
+  });
+export const ProductionRuntimeBrokerStop =
+  ProductionRuntimeBrokerInspection.extend({
+    action: z.literal("stop-runtime-broker"),
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeApplicationStop,
+  ProductionRuntimeBrokerStop,
   ProductionRuntimeBrokerDiscovery,
   ProductionRuntimeApplicationReady,
   ProductionRuntimeBrokerRestart,

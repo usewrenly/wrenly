@@ -1,5 +1,6 @@
 "use client";
 /** Owner actions preserve an unresolved exact request across closing, refresh and lost replies. */
+import { PublishedRuntimeActions } from "./runtime-actions";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -43,6 +44,7 @@ function PermissionPanel({
   });
   const pending = saved === "unreadable" ? null : saved;
   const storageUnavailable = saved === "unreadable";
+  const [runtimePending, setRuntimePending] = useState(false);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   const [choice, setChoice] = useState<MaintenanceDecision["state"] | null>(
@@ -113,6 +115,7 @@ function PermissionPanel({
   }
   function confirm(): void {
     if (
+      runtimePending ||
       !choice ||
       !status.data ||
       status.isError ||
@@ -160,7 +163,7 @@ function PermissionPanel({
               <p className="mt-1 text-xs">
                 {new Date(status.data.attempt.updatedAt).toLocaleString()}
                 {status.data.attempt.step
-                  ? ` · ${status.data.attempt.step === "broker-start" ? "Database connection" : status.data.attempt.step === "application-start" ? "App startup" : "Published address"}`
+                  ? ` · ${{ "broker-start": "Database connection", "application-start": "App startup", "route-verify": "Published address", "application-stop": "Stop app", "broker-stop": "Stop connection", "verify-stopped": "Verify stopped", "broker-inspect": "Inspect connection", "application-inspect": "Inspect app", "route-inspect": "Inspect published address" }[status.data.attempt.step]}`
                   : ""}
               </p>
             ) : null}
@@ -176,7 +179,10 @@ function PermissionPanel({
           status.data.state !== "revoked" ? (
             <div className="flex flex-wrap gap-3">
               {status.data.state !== "enabled" ? (
-                <Button disabled={busy} onClick={() => setChoice("enabled")}>
+                <Button
+                  disabled={busy || runtimePending}
+                  onClick={() => setChoice("enabled")}
+                >
                   {status.data.state === "paused"
                     ? "Resume maintenance"
                     : "Enable maintenance"}
@@ -184,7 +190,7 @@ function PermissionPanel({
               ) : (
                 <Button
                   variant="outline"
-                  disabled={busy}
+                  disabled={busy || runtimePending}
                   onClick={() => setChoice("paused")}
                 >
                   Pause maintenance
@@ -193,7 +199,7 @@ function PermissionPanel({
               {status.data.state !== "disabled" ? (
                 <Button
                   variant="ghost"
-                  disabled={busy}
+                  disabled={busy || runtimePending}
                   onClick={() => setChoice("revoked")}
                 >
                   Revoke permission
@@ -209,6 +215,17 @@ function PermissionPanel({
           ) : null}
         </>
       )}
+      {status.data && !status.isError ? (
+        <PublishedRuntimeActions
+          projectId={projectId}
+          deploymentId={deploymentId}
+          actorId={actorId}
+          view={status.data}
+          disabled={busy || Boolean(pending) || storageUnavailable}
+          onPending={setRuntimePending}
+          onUpdated={status.refetch}
+        />
+      ) : null}
       {choice && !pending ? (
         <div className="grid gap-3 rounded-xl border border-[var(--color-border-2)] p-4">
           <p>
@@ -219,7 +236,7 @@ function PermissionPanel({
                 : "Permanently revoke maintenance for this publication? This leaves the running app untouched."}
           </p>
           <div className="flex gap-3">
-            <Button disabled={busy} onClick={confirm}>
+            <Button disabled={busy || runtimePending} onClick={confirm}>
               Confirm{" "}
               {choice === "enabled"
                 ? "maintenance"
@@ -242,14 +259,14 @@ function PermissionPanel({
           <div className="flex flex-wrap gap-3">
             <Button
               variant="outline"
-              disabled={busy}
+              disabled={busy || runtimePending}
               onClick={() => void send(pending, true)}
             >
               Check saved decision
             </Button>
             <Button
               variant="ghost"
-              disabled={busy}
+              disabled={busy || runtimePending}
               onClick={() => void send(pending)}
             >
               Retry same decision

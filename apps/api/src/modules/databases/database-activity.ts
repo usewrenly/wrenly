@@ -1,6 +1,6 @@
 import { MaintenanceAttempt } from "@wrenly/db/production-maintenance-attempt";
 // Shared access/admission checks preserve queued and uncertain database effects as blockers.
-import { and, eq, inArray, or, ne } from "drizzle-orm";
+import { and, eq, inArray, or, ne, notInArray } from "drizzle-orm";
 import type { db } from "@wrenly/db";
 import {
   appDatabaseOperations,
@@ -27,7 +27,7 @@ export async function hasUnfinishedMaintenance(
       )
       .where(ownerId ? eq(projects.userId, ownerId) : undefined);
     return attempts.some(
-      (row) => MaintenanceAttempt.parse(row.journal).status !== "success",
+      (row) => !["success", "reconciled"].includes(MaintenanceAttempt.parse(row.journal).status),
     );
   } catch {
     throw new AppDatabaseError(
@@ -40,7 +40,7 @@ export async function hasUnfinishedMaintenance(
 export async function hasDatabaseWork(
   database: Pick<typeof db, "select">,
   projectId: string,
-  ownMaintenanceAttemptId?: string,
+  ownMaintenanceAttemptId?: string | readonly string[],
 ): Promise<boolean> {
   try {
     const attempts = await database
@@ -53,17 +53,14 @@ export async function hasDatabaseWork(
         and(
           eq(productionRuntimeMaintenanceAttempts.projectId, projectId),
           ownMaintenanceAttemptId
-            ? ne(
-                productionRuntimeMaintenanceAttempts.id,
-                ownMaintenanceAttemptId,
-              )
+            ? Array.isArray(ownMaintenanceAttemptId) ? notInArray(productionRuntimeMaintenanceAttempts.id, [...ownMaintenanceAttemptId]) : ne(productionRuntimeMaintenanceAttempts.id, ownMaintenanceAttemptId as string)
             : undefined,
         ),
       );
     // Unknown/unfinished restart effects fence lifecycle changes just like uncertain SQL.
     if (
       attempts.some(
-        (row) => MaintenanceAttempt.parse(row.journal).status !== "success",
+        (row) => !["success", "reconciled"].includes(MaintenanceAttempt.parse(row.journal).status),
       )
     )
       return true;

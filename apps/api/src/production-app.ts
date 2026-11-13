@@ -1,3 +1,6 @@
+import { createOwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
+import { runOwnerRuntimeControl, readOwnerRuntimeControl } from "./modules/deployments/maintenance/owner-control";
+import { createOwnerRuntimeControlServices } from "./modules/deployments/maintenance/control-services";
 import { accessContext } from "./modules/auth/access/access-context";
 import { createMaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
 import { changeMaintenancePermission } from "./modules/deployments/maintenance/store";
@@ -142,6 +145,15 @@ export function createProductionApp(
       projectSettings: createProjectSettingsHandlers({webUrl:environment.WRENLY_WEB_URL,userId:getUserId,read:(userId,id)=>readProjectSettings(db,userId,id),save:(userId,id,input)=>saveProjectSettings(db,userId,id,input)}),
       deployProject: publishing.create,
       deployments: publishing,
+      runtimeMaintenanceControl: productionDatabases ? createOwnerRuntimeControlHandlers({
+        principal: async headers => {
+          const actorId = await getUserId(headers);
+          return actorId ? accessContext.getStore()?.principal ?? null : null;
+        },
+        read: (actor, projectId, deploymentId, requestId) => readOwnerRuntimeControl({ database: db, actor, projectId, deploymentId, requestId }),
+        save: (actor, projectId, deploymentId, action) => runOwnerRuntimeControl({ database: db, actor, projectId, deploymentId, action,
+          services: createOwnerRuntimeControlServices({ database: db, environment }) }),
+      }, environment.WRENLY_WEB_URL) : undefined,
       runtimeMaintenance: productionDatabases ? createMaintenanceHttpHandlers({
         principal: async headers => {
           const actorId = await getUserId(headers);

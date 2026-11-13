@@ -59,5 +59,34 @@ and checks the same receipt after a lost reply. Neither public response includes
 execution binding, claims or credentials. Pause and revoke remain available without a
 healthy host. They change permission, not the currently running application's state.
 
-Browser and disposable PostgreSQL tests cover these controls. Unknown-attempt recovery
-and real Coolify end-to-end acceptance remain required; this module stays Experimental.
+## Stop an app or inspect an interrupted check
+
+Pausing permission and stopping an app are different decisions. **Stop published
+app** first pauses maintenance in the same transaction that saves the Stop
+request. It then stops the original application and database broker, preserving
+both containers, all volumes and the upstream database. A background check cannot
+restart them while permission is paused. Resuming maintenance is a separate owner
+confirmation.
+
+`owner-control.ts` saves each current-owner Stop or inspection independently of
+background attempts. `control-services.ts` opens only the deployment-host SSH key;
+these operations never load an application's database password. The fixed host
+helper checks ownership, images, isolation and immutable container IDs before Stop.
+
+**Inspect saved runtime** reads the original broker, application guardian and HTTP
+revision marker. It starts nothing and sends no application credentials. If the
+runtime is stopped or only partly running, the owner may explicitly Stop it to
+prove a stopped outcome instead. Missing or replaced resources remain blocked.
+
+After positive proof, the old attempt becomes `reconciled`: its original pending
+intent and earlier acknowledgements remain intact, with a separate reference to
+the control that resolved it. A lost response is checked by request ID; retrying
+that same request returns its receipt and never repeats remote work.
+
+`control-http.ts` checks trusted origins, bounded strict input and the active owner
+session. The browser retains pending actions across remounts. A lost session does
+not erase the journal; an expired lease exposes the unfinished action for review.
+
+Native, browser and disposable PostgreSQL acceptance cover these paths. Actual
+isolated Coolify and combined release acceptance remain separate gates, so the
+module stays Experimental.
