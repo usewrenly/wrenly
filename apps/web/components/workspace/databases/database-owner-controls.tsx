@@ -483,7 +483,7 @@ export function DatabaseOwnerControls({
           {!pending && recovery ? (
             <p>
               {recovery.choices[0] === "recover-rehearsal"
-                ? "Confirm recovery of this failed rehearsal. This may start your preserved Development database to verify its schema; it does not replay migrations or restore data."
+                ? "Confirm recovery of this failed rehearsal. Wrenly verifies the original schema, starting only a preserved Development database if needed. Production is inspected read-only. No migration is replayed and no data is restored."
                 : "Confirm inspection or cleanup of this exact interrupted operation. The old action will not run again."}
             </p>
           ) : null}

@@ -65,3 +65,11 @@ OUTPUTS: Separate recovery receipt after actual connection state matches the ori
 STEPS: Hold the existing recovery resource lock; verify immutable cluster, restricted role flags, database ownership and connection grants through the maintenance connection; stopped requires no sessions, ready additionally requires unchanged original schema and role policy; compare only the exact saved availability effect before releasing the blocker.
 EDGE CASES: Another project's database, altered grants, a missing intent or any unrelated effect cannot be adopted.
 ERROR STATES: An unreachable or mismatched server preserves the blocker. Recovery performs no availability DDL, SQL replay, restore or password replacement.
+
+COMPONENT: Production disposable-rehearsal recovery
+PURPOSE: Release a failed local rehearsal only after its disposable resources are removed and the original Production schema is verified unchanged.
+INPUTS: Current owner, exact interrupted operation, verified matching backup, immutable Production binding and resource revision.
+OUTPUTS: Failed original migration and a separate successful recovery receipt; no migration replay.
+STEPS: Reuse the existing resource lock, current-authority checks and ordered recovery journal; accept only the exact nine local restore effects before an unacknowledged disposable migration; independently clean the disposable scope; inspect the original private TLS database and role policy read-only; compare its saved schema/native journal digest before completing recovery.
+EDGE CASES: Production never uses a Development runtime identity or starts a stopped database. Prior interrupted recovery cleanup is checked independently.
+ERROR STATES: Missing binding, changed schema, unavailable server, unknown effects or uncertain cleanup preserve the blocker.

@@ -207,3 +207,21 @@ and disposable real Coolify acceptance remain release gates.
 
 Keep Production evaluation opt-in and retain the Experimental label. Apply all
 checked-in migrations first; 0047 and 0048 add permission receipts and restart attempts.
+
+
+## Recover a failed disposable rehearsal
+
+Before changing Production tables, Wrenly tries the change on a separate disposable
+copy of a verified backup. If that rehearsal fails, the original migration remains
+failed; recovery does not turn it into a successful migration.
+
+When **Manage resource** offers **Resolve rehearsal**, review and confirm that action.
+Wrenly removes only the rehearsal's temporary resources, then checks the original
+Production database over its saved private TLS connection. Its roles, schema and
+migration history must still match the saved state before the blocker is released.
+It does not rerun SQL, restore over your data or start a stopped Production database.
+
+This action appears only when the saved evidence proves the failure happened on the
+disposable copy before any persistent migration began. Missing evidence, an unreachable
+server or changed schema keeps recovery blocked. Preserve that evidence for inspection;
+submitting the old migration again cannot establish that it is safe.

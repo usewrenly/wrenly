@@ -77,6 +77,10 @@ export async function admitDatabaseRecovery(
           actorId,
           review,
           directory,
+          undefined,
+          undefined,
+          undefined,
+          production,
         );
       }
       case "recover-read":

@@ -179,3 +179,69 @@ test("interrupted recovery accepts only its own inspector and preserved runtime 
     isInterruptedRehearsalRecovery(resource, recovery, crypto.randomUUID()),
   ).toBe(false);
 });
+
+test("Production rehearsal recovery requires its exact immutable cluster binding", () => {
+  const production = {
+    ...resource,
+    environment: "production" as const,
+    provider: "postgres-cluster",
+    runtimeIdentity: null,
+    providerIdentity: {
+      version: "1",
+      provider: "postgres-cluster",
+      connectionId: crypto.randomUUID(),
+      clusterId: "12345",
+      database: `wrenly_${resourceId.replaceAll("-", "")}`,
+      networkId: "c".repeat(64),
+    },
+  };
+  expect(isFailedDisposableRehearsal(production, operation, review)).toBe(true);
+  for (const changed of [
+    { ...production, providerIdentity: undefined },
+    { ...production, runtimeIdentity: resource.runtimeIdentity },
+    {
+      ...production,
+      providerIdentity: {
+        ...production.providerIdentity,
+        database: `wrenly_${crypto.randomUUID().replaceAll("-", "")}`,
+      },
+    },
+    {
+      ...production,
+      providerIdentity: {
+        ...production.providerIdentity,
+        networkId: "unknown",
+      },
+    },
+  ])
+    expect(isFailedDisposableRehearsal(changed, operation, review)).toBe(false);
+  const recovery = {
+    ...operation,
+    kind: "recover-rehearsal",
+    completedEffects: [],
+    effect: { ...operation.effect, kind: "inspect-rehearsal-operation", id },
+    cleanupEffect: {
+      ...operation.effect,
+      kind: "start-preserved-database",
+      id: "e".repeat(64),
+    },
+  };
+  expect(isInterruptedRehearsalRecovery(production, recovery, id)).toBe(false);
+  expect(
+    isInterruptedRehearsalRecovery(
+      production,
+      { ...recovery, cleanupEffect: null },
+      id,
+    ),
+  ).toBe(true);
+  expect(
+    isFailedDisposableRehearsal(
+      production,
+      {
+        ...operation,
+        completedEffects: [...operation.completedEffects, operation.effect],
+      },
+      review,
+    ),
+  ).toBe(false);
+});
