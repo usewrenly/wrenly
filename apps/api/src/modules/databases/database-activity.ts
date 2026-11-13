@@ -1,3 +1,4 @@
+import { MaintenanceAttempt } from "@wrenly/db/production-maintenance-attempt";
 // Shared access/admission checks preserve queued and uncertain database effects as blockers.
 import { and, eq, inArray, or, ne } from "drizzle-orm";
 import type { db } from "@wrenly/db";
@@ -11,6 +12,30 @@ import {
 } from "@wrenly/db";
 import { AppDatabaseError } from "./database-contract";
 const BLOCKING = ["queued", "running", "interrupted"] as const;
+/** Run under the shared queue locks. Unknown restart effects block replacing infrastructure or suspending its owner. */
+export async function hasUnfinishedMaintenance(
+  database: Pick<typeof db, "select">,
+  ownerId?: string,
+): Promise<boolean> {
+  try {
+    const attempts = await database
+      .select({ journal: productionRuntimeMaintenanceAttempts.journal })
+      .from(productionRuntimeMaintenanceAttempts)
+      .innerJoin(
+        projects,
+        eq(projects.id, productionRuntimeMaintenanceAttempts.projectId),
+      )
+      .where(ownerId ? eq(projects.userId, ownerId) : undefined);
+    return attempts.some(
+      (row) => MaintenanceAttempt.parse(row.journal).status !== "success",
+    );
+  } catch {
+    throw new AppDatabaseError(
+      503,
+      "Runtime maintenance state could not be verified.",
+    );
+  }
+}
 /** Call under a project-work queue lock; interrupted operations retain the fence. */
 export async function hasDatabaseWork(
   database: Pick<typeof db, "select">,
@@ -36,7 +61,12 @@ export async function hasDatabaseWork(
         ),
       );
     // Unknown/unfinished restart effects fence lifecycle changes just like uncertain SQL.
-    if (attempts.some((row) => row.journal.status !== "success")) return true;
+    if (
+      attempts.some(
+        (row) => MaintenanceAttempt.parse(row.journal).status !== "success",
+      )
+    )
+      return true;
     const [row] = await database
       .select({ id: appDatabaseOperations.id })
       .from(appDatabaseOperations)
@@ -77,6 +107,7 @@ export async function hasMemberDatabaseWork(
   actorId: string,
 ): Promise<boolean> {
   try {
+    if (await hasUnfinishedMaintenance(database, actorId)) return true;
     const [row] = await database
       .select({ id: appDatabaseOperations.id })
       .from(appDatabaseOperations)

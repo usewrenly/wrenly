@@ -1,3 +1,7 @@
+import {
+  hasMemberDatabaseWork,
+  hasUnfinishedMaintenance,
+} from "../../databases/database-activity";
 import { runMaintenanceClaim } from "./worker";
 import { loadMaintenanceClaim } from "./claims";
 import { hasDatabaseWork } from "../../databases/database-store";
@@ -428,6 +432,11 @@ check(
     expect(saved!.journal.status).toBe("interrupted");
     expect(saved!.journal.pending).toEqual(pending.pending);
     expect(await hasDatabaseWork(database, projectId)).toBe(true);
+    expect(await hasMemberDatabaseWork(database, actor.userId)).toBe(true);
+    expect(await hasMemberDatabaseWork(database, crypto.randomUUID())).toBe(
+      false,
+    );
+    expect(await hasUnfinishedMaintenance(database)).toBe(true);
     await expect(
       claimMaintenance(database, deploymentId, revision),
     ).rejects.toThrow("unfinished");

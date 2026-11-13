@@ -1,3 +1,4 @@
+import { hasUnfinishedMaintenance } from "../../database-activity";
 /** Saved instance connection revisions make server setup reusable without retargeting existing projects. */
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import { join } from "node:path";
@@ -82,6 +83,11 @@ async function encryptionKey(
   );
 }
 async function requireIdle(tx: Transaction): Promise<void> {
+  if (await hasUnfinishedMaintenance(tx))
+    throw new AppDatabaseError(
+      409,
+      "Finish or review runtime maintenance before changing the server connection.",
+    );
   const [operation] = await tx
     .select({ id: appDatabaseOperations.id })
     .from(appDatabaseOperations)

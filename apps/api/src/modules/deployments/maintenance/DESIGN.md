@@ -37,3 +37,19 @@ The worker holds the same per-deployment kernel lock as publishing, renews indep
 of browser subscriptions, shares concurrent renewal checks, aborts on lease/authority
 loss and waits for owned work before lock release. Scheduler activation and UI remain
 gated until cross-module lifecycle blockers and joined acceptance are complete.
+
+
+COMPONENT: Maintenance lifecycle fences
+PURPOSE: Keep account and infrastructure changes from invalidating unfinished remote work.
+INPUTS: Shared queue locks, saved maintenance attempts, optional project owner ID.
+OUTPUTS: A blocker for every unfinished attempt, including interrupted work.
+STEPS:
+  1. Under the same queue locks used by admission, read saved attempts.
+  2. For suspension, join the owning project and match only the affected owner.
+  3. For instance connection replacement, block any unfinished maintenance.
+  4. Preserve explicit permission withdrawal even while an attempt needs review.
+EDGE CASES:
+  - Completed attempts do not block changes.
+  - A different member's account is not blocked by an unrelated owner.
+ERROR STATES:
+  - An unreadable journal or database fails closed; no account/server change proceeds.
