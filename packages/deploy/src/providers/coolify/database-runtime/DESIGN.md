@@ -23,3 +23,21 @@ STEPS:
 5. Start only through an explicit saved caller action; a queue receipt does not prove runtime readiness.
 EDGE CASES: A changed or uncertain remote result needs caller-owned inspection. Similar names do not establish ownership.
 ERROR STATES: Return fixed failures without remote bodies or credentials; no automatic retry, adoption or source rebuild.
+
+
+COMPONENT: Read-only service creation recovery
+PURPOSE: Identify one original inert service after its creation acknowledgement was lost.
+INPUTS: Exact saved composition, pinned project/server/environment and a bounded provider client.
+OUTPUTS: Verified service UUID, explicit absence or safe refusal; no mutation.
+STEPS:
+1. Read the pinned project, environment and server; verify their numeric/UUID relationships.
+2. Require a complete bounded team service collection with unique IDs and exactly one matching deployment name.
+3. Independently read that candidate and require its original server/environment, non-deleted state and exact raw composition/network flag.
+4. Recheck cancellation before returning its ID. Never call a create/start endpoint.
+EDGE CASES: A friendly name only selects a candidate. Duplicate names, incomplete collections and foreign placement fail closed.
+ERROR STATES: Unknown responses do not establish absence. The caller preserves its original pending effect.
+
+Provider response fields are defined by Coolify's public service, server and project
+environment endpoints. The adapter checks relationships rather than assuming numeric
+IDs are UUIDs. Reference: https://coolify.io/docs/api/endpoints/services/get-service-by-uuid
+and https://coolify.io/docs/api/endpoints/projects/get-environment-by-name-or-uuid .
