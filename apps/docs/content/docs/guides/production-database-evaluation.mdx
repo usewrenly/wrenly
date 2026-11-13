@@ -155,7 +155,7 @@ not establish all of the following:
 
 - Actual Coolify private image pulling, composition and public routing together.
 - Automatic recovery after the deployment host or database broker reboots.
-- Recovery of every earlier uncertain publishing, backup or migration cleanup effect.
+- Final combined acceptance of publishing, maintenance and recovery on the isolated deployment.
 
 Until these pass, retain the Experimental label. Do not configure automatic container
 restarts as a workaround: runtime credentials are deliberately delivered through a
@@ -168,7 +168,7 @@ operation. Keep those blockers and saved evidence intact; do not replay unknown 
 ## Restart verification and its limits
 
 A published app needs its database connection even after its owner's browser closes.
-The feature branch includes a separately confirmed maintenance permission and an
+Wrenly uses a separately confirmed maintenance permission and an
 independent restart journal. It can inspect the original broker and app, restart
 those exact stopped containers and verify the original published revision. It refuses
 replacement containers and never resends credentials to an already-running process.
@@ -202,8 +202,7 @@ request identifier and reviewed values. A missing receipt does not prove nothing
 
 A check that needs review is not retried automatically. Preserve the saved attempt;
 repeated publishing, credential delivery or SQL execution cannot safely clear it.
-Do not promise unattended recovery from every failure: interrupted-effect recovery
-and disposable real Coolify acceptance remain release gates.
+Do not promise unattended recovery from every failure: unknown effects require an owner review, and disposable real Coolify acceptance remains a release gate.
 
 Keep Production evaluation opt-in and retain the Experimental label. Apply all
 checked-in migrations first; 0047 and 0048 add permission receipts and restart attempts.
@@ -225,3 +224,49 @@ This action appears only when the saved evidence proves the failure happened on 
 disposable copy before any persistent migration began. Missing evidence, an unreachable
 server or changed schema keeps recovery blocked. Preserve that evidence for inspection;
 submitting the old migration again cannot establish that it is safe.
+
+
+## Recover interrupted Production backup or migration cleanup
+
+A lost reply can leave a temporary database client behind even when the database
+server has finished. Wrenly keeps that action blocked until it can independently
+check what happened.
+
+1. Open the project’s **Database → Production → Manage resource**.
+2. Choose **Resolve Production operation**, then review the saved operation.
+3. Confirm the recovery. Wrenly removes only that operation’s verified temporary
+   clients and disposable resources, closes its socket and ends its scoped migration
+   sessions. It never replays the migration or captures another backup.
+4. Wrenly checks the original cluster, project roles, schema and native migration
+   history over the saved private TLS connection. A migration becomes complete only
+   if that history matches its verified rehearsal. Partial or different results stay
+   blocked. An interrupted backup remains failed; create a fresh backup only after
+   recovery completes.
+
+Keep a pending recovery request after a lost response and check its saved result.
+Cleanup acknowledgement alone does not establish that the original SQL succeeded.
+No recovery action restores a backup over your saved data.
+
+## Stop or inspect the published runtime
+
+Open **Projects → Deployments → Runtime maintenance** for the successful publication.
+Only its current project owner can use these actions.
+
+- **Stop published app** pauses maintenance before stopping the exact app and
+  database-connection broker. It keeps the containers, storage and database records.
+  It does not delete the app or revoke permission permanently.
+- **Inspect saved runtime** checks the original running containers and published
+  revision without starting anything or resending database credentials. Use this
+  after an interrupted restart. If only part of the runtime is running, review and
+  confirm Stop to establish a stopped outcome instead.
+
+After a lost response, use **Check saved action**. Retrying the same saved action
+looks up its receipt rather than repeating an uncertain Stop. Preserve an interrupted
+result, return to the controls and explicitly review a new inspection or Stop.
+An active worker, changed resource, unknown container or unavailable host keeps the
+blocker; changing permission does not dismiss it.
+
+To start the preserved runtime again, separately enable maintenance after all
+unfinished work has been resolved. Revoked permission cannot be enabled again for
+that publication. Install the matching current deployment-host helper before using
+new runtime actions; an older helper refuses commands it does not recognize.
