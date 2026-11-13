@@ -99,3 +99,17 @@ and generated runtime keep their existing isolation.
 This proves the framework/socket/guardian and explicit app-restart path. It does not
 establish real Coolify routing, automatic host-reboot recovery or safe replay of an
 unknown earlier infrastructure mutation. Those require their own joined acceptance.
+
+
+## Inspecting earlier setup resources
+
+`../recovery/reconcile-production-setup.ts` checks a lost acknowledgement for one
+HTTP socket volume, database socket volume or private broker network. It verifies
+the original pending action through fixed read-only host helpers and records its
+receipt only after exact ownership and daemon checks. Missing or mismatched resources
+stay unresolved. It loads only the host connection, never application credentials.
+
+The publication stays interrupted after that receipt is saved. Inspection neither
+continues publishing nor starts containers. Service creation and credential handoff
+need separate proof; do not infer their success from a container being present.
+The public publishing-operations guide gives the root command and prerequisites.

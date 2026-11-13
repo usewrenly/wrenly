@@ -172,3 +172,33 @@ An earlier unknown effect, another running publication, changed access or mismat
 infrastructure keeps the operation blocked. This command deliberately cannot settle
 an unknown service creation, credential handoff or migration. Do not use the stateless
 `reconcile-deployment` command to bypass those Production database checks.
+
+
+## Inspect an interrupted Production setup resource
+
+If publishing stopped while preparing its HTTP socket volume, database socket volume
+or private broker network, Wrenly can check that exact resource without creating it
+again. This is separate from checking the final published URL.
+
+From the repository root on the API host, run:
+
+```bash
+bun run reconcile-production-setup DEPLOYMENT_UUID --confirm-read-only-verification
+```
+
+Keep the original root `.env`, instance data directory and deployment-host keys.
+The original owner's account and project access must still be valid. Wrenly checks
+its saved operation identity, Docker daemon and resource ownership before accepting
+proof. This inspection uses the saved SSH connection; it does not load or resend
+application database credentials, start containers or run migrations.
+
+A successful inspection records the result of **one original setup action**. The
+publication remains interrupted: this command does not continue later publishing
+steps or enable an automatic retry. If the resource is missing, belongs to another
+operation or cannot be inspected, its unresolved action stays protected. Keep its
+saved evidence for recovery; do not delete resources or use another reconciliation
+command to bypass the blocker.
+
+Service creation, broker startup and application credential handoff are outside this
+command's supported checks. A running container alone is insufficient proof that
+credential delivery completed safely.

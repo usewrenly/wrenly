@@ -51,3 +51,16 @@ Perform HTTP create/read/update/delete and prove stored data survives applicatio
 replacement. Keep fixture credentials out of container configuration and prove the
 app has no IP network and the relay has no database socket. This is local runtime
 acceptance; actual framework and Coolify deployment acceptance remain separate.
+
+COMPONENT: Interrupted setup-effect reconciliation
+PURPOSE: Confirm an uncertain socket-volume or broker-network creation without creating or deleting anything.
+INPUTS: Settled interrupted deployment, original pending setup effect, current saved owner/session authority, exact host binding and kernel/lease fence.
+OUTPUTS: One acknowledgement of the original effect when exact read-only proof succeeds; absent/foreign/unreadable evidence retains interruption.
+STEPS:
+  1. Take the publishing kernel lock and a fresh short verification claim under the existing queue/account/project locks.
+  2. Permit only the original pending HTTP volume, database volume or broker network phase. Preserve the original effect ID/token and completed receipts.
+  3. Authenticate saved host credentials under that claim, then invoke only fixed inspect actions.
+  4. Verify daemon, nonce, exact deterministic resource name and strict helper response; absence is not success.
+  5. Save the matching original receipt, then release verification ownership back to interrupted status. Never resume later remote mutations implicitly.
+EDGE CASES: A newer receipt/claim or changed source/schema/host/session refuses recovery. A lost local acknowledgement is inspected again rather than repeating creation.
+ERROR STATES: Missing or mismatched resources remain blocked. Later credential/service/SQL phases are outside this inspector and cannot be cleared through it.

@@ -139,10 +139,57 @@ export async function loadProductionPublishingRuntimeSecrets(input: {
   directory: string;
   deploymentEncryptionKey: string;
 }): Promise<ProductionPublishingRuntimeSecrets> {
-  await loadProductionPublishingRuntime(input.database, input.claim);
-  return loadAuthorizedRuntimeSecrets({
-    ...input,
-    authorize: async (tx) =>
-      (await lockProductionPublishingRuntime(tx, input.claim)).binding,
-  });
+  try {
+    await loadProductionPublishingRuntime(input.database, input.claim);
+    return await loadAuthorizedRuntimeSecrets({
+      ...input,
+      authorize: async (tx) =>
+        (await lockProductionPublishingRuntime(tx, input.claim)).binding,
+    });
+  } catch {
+    throw new Error(
+      "Production publishing credentials could not be authenticated for this execution. Restore the original keys and review its saved setup.",
+    );
+  }
+}
+
+/** A setup inspection authenticates only the saved SSH host; it neither opens nor decrypts application database roles. */
+export async function loadProductionInspectionHostCredentials(input: {
+  database: typeof db;
+  claim: DeploymentClaim;
+  directory: string;
+}): Promise<ProductionPublishingRuntimeSecrets["host"]> {
+  try {
+    const key = await loadDatabaseKey(
+      join(input.directory, "production-host-keys"),
+      true,
+    );
+    return await input.database.transaction(async (tx) => {
+      const { binding } = await lockProductionPublishingRuntime(
+        tx,
+        input.claim,
+      );
+      const [host] = await tx
+        .select()
+        .from(productionRuntimeHosts)
+        .where(eq(productionRuntimeHosts.id, binding.hostConnectionId));
+      if (
+        !host ||
+        host.status !== "verified" ||
+        !host.pinnedAddresses?.length ||
+        host.verified?.dockerId !== binding.dockerId ||
+        host.serverId !== binding.serverId
+      )
+        throw new Error("Host identity changed.");
+      return {
+        target: host.target,
+        addresses: host.pinnedAddresses,
+        privateKey: openRuntimeHostCredential(host.secret, host, key),
+      };
+    });
+  } catch {
+    throw new Error(
+      "The original deployment-host credential could not be authenticated for inspection.",
+    );
+  }
 }

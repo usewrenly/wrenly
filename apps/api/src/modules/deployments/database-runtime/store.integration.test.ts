@@ -1,3 +1,5 @@
+import { reconcileProductionSetup } from "../recovery/reconcile-production-setup";
+import { claimInterruptedProductionSetup } from "./store";
 import { reconcileProductionRoute } from "../recovery/reconcile-production-route";
 import { parseApiEnvironment } from "../../../config/api-environment";
 import { loadProductionPublishingRuntimeSecrets } from "./secrets";
@@ -953,6 +955,144 @@ check(
         .where(eq(schema.deploymentResources.projectId, projectId));
     }
   },
+);
+check(
+  "setup reconciliation preserves old receipts, refuses absence and never resumes later effects",
+  async () => {
+    const [source] = await database
+      .select()
+      .from(schema.deployments)
+      .where(eq(schema.deployments.id, deploymentId));
+    if (!source) throw new Error("Missing setup fixture.");
+    const environment = parseApiEnvironment({
+      WRENLY_DATABASE_URL: "postgresql://fixture:fixture@127.0.0.1:1/fixture",
+      WRENLY_AUTH_SECRET: "a".repeat(64),
+      WRENLY_APP_URL: "http://localhost:3002",
+      WRENLY_WEB_URL: "http://localhost:3000",
+      WRENLY_DATA_DIR: directory,
+    });
+    await database
+      .update(schema.deployments)
+      .set({ status: "success" })
+      .where(eq(schema.deployments.id, deploymentId));
+    try {
+      for (let index = 0; index < 3; index++) {
+        const id = crypto.randomUUID(),
+          bound = { ...binding, deploymentId: id };
+        const facts = [
+          {
+            step: "http-volume",
+            name: `wrenly-deployment-http-${id}`,
+            createdAt: new Date().toISOString(),
+          },
+          {
+            step: "database-volume",
+            name: `wrenly-deployment-db-${id}`,
+            createdAt: new Date().toISOString(),
+          },
+          { step: "broker-network", networkId: "a".repeat(64) },
+        ];
+        let journal: ProductionPublishingJournal = {
+          version: 1,
+          pending: null,
+          completed: [],
+        };
+        for (let previous = 0; previous < index; previous++) {
+          journal = beginProductionPublishingEffect(
+            bound,
+            journal,
+            token,
+            new Date(),
+          );
+          journal = acknowledgeProductionPublishingEffect(
+            bound,
+            journal,
+            {
+              effect: journal.pending,
+              fact: facts[previous],
+              completedAt: new Date().toISOString(),
+            },
+            token,
+          );
+        }
+        journal = beginProductionPublishingEffect(
+          bound,
+          journal,
+          token,
+          new Date(),
+        );
+        const pending = journal.pending!;
+        await database
+          .insert(schema.deployments)
+          .values({
+            ...source,
+            id,
+            idempotencyKey: crypto.randomUUID(),
+            requestIdentity: `fixture-setup-${index}`,
+            status: "interrupted",
+            claimToken: null,
+            leaseExpiresAt: null,
+            productionDatabaseBinding: bound,
+            productionRuntimeJournal: journal,
+          });
+        await expect(
+          reconcileProductionSetup(database, environment, id, async () => null),
+        ).rejects.toThrow("Saved evidence is preserved");
+        let [row] = await database
+          .select()
+          .from(schema.deployments)
+          .where(eq(schema.deployments.id, id));
+        expect(row!.productionRuntimeJournal).toEqual(journal);
+        let inspections = 0;
+        await reconcileProductionSetup(
+          database,
+          environment,
+          id,
+          async (input) => {
+            inspections++;
+            await input.assertHeld();
+            expect(input.credentials).toHaveProperty("host");
+            expect(input.credentials).not.toHaveProperty("database");
+            expect(input.effect).toEqual(pending);
+            return ProductionPublishingReceipt.parse({
+              effect: input.effect,
+              fact: facts[index],
+              completedAt: new Date().toISOString(),
+            }).fact;
+          },
+        );
+        [row] = await database
+          .select()
+          .from(schema.deployments)
+          .where(eq(schema.deployments.id, id));
+        expect(row!.status).toBe("interrupted");
+        expect(row!.claimToken).toBeNull();
+        expect(row!.productionRuntimeJournal!.pending).toBeNull();
+        expect(row!.productionRuntimeJournal!.completed.slice(0, -1)).toEqual(
+          journal.completed,
+        );
+        expect(row!.productionRuntimeJournal!.completed.at(-1)!.effect).toEqual(
+          pending,
+        );
+        await expect(
+          reconcileProductionSetup(database, environment, id, async () => {
+            inspections++;
+            return null;
+          }),
+        ).rejects.toThrow();
+        expect(inspections).toBe(1);
+        await expect(
+          claimInterruptedProductionSetup(database, id),
+        ).rejects.toThrow("read-only inspector");
+      }
+    } finally {
+      await database
+        .update(schema.deployments)
+        .set({ status: "preparing" })
+        .where(eq(schema.deployments.id, deploymentId));
+    }
+  },
+  20000,
 );
 check(
   "changed resource schema, host or owner session refuses the next effect",

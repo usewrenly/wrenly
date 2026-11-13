@@ -262,9 +262,10 @@ export async function acknowledgeProductionRuntimeEffect(
 }
 
 /** Explicit operator recovery may inspect only the final read-only route; it never resumes an unknown mutation. */
-export async function claimInterruptedProductionRoute(
+async function claimInterruptedProductionInspection(
   database: typeof db,
   deploymentId: string,
+  scope: "route" | "setup",
 ): Promise<DeploymentClaim> {
   z.uuid().parse(deploymentId);
   return database.transaction(async (tx) => {
@@ -307,15 +308,19 @@ export async function claimInterruptedProductionRoute(
       binding,
       row.productionRuntimeJournal,
     );
-    if (!(
+    const route =
       (journal.completed.length === FINAL_ROUTE_INDEX &&
         journal.pending?.step === "route-verify") ||
       (journal.completed.length === PRODUCTION_PUBLISHING_STEPS.length &&
-        !journal.pending)
-    ))
+        !journal.pending);
+    const setup =
+      journal.pending && SETUP_RECOVERY_STEPS.includes(journal.pending.step);
+    if (scope === "route" ? !route : !setup)
       throw new DeploymentStoreError(
         409,
-        "Inspect the earlier Production runtime effect; this command verifies routes only.",
+        scope === "route"
+          ? "Inspect the earlier Production runtime effect; this command verifies routes only."
+          : "The pending Production effect does not match this read-only inspector.",
       );
     const active = await tx
       .select({ id: deployments.id })
@@ -364,6 +369,57 @@ export async function acknowledgeRecoveredProductionRoute(
       throw new DeploymentStoreError(
         409,
         "Production route acknowledgement changed.",
+      );
+    const next = acknowledgeProductionPublishingEffect(
+      binding,
+      journal,
+      receipt,
+      journal.pending.claimToken,
+    );
+    await tx
+      .update(deployments)
+      .set({ productionRuntimeJournal: next, updatedAt: new Date() })
+      .where(eq(deployments.id, claim.deploymentId));
+  });
+}
+
+const SETUP_RECOVERY_STEPS: readonly string[] = [
+  "http-volume",
+  "database-volume",
+  "broker-network",
+];
+/** Final route inspection retains its own narrow stage guard. */
+export async function claimInterruptedProductionRoute(
+  database: typeof db,
+  deploymentId: string,
+): Promise<DeploymentClaim> {
+  return claimInterruptedProductionInspection(database, deploymentId, "route");
+}
+/** Setup inspection never grants permission to repeat creation or deliver runtime credentials. */
+export async function claimInterruptedProductionSetup(
+  database: typeof db,
+  deploymentId: string,
+): Promise<DeploymentClaim> {
+  return claimInterruptedProductionInspection(database, deploymentId, "setup");
+}
+/** Record independently inspected proof for exactly the original setup intent; later work remains interrupted. */
+export async function acknowledgeRecoveredProductionSetup(
+  database: typeof db,
+  claim: DeploymentClaim,
+  receipt: unknown,
+): Promise<void> {
+  await database.transaction(async (tx) => {
+    const { binding, journal } = await lockProductionPublishingRuntime(
+      tx,
+      claim,
+    );
+    if (
+      !journal.pending ||
+      !SETUP_RECOVERY_STEPS.includes(journal.pending.step)
+    )
+      throw new DeploymentStoreError(
+        409,
+        "The setup effect changed before acknowledgement.",
       );
     const next = acknowledgeProductionPublishingEffect(
       binding,
