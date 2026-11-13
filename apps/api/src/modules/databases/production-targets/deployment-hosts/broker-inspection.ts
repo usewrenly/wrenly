@@ -6,7 +6,7 @@ import {
 } from "@wrenly/db/production-host-contract";
 import { productionSocketHostMapping } from "@wrenly/sandbox/production-database-socket-policy";
 import { assertProductionBrokerMemoryMounts } from "./broker-policy";
-import { acquireRuntimeHostLock } from "./host-lock";
+import { acquireRuntimeHostLock, type RuntimeHostLock } from "./host-lock";
 import { runRuntimeHostDocker } from "./docker-command";
 const Strings = z.array(z.string());
 const Inspect = z.object({
@@ -68,11 +68,12 @@ export async function inspectRuntimeDatabaseBroker(
   raw: unknown,
   dockerId: string,
   signal: AbortSignal,
+  heldLock?: RuntimeHostLock,
 ): Promise<z.infer<typeof ProductionRuntimeBrokerInspectionReply>> {
   const input = ProductionRuntimeBrokerInspection.parse(raw);
   if (input.expectedDockerId !== dockerId)
     throw new Error("Deployment Docker identity changed.");
-  const lock = await acquireRuntimeHostLock(input.deploymentId);
+  const lock = heldLock ?? (await acquireRuntimeHostLock(input.deploymentId));
   try {
     lock.assertHeld();
     signal.throwIfAborted();
@@ -231,6 +232,6 @@ export async function inspectRuntimeDatabaseBroker(
       "Production runtime broker inspection could not be verified. No credentials were resent.",
     );
   } finally {
-    await lock.release();
+    if (!heldLock) await lock.release();
   }
 }

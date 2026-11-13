@@ -1,3 +1,4 @@
+import { restartRuntimeDatabaseBroker } from "./broker-restart";
 /** Broker readiness is socket readiness only; upstream TLS/CRUD acceptance is a separate gate. */
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -15,7 +16,7 @@ const native =
 native(
   "runtime-only broker starts with credentials absent from Docker configuration",
   async () => {
-    const signal = AbortSignal.timeout(30000);
+    const signal = AbortSignal.timeout(60000);
     const host = await inspectRuntimeHost(
       { version: 1, action: "inspect", nonce: crypto.randomUUID() },
       signal,
@@ -264,6 +265,36 @@ native(
       );
       expect(stopped.running).toBe(false);
       expect(stopped.socketReady).toBe(false);
+      const restart = {
+        ...request,
+        action: "restart-runtime-broker",
+        containerId: reply.containerId,
+      };
+      await expect(
+        restartRuntimeDatabaseBroker(
+          { ...restart, containerId: "a".repeat(64) },
+          host.dockerId,
+          signal,
+          resolver,
+        ),
+      ).rejects.toThrow("could not be confirmed");
+      const restored = await restartRuntimeDatabaseBroker(
+        restart,
+        host.dockerId,
+        signal,
+        resolver,
+      );
+      expect(restored.containerId).toBe(reply.containerId);
+      expect(restored.socketReady).toBe(true);
+      await expect(
+        restartRuntimeDatabaseBroker(restart, host.dockerId, signal, resolver),
+      ).rejects.toThrow("could not be confirmed");
+      expect(
+        await runRuntimeHostDocker(
+          ["container", "inspect", reply.containerId],
+          signal,
+        ),
+      ).not.toContain(request.runtimeRole.password);
     } finally {
       const cleanup = AbortSignal.timeout(10000);
       if (appContainerId)
@@ -291,5 +322,5 @@ native(
       );
     }
   },
-  30000,
+  60000,
 );

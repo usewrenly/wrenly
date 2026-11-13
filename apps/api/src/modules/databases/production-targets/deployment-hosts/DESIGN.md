@@ -160,3 +160,11 @@ STEPS:
 5. Inspect attached networks and refuse host networking or the database broker network.
 EDGE CASES: A stopped relay is reported stopped. No discovery starts or mutates it.
 ERROR STATES: Ambiguous identity or changed isolation refuses route verification.
+
+COMPONENT: Preserved broker maintenance restart
+PURPOSE: Restart the exact stopped broker under an independently persisted maintenance intent.
+INPUTS: Saved container/image/network/volume/daemon identity and runtime-only credentials via SSH stdin.
+OUTPUTS: Exact broker readiness proof, or unresolved maintenance attention.
+STEPS: Hold the host lock across exact inspection, DNS check, one start, one stdin delivery and readiness proof. Reuse strict broker policy; create no resource. A running broker is inspection-only and refuses credentials. Verify DNS again before acknowledgement.
+EDGE CASES: Missing/replaced resources fail before start. Lost replies preserve intent. A failed healthcheck never permits a second handoff to a running broker.
+ERROR STATES: Unknown startup remains interrupted; no replacement, credential replay or database SQL.

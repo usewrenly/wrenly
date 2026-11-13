@@ -243,7 +243,14 @@ export const ProductionRuntimeIngressDiscovery =
   ProductionRuntimeApplicationDiscovery.extend({
     action: z.literal("find-runtime-ingress"),
   });
+/** Maintenance restarts only the exact preserved broker; it never creates a replacement. */
+export const ProductionRuntimeBrokerRestart =
+  ProductionRuntimeBrokerRequest.extend({
+    action: z.literal("restart-runtime-broker"),
+    containerId: z.string().regex(/^[a-f0-9]{64}$/),
+  });
 export const ProductionRuntimeHostRequest = z.union([
+  ProductionRuntimeBrokerRestart,
   ProductionRuntimeIngressDiscovery,
   ProductionRuntimeApplicationDiscovery,
   ProductionRuntimeApplicationStart,

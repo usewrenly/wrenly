@@ -1,3 +1,4 @@
+import { restartRuntimeDatabaseBroker } from "../../databases/production-targets/deployment-hosts/broker-restart";
 /** Explicit native acceptance with real frameworks and private TLS; never uses an installation's services. */
 import { expect, test } from "bun:test";
 import Docker from "dockerode";
@@ -456,6 +457,34 @@ for (const framework of ["nextjs", "laravel"] as const)
           startRuntimeApplication(startup, host.dockerId, signal, resolver),
         ).rejects.toThrow();
         await dockerCommand(["stop", appId]);
+        await dockerCommand(["stop", broker.containerId]);
+        const restartedBroker = await restartRuntimeDatabaseBroker(
+          {
+            ...base,
+            action: "restart-runtime-broker",
+            nonce: crypto.randomUUID(),
+            claimToken: crypto.randomUUID(),
+            containerId: broker.containerId,
+            imageId: brokerImage.Id,
+            networkId: brokerNetwork.network!.id,
+            upstream,
+            addresses: [address],
+            runtimeRole: { user: role, password: PASSWORD },
+            certificateAuthority: await readFile(
+              join(directory, "server.crt"),
+              "utf8",
+            ),
+          },
+          host.dockerId,
+          signal,
+          resolver,
+        );
+        expect(restartedBroker.containerId).toBe(broker.containerId);
+        expect(restartedBroker.socketReady).toBe(true);
+        expect(
+          await dockerCommand(["inspect", broker.containerId]),
+        ).not.toContain(PASSWORD);
+
         expect(
           (
             await startRuntimeApplication(
