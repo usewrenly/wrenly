@@ -309,6 +309,20 @@
       "when": 1794402404960,
       "tag": "0046_production_publishing_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794498282390,
+      "tag": "0047_production_runtime_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794564899993,
+      "tag": "0048_production_maintenance_attempts",
+      "breakpoints": true
     }
   ]
 }

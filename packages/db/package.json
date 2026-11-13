@@ -27,7 +27,8 @@
     "./production-host-contract": "./src/application-databases/production-host-contract.ts",
     "./production-publishing-contract": "./src/application-databases/production-publishing-contract.ts",
     "./production-maintenance-contract": "./src/application-databases/maintenance/contract.ts",
-    "./production-project-contract": "./src/application-databases/production-project-contract.ts"
+    "./production-project-contract": "./src/application-databases/production-project-contract.ts",
+    "./production-maintenance-attempt": "./src/application-databases/maintenance/attempt.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

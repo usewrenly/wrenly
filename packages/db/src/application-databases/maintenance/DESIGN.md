@@ -15,3 +15,9 @@ and worker activation are separate callers. They must enforce current-session ch
 when enabling/revoking permission and independently load current evidence under the
 shared queue/account/project locks. Passing this pure validator alone is not authority
 to start a container. Existing deployments receive no permission automatically.
+
+Independent maintenance attempts use broker-start → application-start → route-verify.
+Each transition requires the same unexpired claim and grant revision. A pending intent
+blocks another start. Lease expiry preserves that intent as interrupted; it does not
+reclaim it or resend credentials. Host proof and persisted transactions are mandatory
+callers, not facts established by the pure journal.
