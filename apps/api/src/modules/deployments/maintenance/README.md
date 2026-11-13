@@ -36,3 +36,17 @@ second worker, stale token, withdrawn permission or expired lease cannot advance
 Expiry preserves the pending action as interrupted; no automatic retry is admitted.
 Migration 0048 stores these attempts independently of owner decisions and publication
 receipts. These helpers still do not start a scheduler or send any credential.
+
+## Host execution
+
+`services.ts` connects those saved claims to the credential loader, host helper and
+public-route verifier. `host-adapter.ts` inspects the original container IDs before
+starting a stopped process. It refuses a replacement and never resends credentials to
+a running process. `worker.ts` owns the publishing kernel lock and renews its short
+lease while the adapter runs; closing a browser does not own or cancel this work.
+
+The host helper's `broker-restart.ts` checks the daemon, image, network, storage and
+isolation policy under one host lock. It starts only the preserved broker and delivers
+its existing runtime role through stdin once. Publishing receipts remain unchanged.
+This is an execution layer, not activation of a periodic scheduler or owner controls;
+those require the remaining admission/lifecycle and end-to-end checks.

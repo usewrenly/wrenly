@@ -49,9 +49,16 @@ export async function executeMaintenance(
       signal.throwIfAborted();
       await services.assertHeld();
       const current = await services.load();
+      // Renewing ownership changes only the lease timestamp; it must not look like
+      // a changed effect or authorize different pending/completed work.
+      const currentAttempt = MaintenanceAttempt.parse(current.attempt);
+      const { leaseExpiresAt: _currentLease, ...currentIdentity } =
+        currentAttempt;
+      const { leaseExpiresAt: _intentLease, ...intentIdentity } = intent;
+      void _currentLease;
+      void _intentLease;
       if (
-        JSON.stringify(MaintenanceAttempt.parse(current.attempt)) !==
-          JSON.stringify(intent) ||
+        JSON.stringify(currentIdentity) !== JSON.stringify(intentIdentity) ||
         JSON.stringify(current.grant) !== JSON.stringify(saved.grant)
       )
         throw new Error("Maintenance permission or saved intent changed.");

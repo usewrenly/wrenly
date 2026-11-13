@@ -1,3 +1,5 @@
+import { ProductionMaintenanceGrant } from "@wrenly/db/production-maintenance-contract";
+import { performMaintenanceHostEffect } from "../maintenance/host-adapter";
 import { expect, test } from "bun:test";
 import { ProductionRuntimeHostRequest } from "@wrenly/db/production-host-contract";
 import { createHash } from "node:crypto";
@@ -11,7 +13,10 @@ import {
 } from "@wrenly/db/production-publishing-contract";
 import type { z } from "zod";
 import type { ProductionPublishingRuntimeSecrets } from "./secrets";
-import { verifyProductionRouteEffect } from "./route-adapter";
+import {
+  verifyProductionRouteEffect,
+  verifyMaintainedProductionRoute,
+} from "./route-adapter";
 function fixture() {
   const binding: ProductionPublishingBinding = {
     version: 1,
@@ -233,4 +238,124 @@ test("changed image or expired ownership refuses route work", async () => {
     }),
   ).rejects.toThrow("could not be confirmed");
   expect(requests).toHaveLength(0);
+});
+
+function maintainedFixture() {
+  const { input, requests } = fixture();
+  const publication = acknowledgeProductionPublishingEffect(
+    input.binding,
+    input.journal,
+    {
+      effect: input.effect,
+      fact: {
+        step: "route-verify",
+        url: "https://fixture.example/",
+        sourceSha256: input.binding.sourceSha256,
+      },
+      completedAt: new Date().toISOString(),
+    },
+    input.effect.claimToken,
+  );
+  const grant = ProductionMaintenanceGrant.parse({
+    version: 1,
+    id: crypto.randomUUID(),
+    revision: crypto.randomUUID(),
+    requestId: crypto.randomUUID(),
+    state: "enabled",
+    confirmedAt: new Date().toISOString(),
+    confirmedBy: {
+      ...input.binding.principal,
+      sessionId: "separate-confirmation",
+    },
+    confirmMaintenance: true,
+    binding: input.binding,
+    publication,
+  });
+  return { input, requests, grant };
+}
+test("maintenance verifies the completed publication without rewriting publishing receipts", async () => {
+  const { input, requests, grant } = maintainedFixture(),
+    original = JSON.stringify(grant.publication);
+  const effect = { id: input.effect.id, step: "route-verify" as const };
+  expect(
+    (
+      await verifyMaintainedProductionRoute({
+        ...input,
+        grant,
+        effect,
+        claimToken: crypto.randomUUID(),
+      })
+    )?.step,
+  ).toBe("route-verify");
+  expect(JSON.stringify(grant.publication)).toBe(original);
+  expect(requests).toHaveLength(3);
+  await expect(
+    verifyMaintainedProductionRoute({
+      ...input,
+      grant: { ...grant, state: "revoked" },
+      effect,
+      claimToken: crypto.randomUUID(),
+    }),
+  ).rejects.toThrow();
+});
+test("maintenance inspects ready resources without sending credentials again", async () => {
+  const { input, requests, grant } = maintainedFixture();
+  for (const step of ["broker-start", "application-start"] as const) {
+    await performMaintenanceHostEffect({
+      grant,
+      effect: { id: input.effect.id, step },
+      signal: input.signal,
+      credentials: input.credentials,
+      framework: "nextjs",
+      claimToken: crypto.randomUUID(),
+      assertHeld: input.assertHeld,
+      send: input.send,
+    });
+  }
+  expect(requests).toHaveLength(2);
+  expect(JSON.stringify(requests)).not.toContain(
+    input.credentials.database.runtimeRole.password,
+  );
+});
+test("maintenance restarts an exact stopped broker only once and refuses changed reply identity", async () => {
+  const { input, grant } = maintainedFixture();
+  let starts = 0;
+  const effect = { id: input.effect.id, step: "broker-start" as const };
+  const send: NonNullable<typeof input.send> = async (value) => {
+    const request = ProductionRuntimeHostRequest.parse(value.request);
+    if (request.action === "restart-runtime-broker") starts++;
+    return {
+      version: 1,
+      nonce: effect.id,
+      dockerId: grant.binding.dockerId,
+      containerId: "f".repeat(64),
+      imageId: input.images.appImageId,
+      networkId: "e".repeat(64),
+      volumeName: `wrenly-deployment-db-${grant.binding.deploymentId}`,
+      running: request.action === "restart-runtime-broker",
+      socketReady: request.action === "restart-runtime-broker",
+    };
+  };
+  const args = {
+    grant,
+    effect,
+    signal: input.signal,
+    credentials: input.credentials,
+    framework: "nextjs" as const,
+    claimToken: crypto.randomUUID(),
+    assertHeld: input.assertHeld,
+    send,
+  };
+  await performMaintenanceHostEffect(args);
+  expect(starts).toBe(1);
+  await expect(
+    performMaintenanceHostEffect({
+      ...args,
+      send: async (value) => ({
+        ...((await send(value)) as object),
+        containerId: "a".repeat(64),
+      }),
+    }),
+  ).rejects.toThrow("proof changed");
+  expect(starts).toBe(1);
 });

@@ -17,6 +17,7 @@ import {
 import { openRuntimeHostCredential } from "../../databases/production-targets/deployment-hosts/credentials";
 import { openProductionConnection } from "../../databases/production-targets/instance/credentials";
 import { decryptDeploymentSecret } from "@wrenly/deploy/deployment-secrets";
+import type { ProductionPublishingBinding } from "@wrenly/db/production-publishing-contract";
 import type { DeploymentClaim } from "../persistence/deployment-store";
 import {
   loadProductionPublishingRuntime,
@@ -36,25 +37,23 @@ export interface ProductionPublishingRuntimeSecrets {
   };
   appKey: string | null;
 }
-/** Load only for a currently held publishing claim; callers pass settings over authenticated stdin and never persist/log this object. */
-export async function loadProductionPublishingRuntimeSecrets(input: {
+/** Shared local secret selection requires the caller's locked publishing or maintenance authority. */
+export async function loadAuthorizedRuntimeSecrets(input: {
   database: typeof db;
-  claim: DeploymentClaim;
+  authorize: (
+    transaction: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ) => Promise<ProductionPublishingBinding>;
   directory: string;
   deploymentEncryptionKey: string;
 }): Promise<ProductionPublishingRuntimeSecrets> {
   try {
-    await loadProductionPublishingRuntime(input.database, input.claim);
     const [databaseKey, hostKey, instanceKey] = await Promise.all([
       loadDatabaseKey(join(input.directory, "database-keys"), true),
       loadDatabaseKey(join(input.directory, "production-host-keys"), true),
       loadDatabaseKey(join(input.directory, "production-instance-keys"), true),
     ]);
     return await input.database.transaction(async (tx) => {
-      const { binding } = await lockProductionPublishingRuntime(
-        tx,
-        input.claim,
-      );
+      const binding = await input.authorize(tx);
       const [resource] = await tx
         .select()
         .from(appDatabases)
@@ -131,4 +130,19 @@ export async function loadProductionPublishingRuntimeSecrets(input: {
       "Production publishing credentials could not be authenticated for this execution. Restore the original keys and review its saved setup.",
     );
   }
+}
+
+/** Publishing retains its live-session claim checks; maintenance never impersonates that session. */
+export async function loadProductionPublishingRuntimeSecrets(input: {
+  database: typeof db;
+  claim: DeploymentClaim;
+  directory: string;
+  deploymentEncryptionKey: string;
+}): Promise<ProductionPublishingRuntimeSecrets> {
+  await loadProductionPublishingRuntime(input.database, input.claim);
+  return loadAuthorizedRuntimeSecrets({
+    ...input,
+    authorize: async (tx) =>
+      (await lockProductionPublishingRuntime(tx, input.claim)).binding,
+  });
 }

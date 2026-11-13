@@ -26,3 +26,14 @@ reload the exact saved grant/journal, perform its independently implemented adap
 then acknowledge only that effect. Check cancellation and kernel-lock/lease ownership
 before and after the external call. Bound the loop by the shared step list. Any failure
 returns attention without starting a second attempt or clearing the pending intent.
+
+CONNECTED ADAPTERS: Secret selection accepts an authority callback executed inside its
+transaction. Maintenance supplies its own held grant/attempt; publishing keeps its live
+session checks. The host adapter inspects saved broker/app IDs and policies before a
+single stopped-resource restart. Running resources are never sent credentials again.
+The route adapter verifies the unchanged completed composition and public marker using
+the independent maintenance effect ID; it never modifies publishing receipts.
+The worker holds the same per-deployment kernel lock as publishing, renews independently
+of browser subscriptions, shares concurrent renewal checks, aborts on lease/authority
+loss and waits for owned work before lock release. Scheduler activation and UI remain
+gated until cross-module lifecycle blockers and joined acceptance are complete.

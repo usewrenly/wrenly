@@ -103,3 +103,15 @@ test("revocation or lost lock before the effect prevents external execution", as
   ).rejects.toThrow("Inspect");
   expect(g.calls).toHaveLength(0);
 });
+
+test("lease renewal between intent and reload preserves exact execution", async () => {
+  const f = fixture(),
+    load = f.services.load;
+  f.services.load = async () => {
+    const state = await load();
+    state.attempt.leaseExpiresAt = new Date(Date.now() + 120000).toISOString();
+    return state;
+  };
+  await executeMaintenance(f.services, new AbortController().signal);
+  expect(f.read().status).toBe("success");
+});

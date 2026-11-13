@@ -1,3 +1,4 @@
+import { productionRuntimeMaintenanceAttempts } from "@wrenly/db";
 import { accessContext } from "../auth/access/access-context";
 import {
   ProductionOperationPrincipal,
@@ -891,9 +892,10 @@ export async function verifyDatabaseSchema(database: typeof db): Promise<void> {
     await database.select().from(appDatabaseOperations).limit(1);
     await database.select().from(appDatabaseMigrations).limit(1);
     await database.select().from(appDatabaseBackups).limit(1);
+    await database.select().from(productionRuntimeMaintenanceAttempts).limit(0);
   } catch {
     throw new Error(
-      "Application database persistence is unavailable. Run bun run db:migrate from packages/db (through 0025_app-database-migration-review) before startup.",
+      "Application database persistence is unavailable. Run bun run db:migrate from packages/db (through 0048_production_maintenance_attempts) before startup.",
     );
   }
 }

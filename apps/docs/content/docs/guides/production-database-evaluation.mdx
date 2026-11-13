@@ -164,3 +164,22 @@ verified handoff rather than persisted in Docker environment variables.
 An interrupted final route check has a narrow [read-only reconciliation command](/docs/reference/publishing-operations#verify-an-interrupted-production-database-publication).
 It does not recover an earlier uncertain service creation, credential delivery or SQL
 operation. Keep those blockers and saved evidence intact; do not replay unknown work.
+
+## Restart verification and its limits
+
+A published app needs its database connection even after its owner's browser closes.
+The feature branch includes a separately confirmed maintenance permission and an
+independent restart journal. It can inspect the original broker and app, restart
+those exact stopped containers and verify the original published revision. It refuses
+replacement containers and never resends credentials to an already-running process.
+
+Native acceptance covers both Next.js and Laravel with private TLS PostgreSQL:
+create a record, update it, stop the exact app and broker, restore them and read the
+same record. Runtime passwords stay out of Docker configuration. This proves the
+framework and host-helper path; it does not establish periodic automatic maintenance
+or completion of the real Coolify acceptance gate.
+
+Maintenance scheduling and browser controls are not enabled by these helpers alone.
+Keep Production evaluation opt-in and retain the Experimental label until the complete
+workflow has passed. Apply all checked-in migrations before starting the feature
+branch; migrations 0047 and 0048 add permission receipts and restart attempts.

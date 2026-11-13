@@ -82,13 +82,14 @@ async function lockOwner(
 export async function verifyMaintenancePublication(
   tx: Transaction,
   grant: ProductionMaintenanceGrant,
+  ownMaintenanceAttemptId?: string,
 ): Promise<void> {
   const b = grant.binding;
   await requireDatabaseProjectIdle(tx, b.projectId);
-  if (await hasDatabaseWork(tx, b.projectId))
+  if (await hasDatabaseWork(tx, b.projectId, ownMaintenanceAttemptId))
     throw new DeploymentStoreError(
       409,
-      "Finish or recover database work before enabling maintenance.",
+      "Finish or recover unfinished database work before enabling maintenance.",
     );
   const [publication] = await tx
     .select()

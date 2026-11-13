@@ -1,3 +1,6 @@
+import { runMaintenanceClaim } from "./worker";
+import { loadMaintenanceClaim } from "./claims";
+import { hasDatabaseWork } from "../../databases/database-store";
 import {
   claimMaintenance,
   advanceMaintenance,
@@ -365,6 +368,31 @@ check(
       await renewMaintenance(database, claim);
       await advanceMaintenance(database, claim, pending.pending!.id);
     }
+    const workerClaim = await claimMaintenance(
+      database,
+      deploymentId,
+      revision,
+    );
+    const performed: string[] = [];
+    await runMaintenanceClaim({
+      database,
+      claim: workerClaim,
+      signal: new AbortController().signal,
+      services: (assertHeld) => ({
+        load: () => loadMaintenanceClaim(database, workerClaim),
+        begin: () => advanceMaintenance(database, workerClaim),
+        acknowledge: (id) => advanceMaintenance(database, workerClaim, id),
+        assertHeld,
+        perform: async ({ effect }) => {
+          performed.push(effect.step);
+        },
+      }),
+    });
+    expect(performed).toEqual([
+      "broker-start",
+      "application-start",
+      "route-verify",
+    ]);
     const uncertain = await claimMaintenance(database, deploymentId, revision);
     const pending = await advanceMaintenance(database, uncertain);
     await database
@@ -399,9 +427,14 @@ check(
       .where(eq(schema.productionRuntimeMaintenanceAttempts.id, uncertain.id));
     expect(saved!.journal.status).toBe("interrupted");
     expect(saved!.journal.pending).toEqual(pending.pending);
+    expect(await hasDatabaseWork(database, projectId)).toBe(true);
     await expect(
       claimMaintenance(database, deploymentId, revision),
     ).rejects.toThrow("unfinished");
+    // Only this test's interrupted fixture is removed after proving the lifecycle fence.
+    await database
+      .delete(schema.productionRuntimeMaintenanceAttempts)
+      .where(eq(schema.productionRuntimeMaintenanceAttempts.id, uncertain.id));
   },
 );
 check(

@@ -32,6 +32,7 @@ async function authority(
   tx: Transaction,
   deploymentId: string,
   revision: string,
+  ownMaintenanceAttemptId?: string,
 ): Promise<ProductionMaintenanceGrant> {
   const [row] = await tx
     .select()
@@ -65,7 +66,7 @@ async function authority(
       409,
       "Maintenance permission changed or is inactive.",
     );
-  await verifyMaintenancePublication(tx, grant);
+  await verifyMaintenancePublication(tx, grant, ownMaintenanceAttemptId);
   return grant;
 }
 /** Explicit scheduler admission refuses every unfinished attempt, including expired claims with unknown effects. */
@@ -110,14 +111,12 @@ export async function claimMaintenance(
       pending: null,
       completed: [],
     });
-    await tx
-      .insert(productionRuntimeMaintenanceAttempts)
-      .values({
-        id,
-        deploymentId,
-        projectId: grant.binding.projectId,
-        journal,
-      });
+    await tx.insert(productionRuntimeMaintenanceAttempts).values({
+      id,
+      deploymentId,
+      projectId: grant.binding.projectId,
+      journal,
+    });
     return {
       id,
       deploymentId,
@@ -131,7 +130,12 @@ async function held(
   tx: Transaction,
   claim: MaintenanceClaim,
 ): Promise<MaintenanceAttempt> {
-  const grant = await authority(tx, claim.deploymentId, claim.grantRevision);
+  const grant = await authority(
+    tx,
+    claim.deploymentId,
+    claim.grantRevision,
+    claim.id,
+  );
   const [row] = await tx
     .select()
     .from(productionRuntimeMaintenanceAttempts)
@@ -234,4 +238,26 @@ export async function recordMaintenanceExpiry(
       .set({ journal: expireMaintenanceAttempt(journal, now), updatedAt: now })
       .where(eq(productionRuntimeMaintenanceAttempts.id, claim.id));
   });
+}
+
+/** Used inside the credential transaction so changed authority cannot be separated from secret selection. */
+export async function lockMaintenanceClaim(
+  tx: Transaction,
+  claim: MaintenanceClaim,
+): Promise<{ grant: ProductionMaintenanceGrant; attempt: MaintenanceAttempt }> {
+  await lockDatabaseQueues(tx);
+  const attempt = await held(tx, claim);
+  const grant = await authority(
+    tx,
+    claim.deploymentId,
+    claim.grantRevision,
+    claim.id,
+  );
+  return { grant, attempt };
+}
+export async function loadMaintenanceClaim(
+  database: typeof db,
+  claim: MaintenanceClaim,
+): Promise<{ grant: ProductionMaintenanceGrant; attempt: MaintenanceAttempt }> {
+  return database.transaction((tx) => lockMaintenanceClaim(tx, claim));
 }

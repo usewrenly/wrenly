@@ -11,7 +11,10 @@ import {
   ProductionRuntimeApplicationReply,
   ProductionRuntimeBrokerInspectionReply,
 } from "@wrenly/db/production-host-contract";
-import { validateProductionPublishingJournal } from "@wrenly/db/production-publishing-contract";
+import {
+  validateProductionPublishingJournal,
+  PRODUCTION_PUBLISHING_STEPS,
+} from "@wrenly/db/production-publishing-contract";
 import { executeRuntimeHostRequest } from "../../databases/production-targets/deployment-hosts/transport";
 import { verifyDeploymentReadiness } from "../../../../../../packages/deploy/src/providers/coolify/readiness";
 import type { ProductionRuntimeCoordinator } from "./executor";
@@ -20,7 +23,7 @@ import type { ProductionServiceImages } from "./service-adapter";
 type Input = Parameters<ProductionRuntimeCoordinator["perform"]>[0];
 const ImageId = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 /** This performs one read-only proof attempt. The worker may poll readiness, but never repeats a prior runtime mutation. */
-export async function verifyProductionRouteEffect(
+async function verifyRuntimeRoute(
   input: Input & {
     client: DeploymentProviderClient;
     images: ProductionServiceImages;
@@ -29,6 +32,7 @@ export async function verifyProductionRouteEffect(
     assertHeld: () => Promise<void>;
     send?: typeof executeRuntimeHostRequest;
     ready?: typeof verifyDeploymentReadiness;
+    maintenance?: import("@wrenly/db/production-maintenance-contract").ProductionMaintenanceGrant;
   },
 ): Promise<Awaited<
   ReturnType<ProductionRuntimeCoordinator["perform"]>
@@ -40,7 +44,14 @@ export async function verifyProductionRouteEffect(
     app = saved.completed[6]?.fact;
   if (
     effect.step !== "route-verify" ||
-    JSON.stringify(saved.pending) !== JSON.stringify(effect) ||
+    (input.maintenance
+      ? input.maintenance.state !== "enabled" ||
+        JSON.stringify(input.maintenance.binding) !== JSON.stringify(binding) ||
+        JSON.stringify(input.maintenance.publication) !==
+          JSON.stringify(saved) ||
+        saved.pending !== null ||
+        saved.completed.length !== PRODUCTION_PUBLISHING_STEPS.length
+      : JSON.stringify(saved.pending) !== JSON.stringify(effect)) ||
     service?.step !== "service-create" ||
     broker?.step !== "broker-start" ||
     app?.step !== "application-start" ||
@@ -160,4 +171,39 @@ export async function verifyProductionRouteEffect(
       "Production route could not be confirmed. Its saved publishing intent is preserved.",
     );
   }
+}
+
+/** Publishing requires its exact pending route intent. */
+export async function verifyProductionRouteEffect(
+  input: Omit<Parameters<typeof verifyRuntimeRoute>[0], "maintenance">,
+): ReturnType<typeof verifyRuntimeRoute> {
+  return verifyRuntimeRoute({ ...input, maintenance: undefined });
+}
+/** Maintenance checks the unchanged completed publication using its own separately persisted effect identity. */
+export async function verifyMaintainedProductionRoute(
+  input: Omit<
+    Parameters<typeof verifyRuntimeRoute>[0],
+    "binding" | "journal" | "effect" | "maintenance"
+  > & {
+    grant: import("@wrenly/db/production-maintenance-contract").ProductionMaintenanceGrant;
+    effect: NonNullable<
+      import("@wrenly/db/production-maintenance-attempt").MaintenanceAttempt["pending"]
+    >;
+    claimToken: string;
+  },
+): ReturnType<typeof verifyRuntimeRoute> {
+  if (input.effect.step !== "route-verify")
+    throw new Error("Maintenance route effect changed.");
+  return verifyRuntimeRoute({
+    ...input,
+    binding: input.grant.binding,
+    journal: input.grant.publication,
+    maintenance: input.grant,
+    effect: {
+      id: input.effect.id,
+      step: "route-verify",
+      claimToken: input.claimToken,
+      startedAt: new Date().toISOString(),
+    },
+  });
 }
