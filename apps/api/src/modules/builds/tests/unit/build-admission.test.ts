@@ -214,3 +214,11 @@ test("explicit Development choice is opt-in, identity-bound and cannot override 
   expect(GenerateRequestSchema.safeParse({ projectId: PROJECT_ID, prompt: "Build", database: { ...database, password: "PRIVATE" } }).success).toBe(false);
   expect(GenerateRequestSchema.safeParse({ projectId: PROJECT_ID, prompt: "Build", database: { ...database, environment: "production" } }).success).toBe(false);
 });
+
+test("build request identity includes attachment ordering and retry cannot replace files", () => {
+  const base = GenerateRequestSchema.parse({ projectId: PROJECT_ID, prompt: "Build" });
+  const first = crypto.randomUUID(), second = crypto.randomUUID();
+  expect(buildRequestIdentity({ ...base, attachmentIds: [first, second] })).not.toBe(buildRequestIdentity({ ...base, attachmentIds: [second, first] }));
+  expect(buildRequestIdentity(base)).not.toBe(buildRequestIdentity({ ...base, attachmentIds: [first] }));
+  expect(GenerateRequestSchema.safeParse({ projectId: PROJECT_ID, retryBuildId: BUILD_ID, attachmentIds: [first] }).success).toBe(false);
+});

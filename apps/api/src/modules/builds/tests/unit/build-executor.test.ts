@@ -292,3 +292,24 @@ test("actual generation boundaries preserve attempt identity and persistence fai
   ).rejects.toThrow("Lost persistence");
   expect(failing.requests).toHaveLength(1);
 });
+
+test("saved references resolve once and remain identical through repair attempts", async () => {
+  const f = fixture();
+  f.claim.input.attachmentsV1 = { version: 1, files: [{ id: crypto.randomUUID(), objectId: crypto.randomUUID(), name: "reference.txt", mediaType: "text/plain", byteLength: 1, sha256: "a".repeat(64) }] };
+  let resolutions = 0;
+  const payload = { version: 1 as const, files: [{ mediaType: "text/plain" as const, dataBase64: "YQ==", sha256: "a".repeat(64) }] };
+  f.dependencies.resolveAttachments = async snapshot => { expect(snapshot.files[0]?.id).toBe(f.claim.input.attachmentsV1?.files[0]?.id); resolutions++; return payload; };
+  let validations = 0;
+  f.dependencies.validate = async () => (++validations === 1 ? { success: false, output: "Repair needed" } : { success: true, output: "Compiled" });
+  const outcome = await executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies);
+  expect(outcome.status).toBe("success");
+  expect(resolutions).toBe(1);
+  expect(f.requests).toHaveLength(2);
+  expect(f.requests.every(request => request.attachments_v1 === payload)).toBe(true);
+});
+test("missing reference resolution stops before inference instead of dropping files", async () => {
+  const f = fixture();
+  f.claim.input.attachmentsV1 = { version: 1, files: [{ id: crypto.randomUUID(), objectId: crypto.randomUUID(), name: "reference.txt", mediaType: "text/plain", byteLength: 1, sha256: "a".repeat(64) }] };
+  await expect(executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).rejects.toThrow("No attachment was dropped");
+  expect(f.requests).toHaveLength(0);
+});

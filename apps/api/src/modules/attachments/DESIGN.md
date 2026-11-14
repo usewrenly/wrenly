@@ -63,3 +63,17 @@ STEPS:
    EDGE CASES: Exact upload replay removes only the extra newly created object after confirmed save.
    ERROR STATES: Format/size/content errors are explicit; unknown persistence never pretends success.
    These factories are internal until request execution and UI are connected.
+
+COMPONENT: Frozen request propagation
+PURPOSE: Ensure conversation/build/retry uses the references selected at admission.
+INPUTS: Explicit attachment IDs or a trusted server-frozen snapshot from a conversation.
+OUTPUTS: Saved immutable metadata, claimed references and a verified versioned MCP payload.
+STEPS:
+
+1. Bind personal references within existing queue/account/project admission transactions.
+2. Validate configured model capability before committing; missing validation rejects attachments.
+3. Carry snapshots from conversations to builds and retain originals on explicit retry.
+4. Resolve bytes once for an owned build claim and reuse them through repair attempts.
+5. Negotiate MCP attachment version, validate both ends and bound complete tool request size.
+   EDGE CASES: Historical jobs have empty snapshots; unsupported MCP servers never drop files.
+   ERROR STATES: Missing storage or references fails before inference; no substitute files/model.

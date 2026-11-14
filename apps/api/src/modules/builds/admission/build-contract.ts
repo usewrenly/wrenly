@@ -7,6 +7,7 @@ import { z } from "zod";
 import { BuildDatabaseSelection } from "@wrenly/db/app-database-build-contract";
 export const GenerateRequestSchema = z
   .object({
+    attachmentIds: z.array(z.string().uuid()).max(4).refine(ids => new Set(ids).size === ids.length).optional(),
     prompt: z.string().min(1).max(10_000).optional(),
     projectId: z.string().uuid(),
     stack: z.enum(["nextjs", "laravel", "vue", "django"]).optional(),
@@ -33,7 +34,8 @@ export const GenerateRequestSchema = z
       });
     if (
       input.retryBuildId &&
-      (input.prompt !== undefined ||
+      (input.attachmentIds !== undefined ||
+        input.prompt !== undefined ||
         input.stack !== undefined ||
         input.model !== undefined ||
         input.provider !== undefined ||

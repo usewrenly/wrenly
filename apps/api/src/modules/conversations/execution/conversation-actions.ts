@@ -69,7 +69,7 @@ export async function admitConversationBuildAction(
   value: unknown,
   settings: Pick<
     AdmissionDependencies,
-    "resolveProvider" | "defaultModel" | "resolveSelection"
+    "resolveProvider" | "defaultModel" | "resolveSelection" | "validateAttachments"
   >,
 ): Promise<string> {
   try {
@@ -116,7 +116,7 @@ export async function admitConversationBuildAction(
         },
         turn.actorId,
         crypto.randomUUID(),
-        { ...settings, db: database, transaction, frozenSkills: turn.skillsV1, databaseSelection: turn.databaseV1 ?? undefined },
+        { ...settings, db: database, transaction, frozenSkills: turn.skillsV1, frozenAttachments: turn.attachmentsV1, databaseSelection: turn.databaseV1 ?? undefined },
       );
       await saveProposal(transaction, turn, decision.content);
       await transaction
