@@ -1,3 +1,4 @@
+import { matchesRuntimeEnvironment } from "./runtime-environment";
 /** Verify the public HTTP relay independently; generated applications never receive its network access. */
 import { z } from "zod";
 import {
@@ -123,7 +124,7 @@ export function inspectProductionIngressContainer(
       Object.entries(labels).some(
         ([key, value]) => container.Config.Labels[key] !== value,
       ) ||
-      !same(container.Config.Env, image.Config.Env) ||
+      !matchesRuntimeEnvironment(container.Config.Env, image.Config.Env, container.Config.Labels, scope.deploymentId, "ingress") ||
       !same(container.Config.Entrypoint, [
         "bun",
         "--no-env-file",

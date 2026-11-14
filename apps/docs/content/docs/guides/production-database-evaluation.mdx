@@ -31,6 +31,11 @@ You need all of the following before enabling the flag:
 - The exact trusted broker image and Wrenly host helper installed on that deployment
   host. The host must also be able to pull the private app and HTTP relay images.
 
+Coolify adds service metadata automatically. Leave those generated fields intact;
+Wrenly checks their identity separately from the application image. Adding passwords,
+custom runtime variables or changing image settings causes verification to stop.
+Database credentials use the protected host connection, not Coolify environment fields.
+
 Public hosted database connectors are not part of this path. Do not substitute a
 public endpoint, disable TLS verification or grant generated code network access.
 

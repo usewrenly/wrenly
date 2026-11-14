@@ -85,3 +85,9 @@ maintenance and save the Stop intent; inspecting this helper's result cannot gra
 restart permission. Install the matching current `runtime-host.js` bundle before
 using these commands. An older helper rejects unknown actions rather than falling
 back to a shell command.
+
+Coolify adds a fixed set of service metadata to deployed containers.
+`runtime-environment.ts` checks those fields separately: image settings must remain
+unchanged, service identifiers must match the selected deployment, and unknown
+environment additions still fail. This allows provider bookkeeping without allowing
+a database password, `NODE_OPTIONS`, or another runtime override through inspection.

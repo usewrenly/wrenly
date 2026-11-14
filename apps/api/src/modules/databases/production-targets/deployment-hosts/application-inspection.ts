@@ -1,3 +1,4 @@
+import { matchesRuntimeEnvironment } from "./runtime-environment";
 /** Inspect the created application before delivering a runtime password to its trusted guardian. */
 import { z } from "zod";
 import {
@@ -128,7 +129,7 @@ export function inspectProductionApplicationContainer(
       ]) ||
       !equal(container.Config.Entrypoint, image.Config.Entrypoint) ||
       !equal(container.Config.Cmd, image.Config.Cmd) ||
-      !equal(container.Config.Env, image.Config.Env)
+      !matchesRuntimeEnvironment(container.Config.Env, image.Config.Env, container.Config.Labels, scope.deploymentId, "application")
     )
       throw new Error("Application startup changed.");
     const host = container.HostConfig;
