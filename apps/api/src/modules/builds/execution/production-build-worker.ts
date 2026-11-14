@@ -1,3 +1,5 @@
+import { attachmentExecutionContent } from "../../attachments/production-services";
+import { resolve } from "node:path";
 /**
  * Production build worker startup and shutdown.
  * Checks required storage, connects real MCP/Docker operations and forwards validation logs.
@@ -87,6 +89,7 @@ export async function startProductionBuildWorker(
   const validateSelected = options.databaseValidation ? createDatabaseBuildValidator(database, validate) : validate;
   const dependencies = createBuildWorkerDependencies(database, {
     generate: (stack, input, signal) => callAgent(stack, input, signal),
+    resolveAttachments: snapshot => attachmentExecutionContent(resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly"), snapshot),
     streamsValidationLogs: true,
     databaseValidation: options.databaseValidation === true,
     validate: async (files, claim, signal, attempt) => {

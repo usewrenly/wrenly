@@ -18,7 +18,10 @@ export interface StoredAttachmentObject {
 }
 
 export interface AttachmentObjectStore {
-  write(bytes: Uint8Array): Promise<StoredAttachmentObject>;
+  write(
+    bytes: Uint8Array,
+    reservedId?: string,
+  ): Promise<StoredAttachmentObject>;
   read(object: StoredAttachmentObject): Promise<Uint8Array>;
   remove(id: string): Promise<void>;
 }
@@ -56,11 +59,11 @@ export async function createAttachmentObjectStore(
       throw new Error("Attachment storage identity changed.");
   };
   return {
-    async write(bytes) {
+    async write(bytes, reservedId) {
       if (!bytes.length || bytes.length > MAX_OBJECT_BYTES)
         throw new Error("Attachment object exceeds its budget.");
       await verifyRoot();
-      const id = randomUUID();
+      const id = reservedId ?? randomUUID();
       const target = path(id);
       const handle = await open(
         target,

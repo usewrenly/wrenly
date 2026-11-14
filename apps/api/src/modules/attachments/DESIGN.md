@@ -15,7 +15,7 @@ STEPS:
    ERROR STATES: Invalid/corrupt/animated/oversized/cancelled input yields no stored object.
 
 The image worker does not perform authorization, storage, network requests or inference.
-Those are separate responsibilities and no upload route is active until they are wired.
+Production HTTP adapters connect those responsibilities without granting decoder networking.
 
 COMPONENT: Canonical object store
 PURPOSE: Retain exact private bytes independently of original filenames.
@@ -31,7 +31,7 @@ STEPS:
    EDGE CASES: Missing cleanup targets are idempotent; changed content is never substituted.
    ERROR STATES: Unsafe permissions, changed identity or corrupt content fail closed.
    The instance account and private parent directories are trusted; this is not a defense
-   against a compromised host administrator. No abandoned-file sweeper is activated here.
+   against a compromised host administrator. Cleanup receives only durable tombstoned IDs.
 
 COMPONENT: Durable upload ownership
 PURPOSE: Keep unsubmitted files personal and bind submitted files to exactly one saved request.
@@ -57,12 +57,12 @@ STEPS:
 
 1. Authenticate and validate origin before consuming the body.
 2. Bound streamed bytes and read duration, sanitize according to actual content.
-3. Save canonical bytes and durable ownership; preserve bytes on uncertain metadata saves.
+3. Reserve durable ownership before writing bytes; verify the stored object before marking it ready.
 4. Hide storage object IDs from browser metadata and recheck authorization after file reads.
 5. Remove only unbound upload metadata; cleanup handles retained byte objects separately.
-   EDGE CASES: Exact upload replay removes only the extra newly created object after confirmed save.
+   EDGE CASES: Exact upload replay uses its reserved object identity and verifies existing bytes.
    ERROR STATES: Format/size/content errors are explicit; unknown persistence never pretends success.
-   These factories are internal until request execution and UI are connected.
+   Production mounts these factories behind the existing authenticated API middleware.
 
 COMPONENT: Frozen request propagation
 PURPOSE: Ensure conversation/build/retry uses the references selected at admission.
@@ -77,3 +77,33 @@ STEPS:
 5. Negotiate MCP attachment version, validate both ends and bound complete tool request size.
    EDGE CASES: Historical jobs have empty snapshots; unsupported MCP servers never drop files.
    ERROR STATES: Missing storage or references fails before inference; no substitute files/model.
+
+COMPONENT: Upload completion and cleanup
+PURPOSE: Keep interrupted file writes unusable and discoverable for bounded cleanup.
+INPUTS: Reserved metadata, verified object bytes, expiry and tombstoned object IDs.
+OUTPUTS: Ready references or idempotent private-file removal.
+STEPS:
+
+1. Commit a pending ownership reservation before opening an exclusive file.
+2. Verify exact length/hash, then mark the unexpired actor-owned reservation ready.
+3. Refuse pending references at reads, acknowledgement lookup and request binding.
+4. Every minute expire a bounded page of abandoned uploads and unlink a bounded page
+   of tombstoned objects. Revisit tombstones so a late interrupted write is removed.
+5. Wait for in-flight cleanup on shutdown; never remove retained project references.
+   EDGE CASES: Unknown reservation outcomes write no bytes; incomplete existing files are
+   not overwritten. Remove and select the file again if an explicit retry cannot verify it.
+   ERROR STATES: Cleanup failure retains durable evidence and retries the same page.
+
+COMPONENT: Composer references and image capability
+PURPOSE: Let users deliberately send reference files through their selected model.
+INPUTS: Explicit file selection, upload acknowledgements and owner-reviewed model IDs.
+OUTPUTS: Ready chips, exact submitted IDs and authorized conversation links.
+STEPS:
+
+1. Share one upload controller between Home and workspace composers.
+2. Disable Send while selected uploads are incomplete; retain identities for explicit retry.
+3. Carry Home IDs through its project handoff and clear chips only after accepted submission.
+4. Owners save exact image-capable model IDs with an independent revision check.
+5. Check current capability at admission and execution; empty lists remain text-only.
+   EDGE CASES: Stale capability editors must reload settings before saving; no automatic model switch.
+   ERROR STATES: Upload and model errors remain actionable; no failed image is silently omitted.

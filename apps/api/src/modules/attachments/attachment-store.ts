@@ -10,7 +10,10 @@ import {
   ATTACHMENT_LIMITS,
 } from "@wrenly/inference";
 import { assertActiveAccount } from "../auth/access/access-policy";
-import { requireProjectCapability } from "../projects/access/project-access";
+import {
+  ProjectAccessError,
+  requireProjectCapability,
+} from "../projects/access/project-access";
 import type { StoredAttachmentObject } from "./storage/object-store";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -52,6 +55,7 @@ export async function saveAttachmentUpload(
   actorId: string,
   input: {
     requestId: string;
+    pending?: boolean;
     name: string;
     mediaType: AttachmentReference["mediaType"];
     object: StoredAttachmentObject;
@@ -131,6 +135,7 @@ export async function saveAttachmentUpload(
         sha256: input.object.sha256,
         byteLength: input.object.byteLength,
         mediaType: input.mediaType,
+        readyAt: input.pending ? null : new Date(),
         name: input.name,
         expiresAt: new Date(Date.now() + ATTACHMENT_LIMITS.abandonedLifetimeMs),
       })
@@ -174,6 +179,7 @@ export async function bindRequestAttachments(
       .for("update");
     if (
       !row ||
+      !row.readyAt ||
       (row.boundRequestId &&
         (row.boundRequestId !== requestId || row.projectId !== projectId)) ||
       (!row.boundRequestId && row.expiresAt <= new Date())
@@ -210,10 +216,18 @@ export async function readAttachmentReference(
       .where(
         and(eq(promptAttachments.id, id), isNull(promptAttachments.removedAt)),
       );
-    if (!row) throw new AttachmentStoreError(404, "Attachment not found.");
-    if (row.projectId && row.boundRequestId)
-      await requireProjectCapability(tx, row.projectId, actorId, "read");
-    else if (row.ownerId !== actorId || row.expiresAt <= new Date())
+    if (!row || !row.readyAt)
+      throw new AttachmentStoreError(404, "Attachment not found.");
+    if (row.projectId && row.boundRequestId) {
+      try {
+        await requireProjectCapability(tx, row.projectId, actorId, "read");
+      } catch (error) {
+        // A denied project reference must not reveal whether another member's file exists.
+        if (error instanceof ProjectAccessError)
+          throw new AttachmentStoreError(404, "Attachment not found.");
+        throw error;
+      }
+    } else if (row.ownerId !== actorId || row.expiresAt <= new Date())
       throw new AttachmentStoreError(404, "Attachment not found.");
     return reference(row);
   });
@@ -239,7 +253,8 @@ export async function removeAttachmentUpload(
         ),
       )
       .for("update");
-    if (!row) throw new AttachmentStoreError(404, "Attachment not found.");
+    if (!row || !row.readyAt)
+      throw new AttachmentStoreError(404, "Attachment not found.");
     if (row.boundRequestId)
       throw new AttachmentStoreError(
         409,
@@ -272,7 +287,11 @@ export async function findAttachmentUpload(
           isNull(promptAttachments.removedAt),
         ),
       );
-    if (!row || (!row.boundRequestId && row.expiresAt <= new Date()))
+    if (
+      !row ||
+      !row.readyAt ||
+      (!row.boundRequestId && row.expiresAt <= new Date())
+    )
       return null;
     return reference(row);
   });
@@ -328,4 +347,40 @@ export async function attachmentCleanupCandidates(
     )
     .orderBy(asc(promptAttachments.id))
     .limit(32);
+}
+
+/** Completes only a previously reserved upload after its exact bytes have been flushed and verified. */
+export async function completeAttachmentUpload(
+  database: typeof db,
+  actorId: string,
+  id: string,
+): Promise<AttachmentReference> {
+  return database.transaction(async (tx) => {
+    await assertActiveAccount(tx, actorId);
+    const [row] = await tx
+      .select()
+      .from(promptAttachments)
+      .where(
+        and(
+          eq(promptAttachments.id, Identifier.parse(id)),
+          eq(promptAttachments.ownerId, actorId),
+        ),
+      )
+      .for("update");
+    if (
+      !row ||
+      row.removedAt ||
+      (!row.boundRequestId && row.expiresAt <= new Date())
+    )
+      throw new AttachmentStoreError(
+        409,
+        "This upload expired or was removed. Upload the file again.",
+      );
+    if (!row.readyAt)
+      await tx
+        .update(promptAttachments)
+        .set({ readyAt: new Date() })
+        .where(eq(promptAttachments.id, row.id));
+    return reference(row);
+  });
 }

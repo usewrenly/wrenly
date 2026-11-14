@@ -1,3 +1,4 @@
+import type { AttachmentHttpHandlers } from "./modules/attachments/attachment-http";
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
 import type { ProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
 import type { DraftHandlers } from "./modules/projects/drafts/draft-http"
@@ -35,6 +36,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  attachments?: AttachmentHttpHandlers;
   projectDatabases?: { status: ProjectHandler; view: ProjectHandler; actions?: DatabaseCommandHandlers; migrationReview?: ProjectHandler; recoveryReview?: ProjectHandler; recovery?: DatabaseCommandHandlers }
   skills?: SkillHandlers
   projectSkills?: ProjectSkillHandlers
@@ -109,6 +111,13 @@ export function createApp(
       timestamp: new Date().toISOString(),
     }),
   )
+  if (handlers.attachments) {
+    const attachments = handlers.attachments;
+    app.post('/api/attachments', c => attachments.upload(c.req.raw));
+    app.get('/api/attachments/uploads/:requestId', c => attachments.uploadStatus(c.req.raw, c.req.param('requestId')));
+    app.get('/api/attachments/:id', c => attachments.read(c.req.raw, c.req.param('id')));
+    app.delete('/api/attachments/:id', c => attachments.remove(c.req.raw, c.req.param('id')));
+  }
   if (handlers.profilePictures) {
     const pictures = handlers.profilePictures
     app.get('/api/account/profile-picture', c => pictures.metadata(c.req.raw))

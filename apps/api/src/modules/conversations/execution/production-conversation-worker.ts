@@ -1,3 +1,4 @@
+import { attachmentExecutionContent, validateAttachmentExecution, attachmentAdmissionValidator } from "../../attachments/production-services";
 /**
  * Connecting conversation workers to real server services.
  * Resolves the frozen provider, uses shared safe inference transport and separates answers from build actions.
@@ -51,7 +52,7 @@ export async function verifyConversationSchema(
       .from(conversations)
       .limit(1);
     await database
-      .select({ id: conversationTurns.id, actorId: conversationTurns.actorId, databaseV1: conversationTurns.databaseV1 })
+      .select({ id: conversationTurns.id, actorId: conversationTurns.actorId, databaseV1: conversationTurns.databaseV1, attachmentsV1: conversationTurns.attachmentsV1 })
       .from(conversationTurns)
       .limit(1);
     await database
@@ -81,7 +82,7 @@ export async function verifyConversationSchema(
       .limit(1);
   } catch {
     throw new Error(
-      "Conversation persistence requires migrations through 0035. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
+      "Conversation persistence requires migrations through 0038. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
     );
   }
 }
@@ -115,8 +116,11 @@ export async function startProductionConversationWorker(
               "The selected provider is no longer configured. Select another provider and submit a new message.",
             );
           }
+          const directory = resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly");
+          const attachments = await attachmentExecutionContent(directory, claim.input.attachmentsV1);
+          await validateAttachmentExecution(database, claim.input.provider, claim.input.model, attachments);
           return inferConversationDecision(
-            { context, model: claim.input.model, mode: claim.input.mode },
+            { context, model: claim.input.model, mode: claim.input.mode, attachments },
             provider,
             signal,
             createInferenceFetch({
@@ -130,6 +134,7 @@ export async function startProductionConversationWorker(
           if (decision.type === "propose_build")
             await admitConversationBuildAction(database, claim, decision, {
               resolveProvider: getProvider,
+              validateAttachments: attachmentAdmissionValidator(resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly")),
               resolveSelection: (provider, model, transaction) =>
                 resolveInferenceSelection(transaction, provider, model),
               defaultModel: claim.input.model,

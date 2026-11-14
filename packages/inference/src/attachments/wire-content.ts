@@ -10,7 +10,7 @@ export interface AttachmentWireContent {
   }>;
 }
 // Leave space under the SDK's 10 MiB stdio buffer for source, skills and JSON framing.
-export const MAX_ATTACHMENT_WIRE_BYTES = 8 * 1024 * 1024;
+export const MAX_ATTACHMENT_WIRE_BYTES = 7 * 1024 * 1024;
 export const MAX_ATTACHMENT_TOOL_REQUEST_BYTES = 9 * 1024 * 1024;
 export const ATTACHMENT_WIRE_SCHEMA = {
   type: "object",

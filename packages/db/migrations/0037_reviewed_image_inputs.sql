@@ -1,0 +1,2 @@
+ALTER TABLE "provider_connections" ADD COLUMN "image_model_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "provider_connections" ADD COLUMN "image_input_revision" uuid DEFAULT gen_random_uuid() NOT NULL;

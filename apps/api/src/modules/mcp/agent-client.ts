@@ -1,3 +1,4 @@
+import { validateAttachmentExecution } from "../attachments/production-services";
 import type { AttachmentWireContent } from "@wrenly/inference";
 import type { SkillGuidance } from "@wrenly/inference";
 // Starts the selected framework MCP server for one build attempt. MCP is the
@@ -110,6 +111,7 @@ export async function callAgent(
     throw new Error(`No MCP server registered for stack "${stack}".`);
   try {
     const { db } = await import("@wrenly/db");
+    await validateAttachmentExecution(db, input.provider ?? "", input.model ?? "", input.attachments_v1);
     return await generateWithMcp(
       {
         ...config,

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 /** Authenticated binary uploads stay separate from prompt submission and never call a model. */
 import { z } from "zod";
 import {
@@ -30,6 +31,7 @@ const UploadQuery = z.object({
 const PRIVATE_HEADERS = {
   "Cache-Control": "no-store",
   "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'; sandbox",
 };
 export interface AttachmentHttpDependencies {
   webUrl: string;
@@ -40,12 +42,14 @@ export interface AttachmentHttpDependencies {
     actorId: string,
     input: {
       requestId: string;
+      pending?: boolean;
       name: string;
       mediaType: AttachmentReference["mediaType"];
       object: { id: string; sha256: string; byteLength: number };
     },
   ): Promise<{ file: AttachmentReference; replayed: boolean }>;
   read(actorId: string, id: string): Promise<AttachmentReference>;
+  complete(actorId: string, id: string): Promise<AttachmentReference>;
   findUpload(
     actorId: string,
     requestId: string,
@@ -187,16 +191,35 @@ export function createAttachmentHttpHandlers(
           : await dependencies.decodeImage(bytes, request.signal);
         if (canonical.length > MAX_CANONICAL_IMAGE_BYTES)
           throw new AttachmentPolicyError("The processed file is too large.");
-        const object = await dependencies.objects.write(canonical);
-        // A failed save can have committed remotely. Preserve bytes for reconciliation instead of deleting blindly.
+        const object = {
+          id: randomUUID(),
+          sha256: createHash("sha256").update(canonical).digest("hex"),
+          byteLength: canonical.length,
+        };
+        // Reserve ownership before writing bytes: an uncertain save can never leave an untracked private file.
         const result = await dependencies.save(actor, {
           requestId: parsed.data.requestId,
           name,
           mediaType,
           object,
+          pending: true,
         });
-        if (result.replayed && result.file.objectId !== object.id)
-          await dependencies.objects.remove(object.id);
+        try {
+          await dependencies.objects.write(canonical, result.file.objectId);
+        } catch (error) {
+          if (!(
+            error instanceof Error &&
+            "code" in error &&
+            error.code === "EEXIST"
+          ))
+            throw error;
+        }
+        await dependencies.objects.read({
+          id: result.file.objectId,
+          sha256: result.file.sha256,
+          byteLength: result.file.byteLength,
+        });
+        await dependencies.complete(actor, result.file.id);
         return json(
           { file: visible(result.file), replayed: result.replayed },
           result.replayed ? 200 : 201,

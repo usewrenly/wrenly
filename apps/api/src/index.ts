@@ -48,6 +48,11 @@ try {
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
+  const { promptAttachments, providerConnections } = await import('@wrenly/db/schema');
+  try {
+    await db.select({ id: promptAttachments.id, readyAt: promptAttachments.readyAt }).from(promptAttachments).limit(0);
+    await db.select({ imageModelIds: providerConnections.imageModelIds, imageInputRevision: providerConnections.imageInputRevision }).from(providerConnections).limit(0);
+  } catch { throw new Error('Attachments require migrations through 0038. Run bun run db:migrate before starting Wrenly.'); }
   const app = createProductionApp(environment)
   let acceptingRequests = false
   // Bind the control port before claiming any work: a second API must not interrupt queued previews on startup failure.
@@ -59,6 +64,7 @@ try {
       if ((request.method === 'POST' && path === '/api/generate') || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
       return app.fetch(request)
     } })
+  let attachmentCleanup: { stop(): Promise<void> } | undefined;
   let conversationWorker: Awaited<ReturnType<typeof startProductionConversationWorker>> | undefined
   let publishing: DeploymentWorkerLifecycle | undefined
   let databaseModule: PreviewLifecycle | undefined
@@ -98,10 +104,15 @@ try {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
       publishing = await startProductionDeploymentWorker(db, environment)
     }
+    const { startAttachmentCleanup } = await import('./modules/attachments/cleanup-worker');
+    const { expireAttachmentUploads, attachmentCleanupCandidates } = await import('./modules/attachments/attachment-store');
+    const { attachmentObjects } = await import('./modules/attachments/production-services');
+    const objects = attachmentObjects(environment.WRENLY_DATA_DIR);
+    attachmentCleanup = startAttachmentCleanup({ expire: () => expireAttachmentUploads(db), candidates: cursor => attachmentCleanupCandidates(db, cursor), remove: id => objects.remove(id) });
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), attachmentCleanup?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -112,7 +123,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop(), attachmentCleanup?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {

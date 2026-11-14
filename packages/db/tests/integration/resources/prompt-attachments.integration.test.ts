@@ -7,6 +7,7 @@ import { eq, inArray } from "drizzle-orm";
 import * as schema from "../../../src/schema";
 import {
   saveAttachmentUpload,
+  completeAttachmentUpload,
   findAttachmentUpload,
   expireAttachmentUploads,
   attachmentCleanupCandidates,
@@ -18,6 +19,15 @@ import {
   admitConversationTurn,
   claimConversationTurn,
 } from "../../../../../apps/api/src/modules/conversations/persistence/conversation-store";
+import {
+  assertModelImageInputs,
+  savedProviderIdentity,
+} from "../../../../../apps/api/src/modules/models/selection/saved-providers";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { createAttachmentObjectStore } from "../../../../../apps/api/src/modules/attachments/storage/object-store";
+import { createAttachmentHttpHandlers } from "../../../../../apps/api/src/modules/attachments/attachment-http";
 const testUrl = process.env.WRENLY_TEST_ATTACHMENTS_DATABASE_URL;
 if (testUrl) {
   const url = new URL(testUrl);
@@ -76,6 +86,146 @@ integration("durable prompt attachment ownership", () => {
     } finally {
       await client.end();
     }
+  });
+  test("HTTP upload stores verified bytes, binds through admission and authorizes history reads", async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), "wrenly-attachment-http-db-"),
+    );
+    try {
+      const objects = await createAttachmentObjectStore(
+        join(directory, "files"),
+      );
+      const handlers = createAttachmentHttpHandlers({
+        webUrl: "http://localhost:3000",
+        userId: async (headers) => headers.get("x-fixture-actor"),
+        objects,
+        decodeImage: async () => {
+          throw Error("Text fixture must not decode an image");
+        },
+        save: (actor, input) => saveAttachmentUpload(database, actor, input),
+        complete: (actor, id) => completeAttachmentUpload(database, actor, id),
+        read: (actor, id) => readAttachmentReference(database, actor, id),
+        findUpload: (actor, id) => findAttachmentUpload(database, actor, id),
+        remove: (actor, id) => removeAttachmentUpload(database, actor, id),
+      });
+      const headers = {
+        origin: "http://localhost:3000",
+        "x-fixture-actor": owner,
+        "idempotency-key": crypto.randomUUID(),
+      };
+      const response = await handlers.upload(
+        new Request("http://localhost:3002/api/attachments?name=spec.md", {
+          method: "POST",
+          headers,
+          body: "# Booking requirements",
+        }),
+      );
+      expect(response.status).toBe(201);
+      const body = (await response.json()) as {
+        file: { id: string; objectId?: string };
+      };
+      expect(body.file.objectId).toBeUndefined();
+      await database.transaction((tx) =>
+        bindRequestAttachments(tx, owner, projectId, crypto.randomUUID(), [
+          body.file.id,
+        ]),
+      );
+      const read = await handlers.read(
+        new Request("http://localhost:3002/", { headers }),
+        body.file.id,
+      );
+      expect(await read.text()).toBe("# Booking requirements");
+      expect(
+        (
+          await handlers.read(
+            new Request("http://localhost:3002/", {
+              headers: { "x-fixture-actor": other },
+            }),
+            body.file.id,
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (
+          await handlers.remove(
+            new Request("http://localhost:3002/", {
+              method: "DELETE",
+              headers,
+            }),
+            body.file.id,
+          )
+        ).status,
+      ).toBe(409);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  test("image capability is explicit, model-specific and rechecked after revocation", async () => {
+    const [connection] = await database
+      .insert(schema.providerConnections)
+      .values({
+        label: "Image fixture",
+        protocol: "openai-compatible",
+        kind: "local",
+        endpoint: "http://127.0.0.1:1/v1",
+      })
+      .returning();
+    if (!connection) throw Error("Missing fixture connection");
+    const identity = savedProviderIdentity(connection.id, connection.version);
+    try {
+      await expect(
+        assertModelImageInputs(database, identity, "vision-test"),
+      ).rejects.toThrow();
+      await database
+        .update(schema.providerConnections)
+        .set({ imageModelIds: ["vision-test"] })
+        .where(eq(schema.providerConnections.id, connection.id));
+      await assertModelImageInputs(database, identity, "vision-test");
+      await expect(
+        assertModelImageInputs(database, identity, "other-model"),
+      ).rejects.toThrow();
+      await expect(
+        assertModelImageInputs(database, "environment", "vision-test"),
+      ).rejects.toThrow();
+      await database
+        .update(schema.providerConnections)
+        .set({ enabled: false })
+        .where(eq(schema.providerConnections.id, connection.id));
+      await expect(
+        assertModelImageInputs(database, identity, "vision-test"),
+      ).rejects.toThrow();
+    } finally {
+      await database
+        .delete(schema.providerConnections)
+        .where(eq(schema.providerConnections.id, connection.id));
+    }
+  });
+  test("incomplete uploads remain private and unusable until verified completion", async () => {
+    const input = { ...upload(), pending: true };
+    const saved = await saveAttachmentUpload(database, owner, input);
+    expect(
+      await findAttachmentUpload(database, owner, input.requestId),
+    ).toBeNull();
+    await expect(
+      readAttachmentReference(database, owner, saved.file.id),
+    ).rejects.toThrow();
+    await expect(
+      database.transaction((tx) =>
+        bindRequestAttachments(tx, owner, projectId, crypto.randomUUID(), [
+          saved.file.id,
+        ]),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      completeAttachmentUpload(database, other, saved.file.id),
+    ).rejects.toThrow();
+    await completeAttachmentUpload(database, owner, saved.file.id);
+    expect(
+      (await readAttachmentReference(database, owner, saved.file.id)).id,
+    ).toBe(saved.file.id);
+    expect(
+      (await findAttachmentUpload(database, owner, input.requestId))?.id,
+    ).toBe(saved.file.id);
   });
   test("duplicate upload saves replay exact content and reject conflicting identities", async () => {
     const input = upload();

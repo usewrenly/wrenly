@@ -1,4 +1,4 @@
-import { parseAttachmentSnapshot, type AttachmentSnapshot } from "@wrenly/inference";
+import { parseAttachmentSnapshot, type AttachmentSnapshot, type AttachmentReference } from "@wrenly/inference";
 import { bindRequestAttachments } from "../../attachments/attachment-store";
 /**
  * Remembering conversation requests, messages and progress.
@@ -398,6 +398,7 @@ export async function admitConversationTurn(
 }
 
 export interface ConversationTurnSummary {
+  attachments?: Array<Omit<AttachmentReference, "objectId">>;
   database?: BuildDatabaseSelection;
   actorId?: string;
   skillsUsed?: Array<{ name: string; versionId: string; sha256: string }>;
@@ -411,6 +412,7 @@ export interface ConversationTurnSummary {
   provider: string;
 }
 const TurnSummarySelection = {
+  attachmentsV1: conversationTurns.attachmentsV1,
   databaseV1: conversationTurns.databaseV1,
   skillsV1: conversationTurns.skillsV1,
   actorId: conversationTurns.actorId,
@@ -425,11 +427,13 @@ const TurnSummarySelection = {
 };
 
 function publicTurn(
-  turn: ConversationTurnSummary & { skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection | null },
+  turn: ConversationTurnSummary & { attachmentsV1?: AttachmentSnapshot; skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection | null },
 ): ConversationTurnSummary {
-  const { skillsV1, databaseV1, ...visible } = turn;
+  const { attachmentsV1, skillsV1, databaseV1, ...visible } = turn;
+  const files = parseAttachmentSnapshot(attachmentsV1).files;
   return {
     ...visible,
+    ...(files.length ? { attachments: files.map(({ objectId: _objectId, ...file }) => file) } : {}),
     ...(databaseV1 ? { database: BuildDatabaseSelection.parse(databaseV1) } : {}),
     skillsUsed: parseSkillGuidance(skillsV1).skills.map(
       ({ name, versionId, sha256 }) => ({ name, versionId, sha256 }),

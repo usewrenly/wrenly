@@ -1,3 +1,4 @@
+import { attachmentPromptContent, type AttachmentWireContent } from "@wrenly/inference";
 /**
  * Asking the model how to respond to a message.
  * Sends saved conversation evidence and subordinate skill guidance, then validates a bounded non-streaming decision.
@@ -60,6 +61,7 @@ export class ConversationModelError extends Error {
 export async function inferConversationDecision(
   input: {
     context: ConversationContext;
+    attachments?: AttachmentWireContent;
     model: string;
     mode: ConversationMode;
   },
@@ -105,7 +107,7 @@ export async function inferConversationDecision(
             role: "system",
             content: `${SYSTEM_PROMPT}\n${SKILL_AUTHORITY}\nCurrent mode: ${input.mode}. A developmentDatabaseSelected flag means the user selected an existing Development resource. It grants no direct database access or automatic migration permission. Only a permitted build action may use the saved selection.`,
           },
-          { role: "user", content: JSON.stringify(input.context) },
+          { role: "user", content: attachmentPromptContent(JSON.stringify(input.context), input.attachments) },
         ],
       }),
     });

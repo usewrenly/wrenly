@@ -6,7 +6,7 @@ export const ATTACHMENT_LIMITS = Object.freeze({
   textBytes: 64 * 1024,
   decodedPixels: 16_000_000,
   canonicalImageEdge: 4096,
-  modelPayloadBytes: 20 * 1024 * 1024,
+  modelPayloadBytes: 8 * 1024 * 1024,
   abandonedLifetimeMs: 24 * 60 * 60 * 1000,
 });
 

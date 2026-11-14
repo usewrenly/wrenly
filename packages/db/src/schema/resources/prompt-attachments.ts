@@ -31,7 +31,8 @@ export const promptAttachments = pgTable(
       .notNull()
       .defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    removedAt: timestamp("removed_at", { withTimezone: true }),
+    readyAt: timestamp('ready_at', { withTimezone: true }),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("prompt_attachments_owner_upload_unique").on(

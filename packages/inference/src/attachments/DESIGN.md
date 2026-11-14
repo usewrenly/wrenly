@@ -32,7 +32,7 @@ OUTPUTS: Independently verified bytes and provider-compatible message parts.
 STEPS: Bound encoded input before decoding, require canonical base64 and content hashes,
 validate types/budgets, negotiate MCP version, then send image parts rather than base64
 inside prompt text. Keep text-only requests unchanged.
-EDGE CASES: SDK stdio permits 10 MiB; attachments are limited to 8 MiB encoded and the
+EDGE CASES: SDK stdio permits 10 MiB; attachments are limited to 7 MiB encoded and the
 complete tool request to 9 MiB, leaving framing headroom. Larger upload batches may
 therefore require fewer/smaller references before a build can start.
 ERROR STATES: Unsupported version/tool, changed content or exceeded budget fails explicitly.

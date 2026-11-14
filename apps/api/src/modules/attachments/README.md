@@ -39,11 +39,12 @@ model tools, browsing, network access or permission to execute files.
 
 ## Integration status
 
-The HTTP factories are not mounted in production yet. Conversation/build admission
-requires an injected capability validator for nonempty references; absence fails closed.
-Production model-capability configuration, composer controls and cleanup scheduling
-must be connected before attachments are available to users. Shared MCP support alone
-does not establish that a configured model can interpret images.
+Authenticated upload/read/removal routes are mounted by the production app. Admission
+verifies saved bytes and current model capability before committing work. Both framework
+MCP servers receive versioned inline content; execution checks image support again.
+The shared Home/workspace composer shows upload state and preserves explicit retries.
+The cleanup worker expires abandoned uploads and repeatedly removes their tracked objects.
+Startup requires migrations through 0038. No external storage account is needed.
 
 ## Verification
 

@@ -37,6 +37,7 @@ function fixture() {
       return { file, replayed: false };
     },
     read: async () => file,
+    complete: async () => file,
     findUpload: async () => file,
     remove: async () => {},
   };
@@ -109,4 +110,43 @@ test("an uncertain upload can recover its acknowledgement without another file w
   expect(body.file.name).toBe("reference.txt");
   expect(body.file.objectId).toBeUndefined();
   expect(state.saves()).toBe(0);
+});
+
+test("reserves ownership before writing bytes and acknowledges only verified completion", async () => {
+  const state = fixture();
+  const events: string[] = [];
+  const save = state.dependencies.save;
+  const write = state.dependencies.objects.write;
+  const read = state.dependencies.objects.read;
+  const complete = state.dependencies.complete;
+  state.dependencies.save = async (...args) => {
+    events.push("reserve");
+    return save(...args);
+  };
+  state.dependencies.objects.write = async (...args) => {
+    events.push("write");
+    return write(...args);
+  };
+  state.dependencies.objects.read = async (...args) => {
+    events.push("verify");
+    return read(...args);
+  };
+  state.dependencies.complete = async (...args) => {
+    events.push("complete");
+    return complete(...args);
+  };
+  expect(
+    (await createAttachmentHttpHandlers(state.dependencies).upload(request()))
+      .status,
+  ).toBe(201);
+  expect(events).toEqual(["reserve", "write", "verify", "complete"]);
+  events.length = 0;
+  state.dependencies.save = async () => {
+    throw new Error("Unknown reservation outcome");
+  };
+  expect(
+    (await createAttachmentHttpHandlers(state.dependencies).upload(request()))
+      .status,
+  ).toBe(503);
+  expect(events).toEqual([]);
 });
