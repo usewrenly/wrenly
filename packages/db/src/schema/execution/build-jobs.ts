@@ -1,3 +1,4 @@
+import type { AttachmentSnapshot } from "@wrenly/inference"
 // Durable execution claims and immutable inputs; build records separately hold source/history.
 import type { SkillGuidance } from "@wrenly/inference"
 import type { BuildDatabaseSelection } from "../../application-databases/build-contract"
@@ -15,6 +16,7 @@ export const buildJobStatusEnum = pgEnum('build_job_status', [
 ])
 
 export interface BuildJobInput {
+  attachmentsV1?: AttachmentSnapshot
   databaseV1?: BuildDatabaseSelection
   skillsV1?: SkillGuidance
   prompt: string

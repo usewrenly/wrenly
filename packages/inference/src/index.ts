@@ -41,3 +41,13 @@ export {
   detectAttachmentImage,
   type AttachmentMediaType,
 } from "./attachments/policy";
+export {
+  parseAttachmentSnapshot,
+  type AttachmentSnapshot,
+  type AttachmentReference,
+} from "./attachments/references";
+export {
+  buildAttachmentMessage,
+  type ModelAttachment,
+  type AttachmentMessagePart,
+} from "./attachments/model-content";
