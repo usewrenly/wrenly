@@ -32,3 +32,12 @@ export {
   type FileOperation,
   type EditErrorCode,
 } from "./contracts/edit-contract";
+
+export {
+  ATTACHMENT_LIMITS,
+  AttachmentPolicyError,
+  validateAttachmentBatch,
+  decodeAttachmentText,
+  detectAttachmentImage,
+  type AttachmentMediaType,
+} from "./attachments/policy";
