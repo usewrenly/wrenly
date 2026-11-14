@@ -116,7 +116,7 @@ export async function runCli(
     if (!["doctor", "plan", "install"].includes(options.command))
       return await manage(options, write);
     const report = await inspectInstallation(
-      { ...options, command: "plan" },
+      { ...options, command: options.command === "doctor" ? "doctor" : "plan" },
       probes,
     );
     if (options.command !== "install") {

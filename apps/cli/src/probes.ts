@@ -2,6 +2,7 @@
 import { lstat, statfs } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createServer } from "node:net";
+import { verifyDirectoryPath } from "./install/state";
 import type { Probes } from "./contracts";
 const COMMAND_TIMEOUT_MS = 5000;
 const PORT_TIMEOUT_MS = 1000;
@@ -77,6 +78,13 @@ async function disk(directory: string): Promise<bigint | null> {
 async function destination(
   directory: string,
 ): ReturnType<Probes["destination"]> {
+  try {
+    await verifyDirectoryPath(directory);
+    const parent = await lstat(dirname(directory));
+    if (!parent.isDirectory() || parent.isSymbolicLink()) return "unsafe";
+  } catch {
+    return "unsafe";
+  }
   try {
     const value = await lstat(directory);
     return value.isSymbolicLink() || !value.isDirectory()

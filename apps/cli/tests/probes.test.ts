@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createServer } from "node:net";
-import { mkdtemp, access, rm } from "node:fs/promises";
+import { mkdtemp, access, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalProbes } from "../src/probes";
@@ -33,5 +33,22 @@ test("local probes leave an absent destination untouched and release sockets", a
     if (server.listening)
       await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("preflight refuses symlink ancestors and missing parents before downloads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wrenly-path-"));
+  try {
+    await symlink(root, join(root, "alias"));
+    const probes = createLocalProbes();
+    expect(await probes.destination(join(root, "alias", "app"))).toBe("unsafe");
+    expect(await probes.destination(join(root, "missing", "app"))).toBe(
+      "unsafe",
+    );
+    expect(await probes.destination(join(root, "app with spaces"))).toBe(
+      "unsafe",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
