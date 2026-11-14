@@ -1,0 +1,31 @@
+{
+  "name": "@wrenly/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "wrenly": "dist/wrenly.js"
+  },
+  "files": [
+    "dist/wrenly.js",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --target=bun --env=disable --outfile=dist/wrenly.js",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "bun --no-env-file test tests"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@repo/eslint-config": "*",
+    "@types/bun": "^1.4.3",
+    "typescript": "7.0.2",
+    "@types/node": "^20",
+    "eslint": "10.9.1",
+    "@babel/preset-typescript": "8.0.1"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  }
+}
