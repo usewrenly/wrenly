@@ -1,3 +1,4 @@
+import { attachmentPromptContent, type AttachmentWireContent } from "@wrenly/inference"
 import { skillGuidanceMessage, SKILL_AUTHORITY, type SkillGuidance } from "@wrenly/inference"
 //
 // Laravel code generation agent.
@@ -21,6 +22,7 @@ export type FileTree = Array<{
 }>
 
 export type AgentInput = {
+  attachments_v1?: AttachmentWireContent
   skills_v1?: SkillGuidance
   prompt: string
   previousErrors: string[]
@@ -240,7 +242,7 @@ export async function generateApp(value: unknown): Promise<AgentOutput> {
   try {
     const response = await client.chat.completions.create({
       model: MODEL, temperature: 0.1,
-      messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY + '\nAvailable default skeleton (override explicitly only when needed):\n' + JSON.stringify(LARAVEL_SKELETON) }, ...(skillGuidanceMessage(input.skills_v1) ? [{ role: 'user' as const, content: skillGuidanceMessage(input.skills_v1) }] : []), { role: 'user', content: buildUserMessage(input) }],
+      messages: [{ role: 'system', content: SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY + '\nAvailable default skeleton (override explicitly only when needed):\n' + JSON.stringify(LARAVEL_SKELETON) }, ...(skillGuidanceMessage(input.skills_v1) ? [{ role: 'user' as const, content: skillGuidanceMessage(input.skills_v1) }] : []), { role: 'user', content: attachmentPromptContent(buildUserMessage(input), input.attachments_v1) }],
     })
     const choice = response.choices[0]
     if (choice?.finish_reason !== 'stop' || choice.message.refusal || !choice.message.content)
@@ -271,7 +273,7 @@ export async function editApp(value: unknown): Promise<EditOutput> {
   try {
     const response = await client.chat.completions.create({ model: MODEL, temperature: 0.1,
       response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: EDIT_SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY }, { role: 'user', content: JSON.stringify(input) }],
+      messages: [{ role: 'system', content: EDIT_SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY }, { role: 'user', content: attachmentPromptContent(JSON.stringify({ ...input, attachments_v1: undefined }), input.attachments_v1) }],
     })
     return parseEditCompletion(response.choices[0])
   } catch (error) {

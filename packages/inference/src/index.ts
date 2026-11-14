@@ -51,3 +51,11 @@ export {
   type ModelAttachment,
   type AttachmentMessagePart,
 } from "./attachments/model-content";
+export {
+  parseAttachmentWireContent,
+  encodeAttachmentWireContent,
+  ATTACHMENT_WIRE_SCHEMA,
+  MAX_ATTACHMENT_TOOL_REQUEST_BYTES,
+  type AttachmentWireContent,
+} from "./attachments/wire-content";
+export { attachmentPromptContent } from "./attachments/wire-content";

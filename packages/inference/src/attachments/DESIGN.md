@@ -24,3 +24,15 @@ canonical images inline and bound the serialized content.
 EDGE CASES: This accepts only trusted decoder output; header checks alone are insufficient.
 ERROR STATES: Changed bytes or unsupported image capability abort before provider access.
 The caller also enforces the full request budget including source, history and instructions.
+
+COMPONENT: Versioned MCP attachment content
+PURPOSE: Deliver exact canonical image/text bytes through generation and editing tools.
+INPUTS: Server-resolved content and a version-1 inline payload.
+OUTPUTS: Independently verified bytes and provider-compatible message parts.
+STEPS: Bound encoded input before decoding, require canonical base64 and content hashes,
+validate types/budgets, negotiate MCP version, then send image parts rather than base64
+inside prompt text. Keep text-only requests unchanged.
+EDGE CASES: SDK stdio permits 10 MiB; attachments are limited to 8 MiB encoded and the
+complete tool request to 9 MiB, leaving framing headroom. Larger upload batches may
+therefore require fewer/smaller references before a build can start.
+ERROR STATES: Unsupported version/tool, changed content or exceeded budget fails explicitly.
