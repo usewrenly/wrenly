@@ -91,3 +91,8 @@ Coolify adds a fixed set of service metadata to deployed containers.
 unchanged, service identifiers must match the selected deployment, and unknown
 environment additions still fail. This allows provider bookkeeping without allowing
 a database password, `NODE_OPTIONS`, or another runtime override through inspection.
+
+Docker Compose may represent named volumes using Docker's `Binds` field. Only
+the exact deployment-owned volume names, destinations and read/write modes are
+accepted there. The resolved mounts must independently remain local named volumes;
+host paths, extra mounts and writable database sockets remain rejected.

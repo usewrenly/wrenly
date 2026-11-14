@@ -1,3 +1,4 @@
+import { matchesRuntimeVolumeBindings } from "./runtime-volume-bindings";
 import { matchesRuntimeEnvironment } from "./runtime-environment";
 /** Verify the public HTTP relay independently; generated applications never receive its network access. */
 import { z } from "zod";
@@ -138,7 +139,7 @@ export function inspectProductionIngressContainer(
       ) ||
       (host.CapAdd?.length ?? 0) ||
       !same(host.SecurityOpt, ["no-new-privileges:true"]) ||
-      (host.Binds?.length ?? 0) ||
+      !matchesRuntimeVolumeBindings(host.Binds, scope.deploymentId, "ingress") ||
       (host.VolumesFrom?.length ?? 0) ||
       (host.ExtraHosts?.length ?? 0) ||
       (host.Devices?.length ?? 0) ||

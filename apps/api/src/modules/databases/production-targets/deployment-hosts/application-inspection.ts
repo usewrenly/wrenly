@@ -1,3 +1,4 @@
+import { matchesRuntimeVolumeBindings } from "./runtime-volume-bindings";
 import { matchesRuntimeEnvironment } from "./runtime-environment";
 /** Inspect the created application before delivering a runtime password to its trusted guardian. */
 import { z } from "zod";
@@ -154,7 +155,7 @@ export function inspectProductionApplicationContainer(
       !equal(capabilities(host.CapDrop), ["ALL"]) ||
       !equal(capabilities(host.CapAdd), ["CHOWN", "SETGID", "SETUID"]) ||
       !equal(host.SecurityOpt, ["no-new-privileges:true"]) ||
-      (host.Binds?.length ?? 0) ||
+      !matchesRuntimeVolumeBindings(host.Binds, scope.deploymentId, "application") ||
       (host.Devices?.length ?? 0) ||
       (host.DeviceRequests?.length ?? 0)
     )
