@@ -32,3 +32,34 @@ STEPS:
    ERROR STATES: Unsafe permissions, changed identity or corrupt content fail closed.
    The instance account and private parent directories are trusted; this is not a defense
    against a compromised host administrator. No abandoned-file sweeper is activated here.
+
+COMPONENT: Durable upload ownership
+PURPOSE: Keep unsubmitted files personal and bind submitted files to exactly one saved request.
+INPUTS: Verified actor, canonical object identity, upload request ID, project/request IDs.
+OUTPUTS: Durable metadata and a versioned immutable request snapshot.
+STEPS:
+
+1. Serialize actor uploads and use a unique actor/upload identity for exact save replay.
+2. Bound pending uploads and give personal unsubmitted metadata a 24-hour expiry.
+3. Within authorized request admission, lock upload IDs in sorted order and bind all or none.
+4. Recheck current account/project authority on retrieval. Only owners read personal uploads.
+5. Tombstone only unused uploads; retained history cannot be deleted by a composer removal.
+   EDGE CASES: Replay never binds another person's file or silently reuses a different request.
+   ERROR STATES: Expired, changed or already bound references fail before model work.
+   Physical orphan/expired-object cleanup is a separate bounded lifecycle step; these functions
+   alone do not expose HTTP routes or activate a sweeper.
+
+COMPONENT: Attachment HTTP adapters
+PURPOSE: Read a bounded explicit upload independently of prompt execution.
+INPUTS: Verified session, exact trusted web origin for mutations, UUID upload key and file bytes.
+OUTPUTS: Safe public metadata or authorized private content with no-store/nosniff headers.
+STEPS:
+
+1. Authenticate and validate origin before consuming the body.
+2. Bound streamed bytes and read duration, sanitize according to actual content.
+3. Save canonical bytes and durable ownership; preserve bytes on uncertain metadata saves.
+4. Hide storage object IDs from browser metadata and recheck authorization after file reads.
+5. Remove only unbound upload metadata; cleanup handles retained byte objects separately.
+   EDGE CASES: Exact upload replay removes only the extra newly created object after confirmed save.
+   ERROR STATES: Format/size/content errors are explicit; unknown persistence never pretends success.
+   These factories are internal until request execution and UI are connected.
