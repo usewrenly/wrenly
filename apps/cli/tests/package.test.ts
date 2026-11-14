@@ -88,8 +88,8 @@ test(
         "NODE_OPTIONS=--require=/missing/should-not-load.cjs\n",
       );
       const output = await command([executable, "help"], outside);
-      expect(output).toContain("read-only checks");
-      expect(output).toContain("No installation or upgrade command");
+      expect(output).toContain("guided local setup");
+      expect(output).toContain("does not upgrade or uninstall");
     } finally {
       await rm(temporary, { recursive: true, force: true });
     }

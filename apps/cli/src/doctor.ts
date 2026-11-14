@@ -41,7 +41,7 @@ export async function inspectInstallation(
   const commands: Array<
     [
       string,
-      "bun" | "node" | "docker",
+      "bun" | "node" | "docker" | "flock",
       string[],
       (value: string) => boolean,
       string,
@@ -98,6 +98,13 @@ export async function inspectInstallation(
       "Start local Docker and grant your account access; this command never changes permissions.",
     ],
   ];
+  commands.push([
+    "Kernel locks",
+    "flock",
+    ["--version"],
+    (value) => value.includes("util-linux"),
+    "Install util-linux (flock) before running the installer.",
+  ]);
   for (const [name, command, args, accept, remedy] of commands) {
     const output = await probes.command(command, args);
     checks.push(
@@ -138,6 +145,10 @@ export async function inspectInstallation(
   for (const [name, port] of [
     ["Web port", options.webPort],
     ["API port", options.apiPort],
+    ["Database port", options.databasePort],
+    ...(options.previews
+      ? [["Preview port", options.previewPort] as const]
+      : []),
   ] as const) {
     const available = await probes.port(port);
     checks.push(
@@ -145,7 +156,7 @@ export async function inspectInstallation(
         name,
         available,
         `Loopback port ${port} ${available === true ? "is available" : available === false ? "is occupied" : "could not be checked"}.`,
-        "Choose another port with --web-port or --api-port; no other service will be stopped.",
+        "Choose another matching --web-port, --api-port, --database-port or --preview-port; no other service will be stopped.",
       ),
     );
   }
@@ -159,9 +170,9 @@ export async function inspectInstallation(
     report.plan = [
       `Destination: ${options.directory}`,
       `Browser: http://localhost:${options.webPort}; API: http://localhost:${options.apiPort}`,
-      "Future installation will verify a pinned release, prepare private configuration, start dedicated services and apply checked-in migrations.",
+      "Installation verifies pinned source, prepares private configuration, builds the API/web, starts dedicated PostgreSQL and local API/web services, and applies checked-in migrations.",
       "First-owner credentials will be chosen in protected browser setup.",
-      "This candidate only checks and plans. It downloads nothing, writes no configuration and starts no services.",
+      "This command only checks and plans. It downloads nothing, writes no configuration and starts no services. Run install to apply a reviewed plan.",
     ];
   return report;
 }

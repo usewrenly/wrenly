@@ -1,8 +1,8 @@
 {
   "extends": ["//"],
   "tasks": {
-    "build": { "env": ["PATH"] },
-    "lint": { "env": ["PATH"] },
-    "check-types": { "env": ["PATH"] }
+    "build": { "env": ["PATH", "HOME"] },
+    "lint": { "env": ["PATH", "HOME"] },
+    "check-types": { "env": ["PATH", "HOME"] }
   }
 }

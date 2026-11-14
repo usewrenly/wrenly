@@ -6,15 +6,17 @@ function probes(): Probes {
     platform: "linux",
     architecture: "x64",
     command: async (name, args) =>
-      name === "bun"
-        ? "1.3.14"
-        : name === "node"
-          ? "v24.1.0"
-          : args[0] === "compose"
-            ? "2.30.0"
-            : args[0] === "--host"
-              ? "linux"
-              : "Docker version 29.1.3, build test",
+      name === "flock"
+        ? "flock from util-linux 2.40"
+        : name === "bun"
+          ? "1.3.14"
+          : name === "node"
+            ? "v24.1.0"
+            : args[0] === "compose"
+              ? "2.30.0"
+              : args[0] === "--host"
+                ? "linux"
+                : "Docker version 29.1.3, build test",
     disk: async () => 20n * 1024n ** 3n,
     destination: async () => "absent",
     port: async () => true,
@@ -38,9 +40,9 @@ test("plan reports all checks and never invokes install commands", async () => {
   ).toBe(0);
   const report: Report = JSON.parse(output);
   expect(report.ready).toBe(true);
-  expect(report.checks.length).toBe(10);
+  expect(report.checks.length).toBe(12);
   expect(report.plan?.join(" ")).toContain("downloads nothing");
-  expect(calls).toHaveLength(5);
+  expect(calls).toHaveLength(6);
   expect(
     calls.every(
       (value) => !value.includes(" up") && !value.includes("install"),
@@ -60,7 +62,7 @@ test("missing prerequisites and occupied ports fail without hiding other checks"
   expect(report.ready).toBe(false);
   expect(
     report.checks.filter((c: { status: string }) => c.status === "unconfirmed"),
-  ).toHaveLength(5);
+  ).toHaveLength(6);
   expect(report.checks.at(-1)?.status).toBe("failed");
 });
 test("help and invalid arguments do not probe", async () => {
@@ -70,7 +72,7 @@ test("help and invalid arguments do not probe", async () => {
   };
   expect(await runCli(["help"], () => {}, fixture)).toBe(0);
   for (const args of [
-    ["install"],
+    ["destroy"],
     ["doctor", "--directory", "relative"],
     ["doctor", "--web-port", "3002"],
     ["doctor", "--json", "--json"],

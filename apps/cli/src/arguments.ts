@@ -1,4 +1,4 @@
-/** Parse only the released read-only commands; installation is a later explicit action. */
+/** Parse a strict command allowlist before inspecting or changing an installation. */
 import { isAbsolute, normalize } from "node:path";
 import type { Options } from "./contracts";
 const MAX_PATH_LENGTH = 4096;
@@ -10,9 +10,21 @@ export function parseArguments(
 ): Options {
   const first = args[0] ?? "help";
   const command = first === "--help" || first === "-h" ? "help" : first;
-  if (!["doctor", "plan", "help"].includes(command))
+  if (
+    ![
+      "doctor",
+      "plan",
+      "help",
+      "install",
+      "resume",
+      "status",
+      "start",
+      "stop",
+      "setup",
+    ].includes(command)
+  )
     throw new Error(
-      "Use doctor, plan or help. Installation is not available in this candidate yet.",
+      "Use doctor, plan, install, resume, status, start, stop, setup or help.",
     );
   const result: Options = {
     command: command as Options["command"],
@@ -20,22 +32,42 @@ export function parseArguments(
     webPort: 3000,
     apiPort: 3002,
     json: false,
+    yes: false,
+    databasePort: 65433,
+    previewPort: 3003,
+    previews: false,
+    laravel: false,
   };
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index++) {
     const flag = args[index]!;
     if (seen.has(flag)) throw new Error(`Repeated option: ${flag}`);
     seen.add(flag);
+    if (["--yes", "--previews", "--laravel"].includes(flag)) {
+      if (flag === "--yes") result.yes = true;
+      else if (flag === "--previews") result.previews = true;
+      else result.laravel = true;
+      continue;
+    }
     if (flag === "--json") {
       result.json = true;
       continue;
     }
-    if (!["--directory", "--web-port", "--api-port"].includes(flag))
+    if (
+      ![
+        "--directory",
+        "--web-port",
+        "--api-port",
+        "--database-port",
+        "--preview-port",
+        "--archive",
+      ].includes(flag)
+    )
       throw new Error("Unknown option. Use help for supported options.");
     const value = args[++index];
     if (!value || value.startsWith("--"))
       throw new Error(`Missing value for ${flag}.`);
-    if (flag === "--directory") {
+    if (flag === "--directory" || flag === "--archive") {
       if (
         !isAbsolute(value) ||
         value.length > MAX_PATH_LENGTH ||
@@ -44,7 +76,8 @@ export function parseArguments(
         throw new Error(
           "Choose an absolute directory without control characters.",
         );
-      result.directory = normalize(value);
+      if (flag === "--archive") result.archive = normalize(value);
+      else result.directory = normalize(value);
     } else {
       const port = Number(value);
       if (
@@ -55,10 +88,28 @@ export function parseArguments(
       )
         throw new Error("Choose a port between 1024 and 65535.");
       if (flag === "--web-port") result.webPort = port;
-      else result.apiPort = port;
+      else if (flag === "--api-port") result.apiPort = port;
+      else if (flag === "--database-port") result.databasePort = port;
+      else result.previewPort = port;
     }
   }
-  if (result.webPort === result.apiPort)
-    throw new Error("Web and API need different ports.");
+  if (
+    new Set([
+      result.webPort,
+      result.apiPort,
+      result.databasePort,
+      ...(result.previews ? [result.previewPort] : []),
+    ]).size !== (result.previews ? 4 : 3)
+  )
+    throw new Error("Each enabled service needs a different port.");
+  if (
+    ["status", "start", "stop", "setup", "resume"].includes(command) &&
+    [...seen].some((flag) => !["--directory", "--json", "--yes"].includes(flag))
+  )
+    throw new Error(
+      "Existing installations use their saved ports and settings; these commands accept only --directory, --json and --yes.",
+    );
+  if (result.json && !["doctor", "plan", "status"].includes(command))
+    throw new Error("Only doctor, plan and status support JSON output.");
   return result;
 }
