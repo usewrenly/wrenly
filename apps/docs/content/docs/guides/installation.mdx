@@ -21,6 +21,20 @@ change and test the code, but ordinary users do not need to become contributors.
 A packaged guided installer is not released yet. The reserved `@wrenly` npm scope is
 for future package distribution; there is no published installer command to run today.
 
+## Optional machine checks
+
+The source checkout includes a read-only setup candidate. It checks the local tools,
+free disk, destination and ports before you follow the manual installation steps:
+
+```bash
+bun --no-env-file apps/cli/src/index.ts doctor
+bun --no-env-file apps/cli/src/index.ts plan --directory /absolute/new/wrenly
+```
+
+These commands do not install anything, create configuration or start services.
+Use `help` for options or `--json` for a structured report. An existing directory is
+reported for review, never overwritten. The CLI is not published to npm yet.
+
 ## Get the source
 
 Download the intended source release or clone the public repository. Open a terminal
