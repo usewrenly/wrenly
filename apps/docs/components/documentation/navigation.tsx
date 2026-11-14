@@ -8,6 +8,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
       ["/docs", "book"],
       ["/docs/why-wrenly", "layers"],
       ["/docs/guides/installation", "terminal"],
+      ["/docs/guides/guided-installer", "terminal"],
       ["/docs/guides/instance-setup", "shield"],
     ],
   },
