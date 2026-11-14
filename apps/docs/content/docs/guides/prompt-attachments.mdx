@@ -1,0 +1,60 @@
+---
+title: Reference files
+description: Give Wrenly a screenshot or short document alongside your prompt.
+---
+
+A reference file helps explain what you want. Attach a screenshot and ask for a similar
+layout, or attach a Markdown document containing your requirements. Selecting a file
+uploads it privately to your instance; **Send** is what includes it in a model request.
+
+## Attach a file
+
+1. On Home or in a project, open **+ → Reference files**.
+2. Select your files and wait for each chip to say **Ready**.
+3. Write what Wrenly should do with them, then select **Send**.
+
+Remove a chip to leave that file out. If an upload fails, use its **Retry** control or
+remove it. Send stays disabled while a selected upload is incomplete. Files appear
+with the saved conversation so collaborators can understand the same reference.
+
+## Formats and limits
+
+| File                    | Limit                               |
+| ----------------------- | ----------------------------------- |
+| JPEG, PNG or WebP image | 5 MiB each; still images only       |
+| UTF-8 TXT or Markdown   | 64 KiB each                         |
+| One prompt              | Four files; 12 MiB combined uploads |
+
+Images are checked, stripped of metadata and converted to WebP. Screenshots keep their
+proportions; the longest edge is limited to 4,096 pixels. Very large decoded images,
+animated files, PDFs, SVGs, archives, audio and video are not supported.
+
+The encoded references must also fit the MCP and model request limits. Encoding makes
+images larger, so files within the upload limit can still exceed a request's budget.
+Wrenly reports this before starting the model request; use fewer or smaller images.
+
+## Choose a model that accepts images
+
+Text references work with text models. Images need a model and endpoint that accept
+OpenAI-compatible image messages. The instance owner opens **Settings → Providers →
+Image input support** on a saved connection and lists the exact supported model IDs.
+A catalog listing alone does not establish that an endpoint supports images.
+
+Wrenly checks this setting when accepting the prompt and again before contacting the
+model. It does not silently switch models or discard an image. If the setting changes,
+review the selected model before retrying. Environment-only connections must first be
+saved through provider settings to configure this capability.
+
+## Where files go
+
+Files stay in your instance's private attachment directory. Unsubmitted uploads are
+personal and expire after 24 hours. Submitted files remain with project history and
+follow current project access: someone who loses access cannot keep downloading them.
+Removing a chip after selecting it does not delete an earlier conversation's reference.
+
+When you send, the file content goes to the configured model provider, just as your
+prompt does. A local model can keep that step local; a hosted provider receives the
+selected context. Attach only information you intend that provider to process.
+
+Files are reference material. They do not grant browsing, tools, network access or
+permission to run attached code. Saved retries use the original file content.

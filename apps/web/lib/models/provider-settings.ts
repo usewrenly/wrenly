@@ -1,6 +1,6 @@
 // Projects safe metadata into browser state; tokens are submitted but never read back.
 import { apiFetch } from "../api";
-const PROVIDER_REQUEST_TIMEOUT_MS = 20_000 // Bound checks and saves without treating a timeout as proof of rejection.
+const PROVIDER_REQUEST_TIMEOUT_MS = 20_000; // Bound checks and saves without treating a timeout as proof of rejection.
 
 export interface ProviderConnection {
   id: string;
@@ -12,6 +12,8 @@ export interface ProviderConnection {
   enabled: boolean;
   catalogProviderId: string | null;
   tokenConfigured: boolean;
+  imageModelIds?: string[];
+  imageInputRevision?: string;
   envSourceId?: string | null;
 }
 export interface EnvironmentProvider {
@@ -105,6 +107,18 @@ export function parseProviderSettings(value: unknown): ProviderSettings {
         endpoint: text(row.endpoint),
         enabled: row.enabled,
         tokenConfigured: row.tokenConfigured,
+        imageModelIds:
+          Array.isArray(row.imageModelIds) &&
+          row.imageModelIds.every(
+            (id) => typeof id === "string" && id.length <= 512,
+          ) &&
+          row.imageModelIds.length <= 100
+            ? ([...row.imageModelIds] as string[])
+            : [],
+        imageInputRevision:
+          row.imageInputRevision === undefined
+            ? undefined
+            : text(row.imageInputRevision),
         envSourceId: row.envSourceId == null ? null : text(row.envSourceId),
         catalogProviderId:
           row.catalogProviderId === null ? null : text(row.catalogProviderId),

@@ -24,6 +24,12 @@ export function ProviderConnectionCard({
   const [probe, setProbe] = useState<ConnectionProbe | null>(null);
   const [model, setModel] = useState(defaultModel ?? "");
   const [token, setToken] = useState("");
+  const [imageRevision, setImageRevision] = useState(
+    connection.imageInputRevision,
+  );
+  const [imageModels, setImageModels] = useState(
+    (connection.imageModelIds ?? []).join("\n"),
+  );
   const [catalogModels, setCatalogModels] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -300,6 +306,77 @@ export function ProviderConnectionCard({
             disabled={busy || !token.trim()}
           >
             Replace token
+          </Button>
+        </form>
+      </details>
+      <details className="rounded-lg border border-[var(--color-border)] p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          Image input support
+        </summary>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(async () => {
+              const ids = imageModels
+                .split(/\r?\n/)
+                .map((id) => id.trim())
+                .filter(Boolean);
+              await providerSettingsRequest(
+                "/api/models/connections",
+                "PATCH",
+                {
+                  id: connection.id,
+                  imageModelIds: ids,
+                  expectedImageInputRevision: imageRevision,
+                },
+              );
+              setNotice(
+                "Image support saved. Only these exact model IDs can receive reference images.",
+              );
+              onChanged();
+            });
+          }}
+        >
+          <p className="text-xs leading-relaxed text-[var(--color-text-3)]">
+            List models you have verified accept images through this connection,
+            one exact model ID per line. Leave empty for text-only models.
+            Catalog listings alone do not verify your endpoint.
+          </p>
+          <label className="block space-y-2 text-sm">
+            <span>Models that accept images</span>
+            {imageRevision !== connection.imageInputRevision && (
+              <button
+                type="button"
+                className="block text-xs underline"
+                onClick={() => {
+                  setImageModels((connection.imageModelIds ?? []).join("\n"));
+                  setImageRevision(connection.imageInputRevision);
+                }}
+              >
+                Load the updated image settings before editing again
+              </button>
+            )}
+            <textarea
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
+              rows={3}
+              maxLength={51300}
+              value={imageModels}
+              disabled={busy}
+              onChange={(event) => setImageModels(event.target.value)}
+              placeholder="Exact model ID, one per line"
+            />
+          </label>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={
+              busy ||
+              !imageRevision ||
+              imageRevision !== connection.imageInputRevision
+            }
+          >
+            Save image support
           </Button>
         </form>
       </details>
