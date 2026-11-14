@@ -1,5 +1,6 @@
 #!/usr/bin/env -S bun --no-env-file
 /** Entrypoints are inert when imported; interactive setup is explicit and local. */
+import { createTerminalWriter, supportsDecoration } from "./presentation";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArguments } from "./arguments";
@@ -25,7 +26,6 @@ const HELP = `Wrenly · guided local setup
 
 No arguments in an interactive terminal opens the setup guide.
 Stop preserves data. This version does not upgrade or uninstall an instance.
-The CLI candidate is not published to npm yet.
 `;
 function renderReport(report: Report, write: (text: string) => void): void {
   write("Wrenly · installation checks\n\n");
@@ -159,20 +159,22 @@ async function wizard(): Promise<string[]> {
     const directory =
       (
         await terminal.question(
-          `Install directory [${join(homedir(), "wrenly")}]: `,
+          `1/4  Installation folder [${join(homedir(), "wrenly")}]: `,
         )
       ).trim() || join(homedir(), "wrenly");
     const web =
-      (await terminal.question("Browser port [3000]: ")).trim() || "3000";
-    const api = (await terminal.question("API port [3002]: ")).trim() || "3002";
+      (await terminal.question("2/4  Browser port [3000]: ")).trim() || "3000";
+    const api =
+      (await terminal.question("     API port [3002]: ")).trim() || "3002";
     const database =
-      (await terminal.question("Database port [65433]: ")).trim() || "65433";
+      (await terminal.question("     Wrenly database port [65433]: ")).trim() ||
+      "65433";
     const previews =
-      (await terminal.question("Prepare local previews? [y/N]: "))
+      (await terminal.question("3/4  Prepare local previews? [y/N]: "))
         .trim()
         .toLowerCase() === "y";
     const laravel =
-      (await terminal.question("Prepare the Laravel toolchain? [y/N]: "))
+      (await terminal.question("4/4  Prepare the Laravel toolchain? [y/N]: "))
         .trim()
         .toLowerCase() === "y";
     return [
@@ -205,8 +207,17 @@ if (import.meta.main) {
       Bun.argv.length === 2 && process.stdin.isTTY && process.stdout.isTTY
         ? await wizard()
         : Bun.argv.slice(2);
-    process.exitCode = await runCli(args, (text) => {
-      process.stdout.write(text);
-    });
+    const output = createTerminalWriter(
+      (text) => {
+        process.stdout.write(text);
+      },
+      supportsDecoration({
+        interactive: Boolean(process.stdout.isTTY),
+        noColor: process.env.NO_COLOR,
+        term: process.env.TERM,
+        ci: process.env.CI,
+      }),
+    );
+    process.exitCode = await runCli(args, output);
   }
 }

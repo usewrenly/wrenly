@@ -60,3 +60,14 @@ ERROR STATES: Wrong identity, changed storage or unconfirmed shutdown prevents m
 
 This version is local Linux setup, not remote TLS, an operating-system service,
 auto-update, uninstall or an npm publication workflow.
+COMPONENT: Installer terminal presentation
+PURPOSE: Make the existing guided flow easier to scan without changing any installation action.
+INPUTS: Existing text reports, interactive terminal capability and colour preferences.
+OUTPUTS: Restrained wood-coloured headings/status labels in a TTY; identical plain/JSON output otherwise.
+STEPS:
+1. Keep the wizard's existing questions and confirmation semantics.
+2. Number the sections and distinguish checks from execution progress.
+3. Style only recognized report labels; never alter setup links, arbitrary errors or JSON.
+4. Honour NO_COLOR, CI and TERM=dumb; add no dependency or full-screen state.
+EDGE CASES: Redirected output stays plain; cancellation and failed checks retain exit codes.
+ERROR STATES: Presentation never hides a check or turns an uncertain operation into success.

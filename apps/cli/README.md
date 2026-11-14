@@ -22,6 +22,9 @@ bun --no-env-file apps/cli/dist/wrenly.js plan --directory "$HOME/wrenly"
 bun --no-env-file apps/cli/dist/wrenly.js install --directory "$HOME/wrenly"
 ```
 
+Interactive reports use restrained colour; `NO_COLOR=1` disables it. Redirected output
+and JSON remain plain.
+
 Review the plan and type `install` to proceed. Running the executable without arguments
 in an interactive terminal opens the guided questions instead. `--yes` provides explicit
 confirmation for a non-interactive install after reviewing the same plan.
