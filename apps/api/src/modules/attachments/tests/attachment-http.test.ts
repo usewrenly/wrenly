@@ -37,6 +37,7 @@ function fixture() {
       return { file, replayed: false };
     },
     read: async () => file,
+    findUpload: async () => file,
     remove: async () => {},
   };
   return { dependencies, saves: () => saves };
@@ -91,4 +92,21 @@ test("binary documents are rejected before persistence and reads are never cache
   );
   expect(response.headers.get("cache-control")).toBe("no-store");
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+});
+
+test("an uncertain upload can recover its acknowledgement without another file write", async () => {
+  const state = fixture();
+  state.dependencies.objects.write = async () => {
+    throw new Error("Status must not write");
+  };
+  const handlers = createAttachmentHttpHandlers(state.dependencies);
+  const response = await handlers.uploadStatus(
+    new Request("http://localhost:3002/api/attachments/uploads/id"),
+    crypto.randomUUID(),
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { file: Record<string, unknown> };
+  expect(body.file.name).toBe("reference.txt");
+  expect(body.file.objectId).toBeUndefined();
+  expect(state.saves()).toBe(0);
 });

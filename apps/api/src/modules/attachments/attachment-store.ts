@@ -1,7 +1,7 @@
 /** Saves private upload ownership and binds references inside the caller's durable admission transaction. */
 import type { db } from "@wrenly/db";
 import { promptAttachments, user } from "@wrenly/db/schema";
-import { and, eq, isNull, count } from "drizzle-orm";
+import { and, eq, isNull, isNotNull, lte, gt, asc, count } from "drizzle-orm";
 import { z } from "zod";
 import {
   parseAttachmentSnapshot,
@@ -250,4 +250,82 @@ export async function removeAttachmentUpload(
       .set({ removedAt: new Date() })
       .where(eq(promptAttachments.id, id));
   });
+}
+
+/** Recovers an upload acknowledgement without creating a new object or revealing another account's files. */
+export async function findAttachmentUpload(
+  database: typeof db,
+  actorId: string,
+  requestId: string,
+): Promise<AttachmentReference | null> {
+  if (!Identifier.safeParse(requestId).success)
+    throw new AttachmentStoreError(400, "Provide a UUID upload identity.");
+  return database.transaction(async (tx) => {
+    await assertActiveAccount(tx, actorId);
+    const [row] = await tx
+      .select()
+      .from(promptAttachments)
+      .where(
+        and(
+          eq(promptAttachments.ownerId, actorId),
+          eq(promptAttachments.uploadRequestId, requestId),
+          isNull(promptAttachments.removedAt),
+        ),
+      );
+    if (!row || (!row.boundRequestId && row.expiresAt <= new Date()))
+      return null;
+    return reference(row);
+  });
+}
+
+/** Tombstones expired personal uploads atomically with admission; never selects a saved-history reference. */
+export async function expireAttachmentUploads(
+  database: typeof db,
+  now: Date = new Date(),
+): Promise<string[]> {
+  return database.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        id: promptAttachments.id,
+        objectId: promptAttachments.objectId,
+      })
+      .from(promptAttachments)
+      .where(
+        and(
+          isNull(promptAttachments.boundRequestId),
+          isNull(promptAttachments.removedAt),
+          lte(promptAttachments.expiresAt, now),
+        ),
+      )
+      .orderBy(asc(promptAttachments.id))
+      .limit(32)
+      .for("update", { skipLocked: true });
+    for (const row of rows)
+      await tx
+        .update(promptAttachments)
+        .set({ removedAt: now })
+        .where(eq(promptAttachments.id, row.id));
+    return rows.map((row) => row.objectId);
+  });
+}
+
+/** Cleanup acknowledgements remain durable tombstones so a failed unlink can be retried without touching history. */
+export async function attachmentCleanupCandidates(
+  database: typeof db,
+  afterId?: string,
+): Promise<Array<{ id: string; objectId: string }>> {
+  if (afterId !== undefined && !Identifier.safeParse(afterId).success)
+    throw new AttachmentStoreError(400, "Invalid cleanup cursor.");
+  return database
+    .select({ id: promptAttachments.id, objectId: promptAttachments.objectId })
+    .from(promptAttachments)
+    .where(
+      and(
+        isNull(promptAttachments.boundRequestId),
+        isNotNull(promptAttachments.removedAt),
+        afterId ? gt(promptAttachments.id, afterId) : undefined,
+      ),
+    )
+    .orderBy(asc(promptAttachments.id))
+    .limit(32);
 }

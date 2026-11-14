@@ -46,10 +46,15 @@ export interface AttachmentHttpDependencies {
     },
   ): Promise<{ file: AttachmentReference; replayed: boolean }>;
   read(actorId: string, id: string): Promise<AttachmentReference>;
+  findUpload(
+    actorId: string,
+    requestId: string,
+  ): Promise<AttachmentReference | null>;
   remove(actorId: string, id: string): Promise<void>;
 }
 export interface AttachmentHttpHandlers {
   upload(request: Request): Promise<Response>;
+  uploadStatus(request: Request, requestId: string): Promise<Response>;
   read(request: Request, id: string): Promise<Response>;
   remove(request: Request, id: string): Promise<Response>;
 }
@@ -196,6 +201,18 @@ export function createAttachmentHttpHandlers(
           { file: visible(result.file), replayed: result.replayed },
           result.replayed ? 200 : 201,
         );
+      } catch (error) {
+        return failure(error);
+      }
+    },
+    async uploadStatus(request, requestId) {
+      try {
+        const actor = await authorized(request, false);
+        if (actor instanceof Response) return actor;
+        if (!z.string().uuid().safeParse(requestId).success)
+          return json({ error: "Provide a UUID upload identity." }, 400);
+        const file = await dependencies.findUpload(actor, requestId);
+        return json({ file: file ? visible(file) : null });
       } catch (error) {
         return failure(error);
       }
