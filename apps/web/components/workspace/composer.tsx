@@ -23,7 +23,10 @@ import { STACKS } from "@/lib/stacks";
 import { WrenlyMark } from "@/components/wrenly-mark";
 import { resolveSelection, setModelSelection, useModels } from "@/lib/models/discovery";
 import type { ModelSelection } from "@/lib/models/discovery";
-import { PlusIcon, Loader2Icon, ListChecksIcon } from "lucide-react";
+import { DocumentationLink } from "@/components/documentation-link";
+import { useDictation } from "./dictation/use-dictation";
+import { DictationPanel } from "./dictation/dictation-panel";
+import { MicIcon, PlusIcon, Loader2Icon, ListChecksIcon } from "lucide-react";
 
 const AVAILABLE_STACKS = new Set(["nextjs", "laravel"]);
 const MAX_DRAFT_HEIGHT = 200;
@@ -120,6 +123,13 @@ export function Composer({
   const submittingRef = useRef(false);
   const mode = controlledMode ?? localMode;
   const blocked = disabled || submitting;
+  const dictation = useDictation(Boolean(blocked || readOnly), (text) => {
+    const next = prompt.trim() ? `${prompt}\n${text}` : text;
+    if (next.length > 16000) return false;
+    setPrompt(next);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    return true;
+  });
   useEffect(() => {
     if (!draft) return;
     setPrompt(draft.text);
@@ -173,7 +183,7 @@ export function Composer({
 
   const submit = async (): Promise<void> => {
     const value = prompt.trim();
-    if (!value || blocked || !selectionAvailable || submittingRef.current)
+    if (!value || blocked || dictation.busy || !selectionAvailable || submittingRef.current)
       return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -330,6 +340,7 @@ export function Composer({
         className="w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-[var(--color-text-1)] outline-none placeholder:text-[var(--color-text-3)] disabled:opacity-60"
       />
 
+      <DictationPanel dictation={dictation} disabled={Boolean(blocked || readOnly)} />
       <div className="composer-controls">
         <Popover.Root>
           <Popover.Trigger className="composer-options-trigger" aria-label="Prompt options"><PlusIcon size={17} aria-hidden="true" /></Popover.Trigger>
@@ -341,6 +352,7 @@ export function Composer({
                   onClick={() => { const next = mode === "plan" ? "auto" : "plan"; setLocalMode(next); onModeChange?.(next); }}>
                   <ListChecksIcon size={18} aria-hidden="true" /><span><strong>Plan mode</strong><small>Work through an approach before building</small></span><span>{mode === "plan" ? "On" : "Off"}</span>
                 </button>
+                {!dictation.available && <section className="composer-menu-section"><h3>Voice dictation</h3><p>{dictation.checked ? "Local transcription is not enabled on this instance." : "Checking local transcription…"}</p><DocumentationLink guide="guides/voice-dictation">Set up local dictation →</DocumentationLink></section>}
                 {compact && <section className="composer-menu-section"><h3>Build settings</h3>{choices}</section>}
                 <section className="composer-menu-section"><h3>Project tools</h3>{projectTools ?? <p>Skills and media permissions are available inside a project.</p>}</section>
               </Popover.Popup>
@@ -349,6 +361,7 @@ export function Composer({
         </Popover.Root>
         {!compact && <div className="composer-right-options">{mode === "plan" && <span className="composer-plan-indicator">Plan</span>}{choices}</div>}
 
+        {dictation.available && <button type="button" aria-label="Dictate a prompt" disabled={Boolean(blocked || readOnly || dictation.busy)} onClick={dictation.begin} className="rounded-lg p-2 text-[var(--color-text-3)] hover:bg-[var(--color-surface-2)] disabled:opacity-40"><MicIcon size={17} /></button>}
         {/* Send */}
         <div className="composer-send">
           <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
@@ -357,7 +370,7 @@ export function Composer({
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={blocked || !prompt.trim() || !selectionAvailable}
+            disabled={blocked || dictation.busy || !prompt.trim() || !selectionAvailable}
             aria-label="Send prompt"
             className="flex size-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-primary)] text-[var(--color-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >

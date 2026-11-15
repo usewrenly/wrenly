@@ -17,6 +17,11 @@ steps, with different evidence and permissions.
 
 ## Current scope
 
+Optional voice dictation runs locally through a pinned Whisper.cpp Docker runtime.
+A person records up to 60 seconds, reviews the transcript and inserts it into a draft;
+Send remains explicit. Audio is temporary, not a saved attachment or cloud service.
+See the public voice-dictation guide for the one-time model/runtime setup.
+
 Next.js and Laravel workflows cover generation, ongoing editing, validation, local
 previews and private publishing. Framework servers are extensible through MCP. Vue and
 Django are planned; their folders are not implemented support.
