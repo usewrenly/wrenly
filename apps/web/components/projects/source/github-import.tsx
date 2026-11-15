@@ -35,6 +35,7 @@ const Repositories = z.object({
     .max(200),
 });
 const Review = z.object({
+  stack: z.enum(["nextjs", "laravel"]),
   repository: z.object({ owner: z.string(), name: z.string() }),
   reviewId: z.uuid(),
   commitId: z.string().regex(/^[a-f0-9]{40}$/),
@@ -57,7 +58,7 @@ function ImportFlow(): React.JSX.Element {
   >([]);
   const [repositoryId, setRepositoryId] = useState(""),
     [ref, setRef] = useState(""),
-    [stack, setStack] = useState("nextjs"),
+    [stack, setStack] = useState("auto"),
     [name, setName] = useState("");
   const [repositorySearch, setRepositorySearch] = useState("");
   const visibleRepositories = repositories.filter((repo) =>
@@ -278,8 +279,9 @@ function ImportFlow(): React.JSX.Element {
                 label="Framework"
                 value={stack}
                 options={[
-                  { value: "nextjs", label: "Next.js 15" },
-                  { value: "laravel", label: "Laravel 13" },
+                  { value: "auto", label: "Detect automatically" },
+                  { value: "nextjs", label: "Next.js" },
+                  { value: "laravel", label: "Laravel" },
                 ]}
                 onChange={setStack}
                 disabled={busy}
@@ -295,8 +297,8 @@ function ImportFlow(): React.JSX.Element {
                 />
               </label>
               <p className={styles.note}>
-                Choose the framework used by this repository. Wrenly checks
-                compatibility during review; it does not convert the app.
+                Wrenly detects the framework from your manifests and checks its
+                version during review. Your app is never converted or upgraded.
               </p>
               <details className={styles.note}>
                 <summary>Supported source and privacy</summary>
@@ -328,7 +330,7 @@ function ImportFlow(): React.JSX.Element {
                   {review.repository.owner}/{review.repository.name}
                 </p>
                 <p className="text-sm">
-                  {review.fileCount} source files · Private project
+                  {review.stack === "nextjs" ? "Next.js" : "Laravel"} · {review.fileCount} source files · Private project
                 </p>
                 <p className="break-all font-mono text-xs">
                   Commit {review.commitId}

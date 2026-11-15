@@ -266,8 +266,8 @@ export async function editApp(value: unknown): Promise<EditOutput> {
   const requirements = typeof manifest === 'object' && manifest !== null && 'require' in manifest ? manifest.require : null
   const framework = typeof requirements === 'object' && requirements !== null && 'laravel/framework' in requirements
     ? requirements['laravel/framework'] : null
-  if (typeof framework !== 'string' || !/^\^13\.\d+(?:\.\d+)?$/.test(framework))
-    throw new EditContractError('invalid_edit_input', 'Laravel editing requires an existing Laravel 13 revision; older projects are never silently upgraded.')
+  if (typeof framework !== 'string' || !/^[~^]?(?:12|13)\.\d+(?:\.\d+)?$/.test(framework))
+    throw new EditContractError('invalid_edit_input', 'Laravel editing requires an existing Laravel 12 or 13 revision; preserve its declared version.')
   try {
     const response = await client.chat.completions.create({ model: MODEL, temperature: 0.1,
       response_format: { type: 'json_object' },

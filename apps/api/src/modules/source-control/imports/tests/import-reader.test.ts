@@ -70,7 +70,7 @@ test("unsupported framework versions are rejected rather than silently upgraded"
       { repositoryId: "12", ref: "main", stack: "nextjs" },
       new AbortController().signal,
     ),
-  ).rejects.toThrow("Next.js 15");
+  ).rejects.toThrow("Next.js 15 or 16");
   const client = fixture();
   await expect(
     readImportSource(
@@ -104,4 +104,22 @@ test("empty branch selection resolves the actual repository default instead of g
   expect(review.snapshot.commitId).toBe("a".repeat(40));
   expect(paths.some((path) => path.endsWith("/heads/master"))).toBe(true);
   expect(paths.some((path) => path.endsWith("/heads/main"))).toBe(false);
+});
+
+for (const version of ["15.5.29", "^15.5.29", "16.4.5", "~16.4.5"]) {
+  test(`review preserves Next.js ${version} without conversion`, async () => {
+    const result = await readImportSource(fixture(version), { repositoryId: "12", ref: "main", stack: "nextjs" }, new AbortController().signal);
+    expect(JSON.parse(result.snapshot.files[0]!.content).dependencies.next).toBe(version);
+  });
+}
+for (const version of ["latest", ">=15", "^16.0.0 || ^17.0.0", "16.0.0-canary.1", "17.0.0"]) {
+  test(`review rejects ambiguous or unverified version ${version}`, async () => {
+    await expect(readImportSource(fixture(version), { repositoryId: "12", ref: "main", stack: "nextjs" }, new AbortController().signal)).rejects.toThrow("version");
+  });
+}
+
+test("review detects the framework when no manual family is supplied", async () => {
+  const review = await readImportSource(fixture("16.4.5"), { repositoryId: "12", ref: "main" }, new AbortController().signal);
+  expect(review.stack).toBe("nextjs");
+  expect(review.snapshot.files[0]?.content).toContain("16.4.5");
 });

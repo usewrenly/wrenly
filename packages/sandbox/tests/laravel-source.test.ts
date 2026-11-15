@@ -25,3 +25,12 @@ test('Laravel refuses browser-served Tailwind instructions without an offline as
   }
   expect(() => validateLaravelSource([...LARAVEL_SKELETON, { path: 'public/utility-input.css', content: '/* @tailwind is compiled separately */ .button { padding: 1rem; }' }])).not.toThrow();
 })
+
+for (const version of ['^12.0', '~12.1.0', '12.1.0', '^13.0']) {
+  test(`Laravel source preserves compatible requirement ${version}`, () => {
+    const files = LARAVEL_SKELETON.map(file => file.path === 'composer.json' ?
+      { ...file, content: JSON.stringify({ ...JSON.parse(file.content), require: { php: '^8.4', 'laravel/framework': version } }) } : file);
+    expect(() => validateLaravelSource(files)).not.toThrow();
+    expect(JSON.parse(files[0]!.content).require['laravel/framework']).toBe(version);
+  });
+}

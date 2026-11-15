@@ -49,6 +49,11 @@ integration('Laravel MCP capability verification', () => {
       expect(edited.files.find(file => file.path === 'routes/web.php')?.content).toContain('Équipe updated')
       expect(edited.files.find(file => file.path === 'artisan')).toEqual(generated.files.find(file => file.path === 'artisan'))
       expect(calls).toBe(2)
+      const imported = generated.files.map(file => file.path === 'composer.json' ?
+        { ...file, content: '{"require":{"laravel/framework":"^12.0"}}' } : file)
+      const editedImport = await generateWithMcp(server, { ...input, previousFiles: imported }, undefined, 5000)
+      expect(editedImport.files.find(file => file.path === 'composer.json')?.content).toBe('{"require":{"laravel/framework":"^12.0"}}')
+      expect(editedImport.files.find(file => file.path === 'routes/web.php')?.content).toContain('Équipe updated')
       for (const reason of ['length', 'content_filter', 'stop']) {
         finishReason = reason
         contentOverride = 'fixture-private-source'

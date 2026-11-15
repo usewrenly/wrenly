@@ -21,7 +21,9 @@ its own. Initial generation rejects unfinished answers and bounds response text.
 Compatibility package name: `@wrenly/laravel-agent`. This is a framework MCP server,
 not an autonomous orchestrator. Wrenly starts it over stdio; it exits on parent EOF.
 
-Targets **Laravel 13 and PHP 8.4**, with Blade and local CSS/assets. It exposes
+New generation targets **Laravel 13 and PHP 8.4**. Editing accepts existing Laravel
+12 and 13 revisions and preserves their version constraints, with Blade and local
+CSS/assets. It exposes
 `generate_app` and `edit_app_v1`. Model inference uses the API-selected server-side
 OpenAI-compatible connection. No browser provider calls or extra external account.
 

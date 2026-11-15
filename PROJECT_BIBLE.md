@@ -30,7 +30,10 @@ a packaged installer and a hosted Wrenly service are separate roadmap work.
 
 GitHub source connections support browser App setup, personal repository import and
 owner-reviewed pushes to new branches. They are separate from app publishing and
-MCP connectors. Real provider acceptance is required before releasing this feature.
+MCP connectors. Import detects the framework from root manifests and preserves
+Next.js 15/16 or Laravel 12/13 dependency constraints. New-project starters are a
+separate choice; importing or editing never silently upgrades an existing app.
+Real provider acceptance is required before releasing this feature.
 
 The roadmap is honest product scope, not a promise of completion dates. Follow the
 repository’s tagged release notes for the version actually installed.

@@ -72,17 +72,22 @@ to authorize again; an uncertain single-use exchange is never automatically repe
 1. Select **Import from GitHub** on **Home** or **Projects**.
 2. Select **Load repositories**, search by owner or repository name, then choose an accessible repository.
 3. Leave **Branch or commit** empty to use that repository’s default branch, or enter a specific branch name or full commit SHA.
-4. Choose the framework **already used by the repository** and a name for your
-   private Wrenly project. This is a manual choice in v1. The server verifies
-   compatibility; it does not convert a Laravel repository into Next.js.
+4. Leave **Framework → Detect automatically**, or choose the family explicitly
+   if the repository contains both frameworks. Enter a name for your private Wrenly
+   project. The review shows the detected family; it does not convert the app.
 5. Select **Review this source**. Check the exact commit and excluded files.
 6. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
+
+The framework selector chooses the framework family, not a version to install.
+Wrenly reads the version from your package manifest and preserves it. For example,
+a Laravel 12 project stays on Laravel 12 when imported and edited. New-project
+starter versions are separate from existing-project compatibility.
 
 The import never asks a model to rewrite your repository. If compilation fails,
 inspect the saved source/logs and submit a separate prompt to request repairs.
 Do not use an ordinary generation retry to change an exact imported commit.
 
-The first import path supports root Next.js 15 and Laravel 13 applications that
+The first import path supports root Next.js 15/16 and Laravel 12/13 applications that
 meet the existing runtime policies. It does not upgrade framework versions or
 accept monorepo subdirectories, binaries, Git LFS pointers, symlinks or submodules.
 Laravel repositories with Composer scripts/plugins or custom repositories require
@@ -161,8 +166,8 @@ Wrenly sign-in or project sharing. See [GitHub's installation visibility guide](
 
 ## Current import limits
 
-Import supports root Next.js 15 and Laravel 13 apps. It does not yet accept normal
-binary assets such as PNG/JPEG images, monorepo roots or other framework versions.
+Import supports root Next.js 15/16 and Laravel 12/13 apps. It does not yet accept normal
+binary assets such as PNG/JPEG images, monorepo roots or framework versions outside that matrix.
 The limits are fixed in this release: 256 text files, 512 KiB per file, 8 MiB in total,
 and bounded provider responses. There is no settings slider or environment override.
 These are implementation limits, not GitHub account limits. Increasing them alone

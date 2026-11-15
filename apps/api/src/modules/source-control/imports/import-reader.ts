@@ -1,6 +1,7 @@
 /** Inspects selected source as data; never installs packages or executes repository configuration. */
 import { z } from "zod";
 import {
+  detectSourceFramework,
   readGitHubRepository,
   readGitHubSnapshot,
   type GitHubReadClient,
@@ -13,7 +14,7 @@ const Selection = z
   .object({
     repositoryId: z.string().regex(/^[1-9][0-9]{0,19}$/),
     ref: z.string().max(120),
-    stack: z.enum(["nextjs", "laravel"]),
+    stack: z.enum(["auto", "nextjs", "laravel"]).default("auto"),
   })
   .strict();
 function record(value: unknown): value is Record<string, unknown> {
@@ -92,8 +93,10 @@ export async function readImportSource(
     commitId,
     signal,
   );
+  let stack: "nextjs" | "laravel";
   try {
-    if (input.stack === "laravel") validateLaravelSource(snapshot.files);
+    stack = input.stack === "auto" ? detectSourceFramework(snapshot.files) : input.stack;
+    if (stack === "laravel") validateLaravelSource(snapshot.files);
     else {
       const manifest = JSON.parse(
         snapshot.files.find((file) => file.path === "package.json")?.content ??
@@ -103,10 +106,10 @@ export async function readImportSource(
         !record(manifest) ||
         !record(manifest.dependencies) ||
         typeof manifest.dependencies.next !== "string" ||
-        !/^[~^]?15\./.test(manifest.dependencies.next)
+        !/^[~^]?(?:15|16)\.\d+(?:\.\d+)?$/.test(manifest.dependencies.next)
       )
         throw new Error(
-          "Import currently supports Next.js 15 at the repository root. Other versions and monorepos require separate support.",
+          "This import runtime accepts Next.js 15 or 16 with an explicit version range. The repository version is preserved, never upgraded during import.",
         );
       validateNextjsStyling(snapshot.files);
     }
@@ -124,5 +127,5 @@ export async function readImportSource(
         : "This source is not supported by the selected runtime.",
     );
   }
-  return { snapshot, stack: input.stack };
+  return { snapshot, stack };
 }

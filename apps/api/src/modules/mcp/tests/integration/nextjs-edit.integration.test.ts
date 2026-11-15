@@ -18,7 +18,7 @@ integration('Next.js MCP revision editing', () => {
       if (providerError) return new Response('provider-private-detail', { status: 500 })
       return Response.json({ id: 'fixture', object: 'chat.completion', created: 1, model: 'fixture', choices: [{ index: 0, finish_reason: finishReason, message: { role: 'assistant', content: contentOverride ?? JSON.stringify(invalidOutput ? { version: 2, private: 'provider-private-detail', operations: [] } : { version: 1, operations: [{ type: 'update', path: 'app/page.tsx', content: 'Changed heading' }] }) } }] })
     } })
-    const base = [{ path: 'package.json', content: '{}' }, { path: 'app/page.tsx', content: 'Original heading' }, { path: 'app/keep.tsx', content: 'Unrelated functionality' }]
+    const base = [{ path: 'package.json', content: '{"dependencies":{"next":"16.4.5"}}' }, { path: 'app/page.tsx', content: 'Original heading' }, { path: 'app/keep.tsx', content: 'Unrelated functionality' }]
     try {
       const output = await generateWithMcp({ command: process.execPath, args: ['--no-env-file', resolve(import.meta.dir, '../../../../../../../packages/agents/nextjs-agent/src/server.ts')],
         env: { WRENLY_MODEL_BASE_URL: `http://127.0.0.1:${provider.port}/v1`, WRENLY_MODEL_API_KEY: 'fixture', WRENLY_MODEL_NAME: 'fixture' } },
@@ -26,6 +26,7 @@ integration('Next.js MCP revision editing', () => {
       expect(calls).toBe(1)
       expect(output.files.find(file => file.path === 'app/keep.tsx')?.content).toBe('Unrelated functionality')
       expect(output.files.find(file => file.path === 'app/page.tsx')?.content).toBe('Changed heading')
+      expect(output.files.find(file => file.path === 'package.json')).toEqual(base[0])
       expect(base[1]?.content).toBe('Original heading')
       invalidOutput = true
       await expect(generateWithMcp({ command: process.execPath, args: ['--no-env-file', resolve(import.meta.dir, '../../../../../../../packages/agents/nextjs-agent/src/server.ts')],
@@ -61,7 +62,7 @@ integration('Next.js MCP revision editing', () => {
     try {
       await expect(generateWithMcp({ command: process.execPath,
         args: ['--no-env-file', resolve(import.meta.dir, '../fixtures/mcp-generation-server.ts'), resolve(directory, 'pid'), 'success'], env: {} },
-      { prompt: 'Change', previousFiles: [{ path: 'package.json', content: '{}' }], previousErrors: [], attempt: 1 }, undefined, 5000)).rejects.toThrow('does not support revision-safe editing')
+      { prompt: 'Change', previousFiles: [{ path: 'package.json', content: '{"dependencies":{"next":"16.4.5"}}' }], previousErrors: [], attempt: 1 }, undefined, 5000)).rejects.toThrow('does not support revision-safe editing')
     } finally { await rm(directory, { recursive: true, force: true }) }
   }, 10000)
 })
