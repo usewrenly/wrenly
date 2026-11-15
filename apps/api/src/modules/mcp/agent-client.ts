@@ -1,3 +1,4 @@
+import type {FrameworkInspectionReport} from '@wrenly/inference/framework-tooling';
 import type { SkillGuidance } from "@wrenly/inference"
 // Starts the selected framework MCP server for one build attempt. MCP is the
 // tool-call protocol; the chosen model supplies the answer through that server.
@@ -19,6 +20,7 @@ export type FileTree = Array<{
 }>
 
 export type AgentInput = {
+    framework_inspection_v1?: FrameworkInspectionReport
     skills_v1?: SkillGuidance
     /** Server-side correlation only; never sent as a generation-tool argument. */
     buildId?: string

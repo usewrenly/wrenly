@@ -129,3 +129,31 @@ export function assertNoArgumentErrorTool(inputSchema: unknown): void {
   )
     throw new FrameworkInspectionPolicyError("Unknown runtime schema dialect.");
 }
+
+/** MCP capability marker; runtime parsing independently checks the complete bounded report. */
+export const FRAMEWORK_INSPECTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "version",
+    "framework",
+    "sourceHash",
+    "toolchainHash",
+    "upstreamCommit",
+    "facts",
+  ],
+  properties: {
+    version: { type: "integer", const: 1 },
+    framework: { type: "string", enum: ["laravel", "nextjs"] },
+    sourceHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    toolchainHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    upstreamCommit: {
+      type: "string",
+      enum: [
+        OFFICIAL_FRAMEWORK_RELEASES.laravel.commit,
+        OFFICIAL_FRAMEWORK_RELEASES.nextjs.commit,
+      ],
+    },
+    facts: { type: "object" },
+  },
+} as const;

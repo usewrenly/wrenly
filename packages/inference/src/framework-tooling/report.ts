@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   FRAMEWORK_INSPECTION_LIMITS,
   OFFICIAL_FRAMEWORK_RELEASES,
@@ -150,4 +151,108 @@ export function assertInspectionIdentity(
       "Framework inspection does not match this saved source and toolchain.",
     );
   bounded(report);
+}
+
+/** Parse the narrow report shape again when crossing MCP; unknown fields do not become model context. */
+export function parseFrameworkInspectionReport(
+  value: unknown,
+): FrameworkInspectionReport {
+  const data = object(value);
+  if (
+    Object.keys(data).some(
+      (key) =>
+        ![
+          "version",
+          "framework",
+          "sourceHash",
+          "toolchainHash",
+          "upstreamCommit",
+          "facts",
+        ].includes(key),
+    ) ||
+    data.version !== 1 ||
+    (data.framework !== "laravel" && data.framework !== "nextjs") ||
+    typeof data.sourceHash !== "string" ||
+    typeof data.toolchainHash !== "string"
+  )
+    throw new FrameworkInspectionPolicyError(
+      "Invalid framework inspection report.",
+    );
+  const expected: InspectionIdentity = {
+    framework: data.framework,
+    sourceHash: data.sourceHash,
+    toolchainHash: data.toolchainHash,
+  };
+  const facts = object(data.facts);
+  let parsed: FrameworkInspectionReport;
+  if (expected.framework === "nextjs") {
+    if (Object.keys(facts).some((key) => key !== "errors"))
+      throw new FrameworkInspectionPolicyError("Unknown runtime facts.");
+    parsed = runtimeErrorsReport(expected, facts.errors);
+  } else {
+    if (
+      Object.keys(facts).some(
+        (key) => !["phpVersion", "frameworkVersion", "packages"].includes(key),
+      ) ||
+      !Array.isArray(facts.packages)
+    )
+      throw new FrameworkInspectionPolicyError("Invalid application facts.");
+    parsed = applicationInformationReport(expected, {
+      php_version: facts.phpVersion,
+      laravel_version: facts.frameworkVersion,
+      packages: facts.packages.map((item) => {
+        const entry = object(item);
+        if (
+          Object.keys(entry).some((key) => !["name", "version"].includes(key))
+        )
+          throw new FrameworkInspectionPolicyError("Unknown package fact");
+        return { package_name: entry.name, version: entry.version };
+      }),
+    });
+  }
+  if (data.upstreamCommit !== parsed.upstreamCommit)
+    throw new FrameworkInspectionPolicyError("Unknown official tool release.");
+  return parsed;
+}
+
+/** Use the same complete file order on each side of the internal MCP contract. */
+export function frameworkSourceHash(
+  files: Array<{ path: string; content: string }>,
+): string {
+  return createHash("sha256").update(JSON.stringify(files)).digest("hex");
+}
+
+/** Keep error messages, not browser URLs, stack traces or arbitrary metadata from the runtime envelope. */
+export function nextRuntimeFactsReport(
+  expected: InspectionIdentity,
+  value: unknown,
+): FrameworkInspectionReport {
+  const data = object(value);
+  if (
+    !Array.isArray(data.configErrors) ||
+    !Array.isArray(data.sessionErrors) ||
+    data.configErrors.length > MAX_ERRORS ||
+    data.sessionErrors.length > MAX_ERRORS
+  )
+    throw new FrameworkInspectionPolicyError(
+      "Invalid official runtime error state.",
+    );
+  const errors: unknown[] = data.configErrors.map(
+    (item) => object(item).message,
+  );
+  for (const item of data.sessionErrors) {
+    const session = object(item);
+    if (session.buildError !== null && session.buildError !== undefined)
+      errors.push(session.buildError);
+    if (
+      !Array.isArray(session.runtimeErrors) ||
+      session.runtimeErrors.length > MAX_ERRORS
+    )
+      throw new FrameworkInspectionPolicyError(
+        "Invalid runtime session errors.",
+      );
+    for (const error of session.runtimeErrors)
+      errors.push(object(error).message);
+  }
+  return runtimeErrorsReport(expected, errors);
 }
