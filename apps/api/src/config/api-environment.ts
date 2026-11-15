@@ -7,10 +7,12 @@
 // ERROR STATES: Invalid config prevents startup.
 
 import { z } from 'zod'
-import { resolve } from 'node:path'
+import { resolve, isAbsolute } from 'node:path'
 const OptionalPublishingString = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional())
 
 const ApiEnvironmentSchema = z.object({
+  WRENLY_DICTATION_ENABLED: z.enum(['true', 'false']).default('false'),
+  WRENLY_DICTATION_MODEL_PATH: z.preprocess(value => value === '' ? undefined : value, z.string().refine(isAbsolute, 'Use an absolute model file path.').optional()),
   WRENLY_DATA_DIR: z.string().min(1).default('.local/wrenly').transform(value => resolve(value)),
   WRENLY_DATABASE_URL: z.url().regex(/^postgres(?:ql)?:\/\//),
   WRENLY_AUTH_SECRET: z.string().min(1),
@@ -63,6 +65,8 @@ export function parseApiEnvironment(
       `Invalid API configuration: ${issues}. Update the repository-root .env or the service environment.`,
     )
   }
+  if (parsed.data.WRENLY_DICTATION_ENABLED === 'true' && !parsed.data.WRENLY_DICTATION_MODEL_PATH)
+    throw new Error('WRENLY_DICTATION_ENABLED requires WRENLY_DICTATION_MODEL_PATH. Follow the voice-dictation setup guide.');
   if (parsed.data.WRENLY_APP_DATABASES_ENABLED === 'true' && parsed.data.WRENLY_PREVIEW_ENABLED !== 'true')
     throw new Error('WRENLY_APP_DATABASES_ENABLED requires WRENLY_PREVIEW_ENABLED=true and verified local database toolchains.');
   if (parsed.data.WRENLY_PREVIEW_ENABLED === 'true') {
