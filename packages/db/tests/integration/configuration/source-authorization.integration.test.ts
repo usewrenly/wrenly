@@ -464,7 +464,7 @@ integration("session-bound GitHub authorization persistence", () => {
     expect(await database.select().from(schema.projects)).toHaveLength(1);
   });
 
-  async function pushFixture() {
+  async function pushFixture(applicationRoot = "") {
     const appVersion = crypto.randomUUID(),
       connectionVersion = crypto.randomUUID();
     await database.insert(schema.sourceGitHubApp).values({
@@ -503,6 +503,7 @@ integration("session-bound GitHub authorization persistence", () => {
           content: '{"dependencies":{"next":"15.5.28"}}',
         },
       ],
+      applicationRoot,
       excludedPaths: [],
     };
     const review = await saveSourceImportReview(
@@ -552,7 +553,7 @@ integration("session-bound GitHub authorization persistence", () => {
     )) as { reviewId: string };
     return { imported, input, prepared, snapshot, connectionVersion };
   }
-  function remoteFixture(loseRefReply = false) {
+  function remoteFixture(loseRefReply = false, applicationRoot = "") {
     const posts: Array<{ path: string; body: unknown }> = [];
     let published = false;
     const commit = {
@@ -586,7 +587,7 @@ integration("session-bound GitHub authorization persistence", () => {
             truncated: false,
             tree: [
               {
-                path: "package.json",
+                path: applicationRoot ? `${applicationRoot}/package.json` : "package.json",
                 mode: "100644",
                 type: "blob",
                 sha: "c".repeat(40),
@@ -663,6 +664,24 @@ integration("session-bound GitHub authorization persistence", () => {
       sha: "e".repeat(40),
     });
     expect(await claimSourcePush(database)).toBeNull();
+  });
+  test("selected application directory survives admission and scopes every reviewed remote change", async () => {
+    const f = await pushFixture("apps/web");
+    const [origin] = await database.select().from(schema.sourceProjectOrigins);
+    const [review] = await database.select().from(schema.sourcePushReviews);
+    expect(origin?.applicationRoot).toBe("apps/web");
+    expect(review?.applicationRoot).toBe("apps/web");
+    expect(review?.changes.map(change => change.path)).toEqual(["apps/web/app/page.tsx"]);
+    await admitSourcePush(database, owner, { requestId: crypto.randomUUID(), reviewId: f.prepared.reviewId });
+    const claim = await claimSourcePush(database);
+    const remote = remoteFixture(false, "apps/web");
+    await executeSourcePush(database, claim!, remote.client, new AbortController().signal);
+    expect(remote.posts[0]?.body).toEqual({ base_tree: f.snapshot.treeId, tree: [{
+      path: "apps/web/app/page.tsx", mode: "100644", type: "blob",
+      content: "export default function Page() { return <p>Notes</p> }",
+    }] });
+    const [operation] = await database.select().from(schema.sourcePushOperations);
+    expect(operation?.status).toBe("success");
   });
   test("lost branch acknowledgement requires read-only recovery and never repeats a POST", async () => {
     const f = await pushFixture();

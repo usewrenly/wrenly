@@ -30,7 +30,7 @@ import {
   buildEvents,
   type db,
 } from "@wrenly/db";
-import { validateSourceFiles } from "@wrenly/source-control";
+import { validateSourceFiles, validateApplicationRoot } from "@wrenly/source-control";
 import type { GitHubSourceSnapshot } from "@wrenly/source-control";
 import type { AccessPrincipal } from "../../auth/access/access-context";
 import { requireProjectCapability } from "../../projects/access/project-access";
@@ -134,6 +134,7 @@ export async function saveSourceImportReview(
         repository: snapshot.repository,
         commitId: snapshot.commitId,
         treeId: snapshot.treeId,
+        applicationRoot: validateApplicationRoot(snapshot.applicationRoot ?? ""),
         stack,
         files,
         excludedPaths: snapshot.excludedPaths,
@@ -290,6 +291,7 @@ export async function admitSourceImport(
       repository: review.repository,
       commitId: review.commitId,
       treeId: review.treeId,
+      applicationRoot: review.applicationRoot,
       baseline: review.files,
     });
     return { projectId, buildId, replayed: false };

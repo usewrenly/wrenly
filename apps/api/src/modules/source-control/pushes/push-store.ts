@@ -21,6 +21,7 @@ import {
 } from "@wrenly/db";
 import {
   reviewSourceChanges,
+  repositorySourcePath,
   assertNewSourceBranch,
 } from "@wrenly/source-control";
 import { requireProjectCapability } from "../../projects/access/project-access";
@@ -216,6 +217,7 @@ export async function bindSourceRepository(
       repository: review.repository,
       commitId: review.commitId,
       treeId: review.treeId,
+      applicationRoot: review.applicationRoot,
       baseline: review.files,
     });
     return { bound: true, replayed: false };
@@ -309,7 +311,9 @@ export async function createSourcePushReview(
     const { files } = await terminalSource(tx, project.id, input.buildId);
     let changes;
     try {
-      changes = reviewSourceChanges(origin.baseline, files);
+      changes = reviewSourceChanges(origin.baseline, files).map(change => ({
+        ...change, path: repositorySourcePath(origin.applicationRoot, change.path),
+      }));
     } catch {
       throw new SourceConnectionError(
         400,
@@ -351,6 +355,7 @@ export async function createSourcePushReview(
         repository: origin.repository,
         baseCommit: origin.commitId,
         baseTree: origin.treeId,
+        applicationRoot: origin.applicationRoot,
         branch: input.branch,
         changes,
         expiresAt: new Date(Date.now() + REVIEW_TTL_MS),
@@ -358,7 +363,7 @@ export async function createSourcePushReview(
       .returning();
     if (!review) throw new Error("Push review was not saved.");
     const before = new Map(
-      origin.baseline.map((file) => [file.path, file.content]),
+      origin.baseline.map((file) => [repositorySourcePath(origin.applicationRoot, file.path), file.content]),
     );
     return {
       reviewId: review.id,

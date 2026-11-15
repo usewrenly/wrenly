@@ -2,6 +2,7 @@
 import { z } from "zod";
 import {
   detectSourceFramework,
+  validateApplicationRoot,
   readGitHubRepository,
   readGitHubSnapshot,
   type GitHubReadClient,
@@ -14,6 +15,7 @@ const Selection = z
   .object({
     repositoryId: z.string().regex(/^[1-9][0-9]{0,19}$/),
     ref: z.string().max(120),
+    applicationRoot: z.string().max(400).default(""),
     stack: z.enum(["auto", "nextjs", "laravel"]).default("auto"),
   })
   .strict();
@@ -33,6 +35,8 @@ export async function readImportSource(
       "Choose a repository, branch or commit, and supported framework.",
     );
   const input = parsed.data;
+  try { validateApplicationRoot(input.applicationRoot); }
+  catch { throw new SourceConnectionError(400, "Use a relative application directory such as apps/web, without a leading or trailing slash."); }
   if (
     (input.ref !== "" && !/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(input.ref)) ||
     input.ref.includes("..") ||
@@ -92,6 +96,7 @@ export async function readImportSource(
     repository,
     commitId,
     signal,
+    input.applicationRoot,
   );
   let stack: "nextjs" | "laravel";
   try {

@@ -22,7 +22,7 @@ export async function verifySourceControlSchema(
     await database.select().from(sourcePushReviews).limit(1);
   } catch {
     throw new Error(
-      "GitHub connection persistence requires migrations through 0038. Run bun run db:migrate from packages/db before starting the API.",
+      "GitHub connection persistence requires migrations through 0039. Run bun run db:migrate from packages/db before starting the API.",
     );
   }
 }

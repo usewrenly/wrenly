@@ -123,3 +123,21 @@ test("review detects the framework when no manual family is supplied", async () 
   expect(review.stack).toBe("nextjs");
   expect(review.snapshot.files[0]?.content).toContain("16.4.5");
 });
+
+test('review detects a standalone application in a chosen directory without fetching sibling blobs', async () => {
+  const base = fixture('16.4.5');
+  const client: GitHubReadClient = { async get(path, signal) {
+    const raw = await base.get(path, signal);
+    if (!path.endsWith('?recursive=1')) return raw;
+    const value = raw as { tree: Array<{ path: string }> };
+    return { ...(raw as object), tree: [
+      ...value.tree.map(entry => ({ ...entry, path: `apps/web/${entry.path}` })),
+      { path: 'apps/other/image.png', mode: '100644', type: 'blob', sha: 'f'.repeat(40), size: 100_000_000 },
+    ] };
+  } };
+  const result = await readImportSource(client, { repositoryId: '12', ref: 'main', applicationRoot: 'apps/web' }, new AbortController().signal);
+  expect(result.stack).toBe('nextjs');
+  expect(result.snapshot.applicationRoot).toBe('apps/web');
+  expect(result.snapshot.files.map(file => file.path)).toEqual(['package.json']);
+  expect(base.paths.some(path => path.includes('f'.repeat(40)))).toBe(false);
+});

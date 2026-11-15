@@ -72,11 +72,13 @@ to authorize again; an uncertain single-use exchange is never automatically repe
 1. Select **Import from GitHub** on **Home** or **Projects**.
 2. Select **Load repositories**, search by owner or repository name, then choose an accessible repository.
 3. Leave **Branch or commit** empty to use that repository’s default branch, or enter a specific branch name or full commit SHA.
-4. Leave **Framework → Detect automatically**, or choose the family explicitly
+4. For a standalone app inside a larger repository, enter its **Application directory**,
+   such as `apps/web`. Leave this empty for an app at the repository root.
+5. Leave **Framework → Detect automatically**, or choose the family explicitly
    if the repository contains both frameworks. Enter a name for your private Wrenly
    project. The review shows the detected family; it does not convert the app.
-5. Select **Review this source**. Check the exact commit and excluded files.
-6. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
+6. Select **Review this source**. Check the exact commit and excluded files.
+7. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
 
 The framework selector chooses the framework family, not a version to install.
 Wrenly reads the version from your package manifest and preserves it. For example,
@@ -87,9 +89,12 @@ The import never asks a model to rewrite your repository. If compilation fails,
 inspect the saved source/logs and submit a separate prompt to request repairs.
 Do not use an ordinary generation retry to change an exact imported commit.
 
-The first import path supports root Next.js 15/16 and Laravel 12/13 applications that
-meet the existing runtime policies. It does not upgrade framework versions or
-accept monorepo subdirectories, binaries, Git LFS pointers, symlinks or submodules.
+Import supports Next.js 15/16 and Laravel 12/13 applications at the repository root
+or in a selected standalone application directory. Wrenly preserves the selected
+directory when pushing changes back; sibling applications remain untouched.
+The selected app must build independently: workspace dependencies outside its
+directory are not fetched. Framework versions are preserved, not upgraded.
+Binary assets, Git LFS pointers, symlinks and submodules are not supported yet.
 Laravel repositories with Composer scripts/plugins or custom repositories require
 policy-compatible source before review. Private environment and credential files
 are excluded. Review the source yourself too: exclusion is not a general secret scan.
@@ -114,11 +119,11 @@ files, run a build or push anything. Imported projects already have this baselin
 The project owner must use their own GitHub connection; collaborators cannot borrow it.
 
 An empty GitHub repository has no commit to use as a baseline. The current linking
-flow requires a supported root application with a commit already present. Creating
+flow requires a supported application with a commit already present. Creating
 a repository, initializing an empty repository and a first export into an empty
 repository are **not supported yet**. Do not create a placeholder repository expecting
-Wrenly to initialize it automatically. Repository replacement and monorepo selection
-are also not supported yet.
+Wrenly to initialize it automatically. Repository replacement and applications that depend on sibling workspace packages
+are not supported yet.
 
 ## Review and push a revision
 
@@ -166,8 +171,9 @@ Wrenly sign-in or project sharing. See [GitHub's installation visibility guide](
 
 ## Current import limits
 
-Import supports root Next.js 15/16 and Laravel 12/13 apps. It does not yet accept normal
-binary assets such as PNG/JPEG images, monorepo roots or framework versions outside that matrix.
+Import supports standalone Next.js 15/16 and Laravel 12/13 apps, including a selected
+application directory. It does not yet accept binary assets such as PNG/JPEG images,
+external workspace dependencies or framework versions outside that matrix.
 The limits are fixed in this release: 256 text files, 512 KiB per file, 8 MiB in total,
 and bounded provider responses. There is no settings slider or environment override.
 These are implementation limits, not GitHub account limits. Increasing them alone

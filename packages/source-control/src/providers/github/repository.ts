@@ -10,6 +10,7 @@ import {
   assertSourcePath,
   shouldExcludeSourcePath,
 } from "../../policy/import-policy";
+import { validateApplicationRoot } from "../../policy/application-root";
 const MAX_TREE_ENTRIES = 4096; // Bound metadata too, including excluded files and directories.
 const SHA = /^[a-f0-9]{40}$/;
 function record(value: unknown): value is Record<string, unknown> {
@@ -60,6 +61,7 @@ export function readGitHubRepository(
 export function readGitHubSourceTree(
   value: unknown,
   expectedTreeId: string,
+  applicationRoot = "",
 ): {
   entries: SourceTreeEntry[];
   excludedPaths: string[];
@@ -73,6 +75,8 @@ export function readGitHubSourceTree(
     value.tree.length > MAX_TREE_ENTRIES
   )
     throw new SourceControlError("invalid_tree");
+  validateApplicationRoot(applicationRoot);
+  const prefix = applicationRoot ? `${applicationRoot}/` : "";
   const entries: SourceTreeEntry[] = [],
     excludedPaths: string[] = [],
     paths: string[] = [];
@@ -85,17 +89,19 @@ export function readGitHubSourceTree(
       !SHA.test(entry.sha)
     )
       throw new SourceControlError("invalid_tree");
-    assertSourcePath(entry.path);
+    if (prefix && !entry.path.startsWith(prefix)) continue;
+    const path = prefix ? entry.path.slice(prefix.length) : entry.path;
+    assertSourcePath(path);
     if (entry.type === "tree" && entry.mode === "040000") continue;
-    paths.push(entry.path);
+    paths.push(path);
     // Refuse symlinks/submodules even when their names otherwise look excludable.
     if (
       entry.type !== "blob" ||
       !["100644", "100755"].includes(String(entry.mode))
     )
       throw new SourceControlError("unsupported_entry");
-    if (shouldExcludeSourcePath(entry.path)) {
-      excludedPaths.push(entry.path);
+    if (shouldExcludeSourcePath(path)) {
+      excludedPaths.push(path);
       continue;
     }
     if (
@@ -107,7 +113,7 @@ export function readGitHubSourceTree(
     )
       throw new SourceControlError("size_limit");
     entries.push({
-      path: entry.path,
+      path,
       blobId: entry.sha,
       size: Number(entry.size),
       executable: entry.mode === "100755",

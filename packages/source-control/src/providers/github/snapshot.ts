@@ -12,6 +12,7 @@ import {
   type SourceFile,
   type SourceRepository,
 } from "../../contracts/source";
+import { validateApplicationRoot } from "../../policy/application-root";
 import { validateSourceFiles } from "../../policy/import-policy";
 import type { GitHubReadClient } from "./http-client";
 import { readGitHubRepository, readGitHubSourceTree } from "./repository";
@@ -24,6 +25,7 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 export interface GitHubSourceSnapshot {
   repository: SourceRepository;
+  applicationRoot?: string;
   commitId: string;
   treeId: string;
   files: SourceFile[];
@@ -75,7 +77,9 @@ export async function readGitHubSnapshot(
   expected: SourceRepository,
   commitId: string,
   externalSignal?: AbortSignal,
+  applicationRoot = "",
 ): Promise<GitHubSourceSnapshot> {
+  validateApplicationRoot(applicationRoot);
   if (!SHA.test(commitId)) throw new SourceControlError("invalid_tree");
   const signal = externalSignal
     ? AbortSignal.any([
@@ -102,6 +106,7 @@ export async function readGitHubSnapshot(
   const tree = readGitHubSourceTree(
     await client.get(`${root}/git/trees/${treeId}?recursive=1`, signal),
     treeId,
+    applicationRoot,
   );
   const files: SourceFile[] = new Array(tree.entries.length);
   const controller = new AbortController();
@@ -141,6 +146,7 @@ export async function readGitHubSnapshot(
   signal.throwIfAborted();
   return {
     repository,
+    applicationRoot,
     commitId,
     treeId,
     files: validateSourceFiles(files),

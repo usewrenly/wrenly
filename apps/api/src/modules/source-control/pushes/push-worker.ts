@@ -13,6 +13,7 @@ import {
   createGitHubObjectClient,
   readGitHubRepository,
   readGitHubSourceTree,
+  repositorySourcePath,
   assertNewSourceBranch,
   GitHubRequestError,
   type GitHubObjectClient,
@@ -140,10 +141,11 @@ export async function executeSourcePush(
         signal,
       ),
       review.baseTree,
+      review.applicationRoot,
     );
     const modes = new Map(
       entries.map((entry) => [
-        entry.path,
+        repositorySourcePath(review.applicationRoot, entry.path),
         entry.executable ? "100755" : "100644",
       ]),
     );

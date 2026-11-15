@@ -27,6 +27,7 @@ export const sourcePushReviews = pgTable("source_push_reviews", {
   repository: jsonb("repository").$type<SourceRepository>().notNull(),
   baseCommit: text("base_commit").notNull(),
   baseTree: text("base_tree").notNull(),
+  applicationRoot: text("application_root").notNull().default(""),
   branch: text("branch").notNull(),
   changes: jsonb("changes").$type<SourceChange[]>().notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

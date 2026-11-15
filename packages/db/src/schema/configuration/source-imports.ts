@@ -20,6 +20,7 @@ export const sourceImportReviews = pgTable("source_import_reviews", {
   repository: jsonb("repository").$type<SourceRepository>().notNull(),
   commitId: text("commit_id").notNull(),
   treeId: text("tree_id").notNull(),
+  applicationRoot: text("application_root").notNull().default(""),
   stack: text("stack").$type<"nextjs" | "laravel">().notNull(),
   files: jsonb("files").$type<SourceFile[]>().notNull(),
   excludedPaths: jsonb("excluded_paths").$type<string[]>().notNull(),
@@ -47,6 +48,7 @@ export const sourceProjectOrigins = pgTable(
     repository: jsonb("repository").$type<SourceRepository>().notNull(),
     commitId: text("commit_id").notNull(),
     treeId: text("tree_id").notNull(),
+    applicationRoot: text("application_root").notNull().default(""),
     baseline: jsonb("baseline").$type<SourceFile[]>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

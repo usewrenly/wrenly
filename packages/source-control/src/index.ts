@@ -10,3 +10,4 @@ export * from "./providers/github/app-manifest";
 export * from "./providers/github/snapshot";
 export * from "./policy/change-review";
 export * from "./policy/framework-detection";
+export * from "./policy/application-root";

@@ -36,6 +36,7 @@ const Repositories = z.object({
 });
 const Review = z.object({
   stack: z.enum(["nextjs", "laravel"]),
+  applicationRoot: z.string(),
   repository: z.object({ owner: z.string(), name: z.string() }),
   reviewId: z.uuid(),
   commitId: z.string().regex(/^[a-f0-9]{40}$/),
@@ -58,6 +59,7 @@ function ImportFlow(): React.JSX.Element {
   >([]);
   const [repositoryId, setRepositoryId] = useState(""),
     [ref, setRef] = useState(""),
+    [applicationRoot, setApplicationRoot] = useState(""),
     [stack, setStack] = useState("auto"),
     [name, setName] = useState("");
   const [repositorySearch, setRepositorySearch] = useState("");
@@ -114,7 +116,7 @@ function ImportFlow(): React.JSX.Element {
           await apiFetch("/api/source/github/import/review", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ repositoryId, ref, stack }),
+            body: JSON.stringify({ repositoryId, ref, stack, applicationRoot }),
             signal: AbortSignal.timeout(70000),
           }),
         ),
@@ -271,6 +273,11 @@ function ImportFlow(): React.JSX.Element {
                   disabled={busy}
                 />
               </label>
+              <label className={styles.fieldLabel}>
+                Application directory <span className={styles.optional}>Optional · leave empty for the repository root</span>
+                <Input value={applicationRoot} onChange={(event) => setApplicationRoot(event.target.value)}
+                  placeholder="apps/web" maxLength={400} disabled={busy} />
+              </label>
               <div className={styles.sectionHeading}>
                 <FolderGit2 size={15} aria-hidden="true" /> Your Wrenly project
               </div>
@@ -303,7 +310,7 @@ function ImportFlow(): React.JSX.Element {
               <details className={styles.note}>
                 <summary>Supported source and privacy</summary>
                 <p>
-                  Root applications only. Binary assets, submodules and Git LFS
+                  Choose a standalone application directory. Binary assets, submodules and Git LFS
                   are unsupported. Private configuration is excluded. No
                   dependencies run during review.
                 </p>
@@ -333,6 +340,7 @@ function ImportFlow(): React.JSX.Element {
                   {review.stack === "nextjs" ? "Next.js" : "Laravel"} · {review.fileCount} source files · Private project
                 </p>
                 <p className="break-all font-mono text-xs">
+                  Directory {review.applicationRoot || "/"}<br />
                   Commit {review.commitId}
                 </p>
                 <p className="text-sm text-muted-foreground">

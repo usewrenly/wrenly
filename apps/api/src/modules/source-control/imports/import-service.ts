@@ -49,6 +49,7 @@ export function createSourceImportService(
         ...review,
         repository: snapshot.repository,
         commitId: snapshot.commitId,
+        applicationRoot: snapshot.applicationRoot ?? "",
         stack,
       };
     },
