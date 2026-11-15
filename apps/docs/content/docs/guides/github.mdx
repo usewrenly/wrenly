@@ -6,6 +6,17 @@ description: Connect your own GitHub account and choose repository access.
 A GitHub connection lets Wrenly check repositories available to your account. It is
 separate from signing in to Wrenly and from publishing through Gitea and Coolify.
 
+## What you can do
+
+| Start here | What Wrenly does |
+| --- | --- |
+| An app already on GitHub | Import a reviewed commit into a new private Wrenly project |
+| An app you built in Wrenly | Link an existing GitHub repository, review the differences and push a new branch |
+| No GitHub repository yet | Create and initialize one on GitHub first; Wrenly does not create repositories yet |
+
+Connecting GitHub does not deploy an app or continuously synchronize files. You
+choose when to import or push, and review the source before either action.
+
 ## Before you start
 
 - Apply the current Wrenly database migrations, including `0038`.
@@ -17,13 +28,21 @@ separate from signing in to Wrenly and from publishing through Gitea and Coolify
 
 1. Open **Settings → Connections → GitHub** as the instance owner.
 2. Choose a unique App name. For members using their own GitHub accounts, enable
-   **Allow members to install this App on their own GitHub accounts**. This makes
+   **Let members connect their own GitHub accounts using this instance’s App**. This makes
    the App registration installable by other accounts; repositories stay private.
-3. Select **Register on GitHub**.
+3. Make sure you are signed in to the GitHub account that should own the App in
+   this browser, then select **Register on GitHub**.
 4. Review GitHub's registration screen and confirm. GitHub returns you to Wrenly.
 
-The App belongs to your installation. Wrenly stores its credentials encrypted on
-that installation; you do not copy a client secret into an environment file.
+There is **one GitHub App for this Wrenly installation**, registered by its owner.
+Members do not each need to create a separate App. Think of the App as the connector;
+each person still grants their own account and repository access. Sharing this App
+does not share the owner’s personal GitHub login or automatically grant their repository access.
+Wrenly stores the App credentials encrypted on this installation; you do not copy a
+client secret into an environment file.
+
+GitHub requires both a homepage and a webhook URL in its registration manifest.
+Wrenly supplies those values; webhook delivery is disabled and no webhook setup is needed.
 
 ## Connect your account
 
@@ -49,7 +68,9 @@ to authorize again; an uncertain single-use exchange is never automatically repe
 1. Select **Import from GitHub** on **Home** or **Projects**.
 2. Select **Load repositories**, then choose an accessible repository.
 3. Enter its branch name (for example `main`) or a full commit SHA.
-4. Choose the framework and a name for your private Wrenly project.
+4. Choose the framework **already used by the repository** and a name for your
+   private Wrenly project. This is a manual choice in v1. The server verifies
+   compatibility; it does not convert a Laravel repository into Next.js.
 5. Select **Review this source**. Check the exact commit and excluded files.
 6. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
 
@@ -70,6 +91,11 @@ or changing authorization requires a new source review before a new import.
 
 ## Connect an existing Wrenly project
 
+For example, you built a booking app in Wrenly and want its source in a repository
+you already own on GitHub. Linking that repository tells Wrenly which remote commit
+to compare your selected revision against. It does **not** import that repository
+over your current app.
+
 Open a finished revision in the workspace and select **GitHub source**, next to
 Download source. Choose **Load repositories**, select a repository and review its
 baseline branch or commit. Confirm **Connect repository**.
@@ -78,8 +104,12 @@ This saves the remote comparison baseline. It does not replace the Wrenly projec
 files, run a build or push anything. Imported projects already have this baseline.
 The project owner must use their own GitHub connection; collaborators cannot borrow it.
 
-An empty GitHub repository has no commit to use as a baseline. Add a supported root
-application first. Repository replacement and monorepo selection are not supported yet.
+An empty GitHub repository has no commit to use as a baseline. The current linking
+flow requires a supported root application with a commit already present. Creating
+a repository, initializing an empty repository and a first export into an empty
+repository are **not supported yet**. Do not create a placeholder repository expecting
+Wrenly to initialize it automatically. Repository replacement and monorepo selection
+are also not supported yet.
 
 ## Review and push a revision
 
