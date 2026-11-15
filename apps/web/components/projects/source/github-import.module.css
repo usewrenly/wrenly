@@ -122,3 +122,5 @@
     gap: 14px;
   }
 }
+
+.repositoryPopup { max-height: min(320px, var(--available-height)); }

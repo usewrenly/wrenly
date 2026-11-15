@@ -209,6 +209,7 @@ function ImportFlow(): React.JSX.Element {
               </div>
               <label className={styles.fieldLabel}>Repository</label>
               <ChoiceSelect
+                popupClassName={styles.repositoryPopup}
                 label="Repository"
                 value={repositoryId || null}
                 options={repositories.map((repo) => ({

@@ -1,28 +1,20 @@
 "use client";
 /** Browser account setup uses server-issued redirects; credentials stay in the API. */
+import styles from "./connections.module.css";
 import { useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
-import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
+import { ArrowUpRightIcon } from "lucide-react";
 import { parseSourceConnectionStatus } from "@wrenly/source-control";
 import { authClient } from "@/lib/auth/auth-client";
 import { apiFetch } from "@/lib/api";
+import { readSourceResponse as result } from "@/lib/source-control/response";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DocumentationLink } from "@/components/documentation-link";
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-async function result(response: Response): Promise<unknown> {
-  const value: unknown = await response.json();
-  if (!response.ok)
-    throw new Error(
-      record(value) && typeof value.error === "string"
-        ? value.error
-        : "Connection could not be checked.",
-    );
-  return value;
 }
 /** Account-scoped query keys avoid showing a former signed-in user's connection after switching accounts. */
 export function GitHubConnectionCard(): React.JSX.Element {
@@ -175,9 +167,9 @@ function PersonalGitHubConnection({
   }
   const current = status.data;
   return (
-    <article className="connection-card">
+    <article className={`connection-card ${styles.github}`}>
       <Image src="/connectors/github.svg" alt="" width={24} height={24} />
-      <div className="min-w-0 flex-1 space-y-4">
+      <div className={styles.body}>
         <div>
           <h2>GitHub</h2>
           <span className="connection-state">
@@ -189,19 +181,14 @@ function PersonalGitHubConnection({
           </span>
         </div>
         <p>
-          Connect your GitHub account and choose the repositories this instance
-          can access. Each member uses their own connection.
+          {current?.connection
+            ? "Your source, connected. Choose repository access here, then import from Home or connect a project in its workspace."
+            : "Connect your own GitHub account to import apps and push reviewed changes. Each member controls their own repository access."}
         </p>
         {outcome === "registered" ? (
           <p role="status">
             GitHub App registered. Now connect your account and choose
             repository access.
-          </p>
-        ) : null}
-        {outcome === "connected" ? (
-          <p role="status">
-            <CheckIcon size={14} className="inline" aria-hidden="true" /> Your
-            GitHub account is connected.
           </p>
         ) : null}
         {outcome === "failed" ? (
@@ -268,7 +255,7 @@ function PersonalGitHubConnection({
         ) : null}
         {current?.app ? (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className={styles.actions}>
               {!current.connection || current.connection.needsAuthorization ? (
                 <Button disabled={busy} onClick={() => void begin("connect")}>
                   {current.connection ? "Authorize again" : "Connect GitHub"}{" "}
@@ -276,45 +263,52 @@ function PersonalGitHubConnection({
                 </Button>
               ) : (
                 <Button
-                  variant="outline"
+                  className={styles.primary}
                   disabled={busy}
                   onClick={() => void checkRepositories()}
                 >
                   Check repository access
                 </Button>
               )}
-              {current.connection && !current.connection.needsAuthorization && (
-                <Button
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => void begin("connect")}
-                >
-                  Reconnect
-                </Button>
-              )}
               <a
-                className="text-sm underline underline-offset-4"
+                className={styles.repositoryLink}
                 href={`https://github.com/apps/${current.app.slug}/installations/new`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 Choose repositories on GitHub ↗
               </a>
-              {current.connection ? (
-                <Button
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() => void disconnect()}
-                >
-                  Disconnect
-                </Button>
-              ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
               Select repositories in GitHub, then return here to check access.
               Disconnecting here removes local access; uninstalling the App is
               managed in GitHub.
             </p>
+            {current.connection && (
+              <details className={styles.advanced}>
+                <summary>Connection settings</summary>
+                <p>
+                  Reconnect if authorization has expired. Disconnect removes
+                  your saved Wrenly access; it does not delete repositories.
+                </p>
+                <div className={styles.actions}>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void begin("connect")}
+                  >
+                    Reconnect GitHub
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => void disconnect()}
+                  >
+                    Disconnect account
+                  </Button>
+                </div>
+              </details>
+            )}
           </div>
         ) : null}
         {repositories ? (

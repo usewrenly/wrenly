@@ -1,0 +1,88 @@
+/* Existing settings use shared authority and data; this scope only arranges their presentation. */
+.page .sectionTitle {
+  margin-top: 12px;
+}
+.page .sectionTitle h2 {
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--color-text-1);
+  margin: 0;
+}
+.page .sectionTitle p {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.github .body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.github .body > p {
+  margin: 0;
+}
+.github .actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.github .actions :global([data-slot="button"]),
+.github :global([data-slot="button"]) {
+  min-height: 38px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.github .primary {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+.github .repositoryLink {
+  padding: 9px 12px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 9px;
+  text-decoration: none;
+  font-size: 12px;
+}
+.github .advanced {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 18px;
+}
+.github .advanced summary {
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+.github .advanced p {
+  font-size: 12px;
+  margin: 12px 0;
+}
+.github :global([data-slot="input"]) {
+  height: 40px;
+  padding: 9px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-2);
+  border-radius: 9px;
+}
+.page .roadmap {
+  border-top: 1px solid var(--color-border);
+  padding-top: 18px;
+}
+.roadmap > summary {
+  cursor: pointer;
+  color: var(--color-text-2);
+  font-size: 13px;
+  padding-bottom: 18px;
+}
+@media (max-width: 600px) {
+  .github {
+    gap: 14px;
+    padding: 20px;
+  }
+  .github .actions {
+    align-items: stretch;
+  }
+}
