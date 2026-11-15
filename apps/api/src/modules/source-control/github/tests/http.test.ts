@@ -104,16 +104,67 @@ test("callbacks remove codes from the URL and return only a fixed outcome", asyn
   expect(failed.headers.get("location")).toEndWith("github=failed");
 });
 
-
 test("import review and confirmation enforce session and origin before reading source or admitting a project", async () => {
   const f = fixture();
-  f.service.prepareImport = async (_principal, input) => { f.calls.push("review"); return input; };
-  f.service.confirmImport = async (_principal, input) => { f.calls.push("confirm"); return input; };
-  expect((await f.handlers.prepareImport(start("https://evil.example", {}))).status).toBe(403);
+  f.service.prepareImport = async (_principal, input) => {
+    f.calls.push("review");
+    return input;
+  };
+  f.service.confirmImport = async (_principal, input) => {
+    f.calls.push("confirm");
+    return input;
+  };
+  expect(
+    (await f.handlers.prepareImport(start("https://evil.example", {}))).status,
+  ).toBe(403);
   expect(f.calls).toEqual([]);
-  expect((await f.handlers.prepareImport(start("https://instance.example", { repositoryId: "12" }))).status).toBe(200);
-  expect((await f.handlers.confirmImport(start("https://instance.example", { reviewId: "review" }))).status).toBe(200);
+  expect(
+    (
+      await f.handlers.prepareImport(
+        start("https://instance.example", { repositoryId: "12" }),
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await f.handlers.confirmImport(
+        start("https://instance.example", { reviewId: "review" }),
+      )
+    ).status,
+  ).toBe(200);
   expect(f.calls).toEqual(["review", "confirm"]);
   const anonymous = fixture(false);
   expect((await anonymous.handlers.confirmImport(start())).status).toBe(401);
+});
+
+test("import policy and provider failures return actionable JSON without remote content", async () => {
+  const { SourceControlError, GitHubRequestError } =
+    await import("@wrenly/source-control");
+  for (const error of [
+    new SourceControlError("invalid_content"),
+    new GitHubRequestError("http_error", 404),
+    new Error("private fixture detail"),
+  ]) {
+    const f = fixture();
+    f.service.prepareImport = async () => {
+      throw error;
+    };
+    const response = await f.handlers.prepareImport(start());
+    const body = (await response.json()) as { error: string };
+    expect(response.status).toBe(
+      error instanceof SourceControlError
+        ? 400
+        : error instanceof GitHubRequestError
+          ? 502
+          : 503,
+    );
+    expect(body.error).not.toContain("private fixture detail");
+    expect(body.error).toContain(
+      error instanceof SourceControlError
+        ? "binary"
+        : error instanceof GitHubRequestError
+          ? "branch"
+          : "Reload",
+    );
+  }
 });

@@ -14,6 +14,8 @@ readDocumentationBase(process.env.NEXT_PUBLIC_DOCS_URL, process.env.NODE_ENV)
 const apiOrigin = readApiOrigin(process.env.NEXT_PUBLIC_API_URL)
 
 const nextConfig: NextConfig = {
+  // Source review has its own 45s budget; the proxy must wait for the API response.
+  experimental: { proxyTimeout: 75_000 },
   async rewrites() {
     return [
       {

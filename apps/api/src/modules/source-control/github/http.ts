@@ -1,6 +1,8 @@
 /** Authenticated source connection endpoints. Callback state replaces Origin checks only on GitHub's browser return. */
 import { ProjectAccessError } from "../../projects/access/project-access";
 import { z } from "zod";
+import { GitHubRequestError, SourceControlError } from "@wrenly/source-control";
+import { logger } from "../../../lib/logger";
 import type { AccessPrincipal } from "../../auth/access/access-context";
 import { SourceConnectionError } from "./authorization-store";
 import { AccessDeniedError } from "../../auth/access/access-policy";
@@ -140,6 +142,59 @@ export function createGitHubConnectionHandlers(options: {
         );
       return Response.json(await run(principal), { headers: PRIVATE });
     } catch (error) {
+      if (error instanceof SourceControlError) {
+        const messages: Record<SourceControlError["code"], string> = {
+          invalid_repository:
+            "This repository is unavailable or unsupported. Check its access in GitHub.",
+          identity_changed:
+            "The repository identity changed. Reload repositories and review again.",
+          invalid_tree:
+            "The repository tree could not be verified. Choose another commit or a smaller root application.",
+          unsupported_entry:
+            "This repository contains a symlink or submodule. These are not supported by import yet.",
+          unsafe_path:
+            "This repository contains an unsupported or ambiguous file path. Review its source before importing.",
+          size_limit:
+            "This repository exceeds import limits: 256 files, 512 KiB per file and 8 MiB total.",
+          invalid_content:
+            "This repository contains binary files, Git LFS pointers or unsupported text. Import currently accepts text source only.",
+        };
+        return Response.json(
+          { error: messages[error.code] },
+          { status: 400, headers: PRIVATE },
+        );
+      }
+      if (error instanceof GitHubRequestError) {
+        const message =
+          error.status === 404
+            ? "GitHub could not find this repository or branch with your current access. Check the branch name and selected repositories."
+            : error.status === 401
+              ? "GitHub authorization expired. Reconnect your account in Connections."
+              : error.status === 403 || error.status === 429
+                ? "GitHub refused this request or temporarily limited access. Check App repository permissions and try again later."
+                : error.code === "response_limit"
+                  ? "GitHub returned more source data than this import supports. Choose a smaller repository."
+                  : "GitHub source could not be read. Check the connection and try again shortly.";
+        logger.error("GitHub source request failed", {
+          operation: new URL(request.url).pathname,
+          providerCode: error.code,
+          httpStatus: error.status,
+        });
+        return Response.json(
+          { error: message },
+          { status: 502, headers: PRIVATE },
+        );
+      }
+      if (
+        !(error instanceof SourceConnectionError) &&
+        !(error instanceof ProjectAccessError) &&
+        !(error instanceof AccessDeniedError)
+      )
+        logger.error("Source operation failed", {
+          operation: new URL(request.url).pathname,
+          errorName:
+            error instanceof Error ? error.constructor.name : "UnknownError",
+        });
       const denied = error instanceof AccessDeniedError;
       const status =
         error instanceof SourceConnectionError ||

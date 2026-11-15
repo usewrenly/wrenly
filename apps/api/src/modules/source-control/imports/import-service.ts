@@ -5,6 +5,8 @@ import type { AccessPrincipal } from "../../auth/access/access-context";
 import { readSourcePersonalToken } from "../github/connection-store";
 import { saveSourceImportReview, admitSourceImport } from "./import-store";
 import { readImportSource } from "./import-reader";
+const IMPORT_REVIEW_TIMEOUT_MS = 45_000;
+
 /** No repository code runs in this request; the saved validation job owns Docker execution. */
 export function createSourceImportService(
   database: typeof db,
@@ -20,6 +22,11 @@ export function createSourceImportService(
   return {
     confirm: (principal, raw) => admitSourceImport(database, principal, raw),
     prepare: async (principal, raw, signal) => {
+      // Leave time for a structured response before the API and browser deadlines.
+      const reviewSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(IMPORT_REVIEW_TIMEOUT_MS),
+      ]);
       const personal = await readSourcePersonalToken(
         database,
         principal,
@@ -28,8 +35,9 @@ export function createSourceImportService(
       const { snapshot, stack } = await readImportSource(
         createGitHubReadClient(personal.token),
         raw,
-        signal,
+        reviewSignal,
       );
+      reviewSignal.throwIfAborted();
       const review = await saveSourceImportReview(
         database,
         principal,

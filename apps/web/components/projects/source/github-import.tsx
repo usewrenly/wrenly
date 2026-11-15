@@ -8,6 +8,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { apiFetch } from "@/lib/api";
+import {
+  readSourceResponse as responseValue,
+  SourceResponseError as ImportResponseError,
+} from "@/lib/source-control/response";
 import { authClient } from "@/lib/auth/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,25 +43,6 @@ const Review = z.object({
   expiresAt: z.string().datetime(),
 });
 type ImportReview = z.infer<typeof Review>;
-class ImportResponseError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-async function responseValue(response: Response): Promise<unknown> {
-  const raw: unknown = await response.json();
-  if (!response.ok) {
-    const parsed = z.object({ error: z.string() }).safeParse(raw);
-    throw new ImportResponseError(
-      response.status,
-      parsed.success ? parsed.data.error : "The import could not be completed.",
-    );
-  }
-  return raw;
-}
 export function GitHubImportButton(): React.JSX.Element {
   const { data: session } = authClient.useSession();
   return <ImportFlow key={session?.user.id ?? "signed-out"} />;
