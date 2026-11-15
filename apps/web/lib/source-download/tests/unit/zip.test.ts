@@ -9,6 +9,8 @@ test("ZIP is independently readable and preserves nested Unicode paths, empty fi
   const files = [
     { path: "app/こんにちは.tsx", content: "export default 'hello 👋';\n" },
     { path: "empty.txt", content: "" },
+    { path: "docs/Getting started.md", content: "Instructions with a safe space in the path" },
+    { path: "app/(marketing)/[slug]/page.tsx", content: "export default function Page() { return null }" },
     { path: "bom.txt", content: "\ufeffKeep this BOM\n" },
     { path: "package.json", content: '{"private":true}\n' },
   ];

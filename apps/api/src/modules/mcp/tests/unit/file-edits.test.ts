@@ -35,3 +35,14 @@ describe('revision-safe file edits', () => {
     expect(() => applyFileEdits(base, { version: 1, operations: [{ type: 'update', path: 'app/page.tsx', content: 'x'.repeat(2 * 1024 * 1024) }] })).toThrow('artifact limits')
   })
 })
+
+test('editing preserves imported paths containing spaces and route groups', () => {
+  const files = [
+    { path: 'app/(marketing)/page.tsx', content: 'original page' },
+    { path: 'docs/Getting started.md', content: 'keep these instructions' },
+  ]
+  const edited = applyFileEdits(files, { version: 1, operations: [
+    { type: 'update', path: 'app/(marketing)/page.tsx', content: 'updated page' },
+  ] })
+  expect(edited).toEqual([{ ...files[0]!, content: 'updated page' }, files[1]!])
+})

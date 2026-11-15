@@ -30,8 +30,11 @@ export function assertSourcePath(path: string): void {
     !path ||
     path.length > SOURCE_LIMITS.pathCharacters ||
     path !== path.normalize("NFC") ||
-    /[\\\x00-\x20\x7f:#?%]/.test(path) ||
-    path.split("/").some((part) => !part || part === "." || part === "..")
+    /[\\\x00-\x1f\x7f:#?%]/.test(path) ||
+    path.split("/").some((part) =>
+      !part || part === "." || part === ".." || /[. ]$/.test(part) ||
+      /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(part),
+    )
   )
     throw new SourceControlError("unsafe_path");
 }

@@ -127,3 +127,12 @@ test("decoded content is checked independently of tree metadata", () => {
     validateSourceFiles([{ path: ".env", content: "SECRET=hidden" }]),
   ).toThrow();
 });
+
+test("ordinary spaces and framework route groups survive source review", () => {
+  const paths = ["app/(marketing)/page.tsx", "app/blog/[slug]/page.tsx", "docs/Getting started.md", "public/brand assets/logo.svg"];
+  const result = readGitHubSourceTree(tree(paths.map(path => blob(path))), sha);
+  expect(result.entries.map(file => file.path)).toEqual(paths);
+  expect(validateSourceFiles(paths.map(path => ({ path, content: "text source" })))).toHaveLength(paths.length);
+  for (const path of ["docs/trailing /page.md", "docs/trailing./page.md", "public/NUL.png", "docs/tab\tname.md"])
+    expect(() => readGitHubSourceTree(tree([blob(path)]), sha)).toThrow("unsafe_path");
+});
