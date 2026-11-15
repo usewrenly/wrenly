@@ -98,7 +98,7 @@ try {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
       publishing = await startProductionDeploymentWorker(db, environment)
     }
-    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
+    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true', frameworkInspection: environment.WRENLY_FRAMEWORK_INSPECTION_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
   } catch (error) {
     await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])

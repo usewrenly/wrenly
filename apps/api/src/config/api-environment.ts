@@ -11,6 +11,7 @@ import { resolve } from 'node:path'
 const OptionalPublishingString = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional())
 
 const ApiEnvironmentSchema = z.object({
+  WRENLY_FRAMEWORK_INSPECTION_ENABLED: z.enum(['true','false']).default('false'),
   WRENLY_DATA_DIR: z.string().min(1).default('.local/wrenly').transform(value => resolve(value)),
   WRENLY_DATABASE_URL: z.url().regex(/^postgres(?:ql)?:\/\//),
   WRENLY_AUTH_SECRET: z.string().min(1),

@@ -101,3 +101,9 @@ test('Development databases require explicit opt-in and verified preview configu
   expect(() => parseApiEnvironment({ ...BASE, WRENLY_APP_DATABASES_ENABLED: 'true' })).toThrow('WRENLY_PREVIEW_ENABLED')
   expect(parseApiEnvironment({ ...BASE, WRENLY_AUTH_SECRET: 'a'.repeat(64), WRENLY_PREVIEW_ENABLED: 'true', WRENLY_APP_DATABASES_ENABLED: 'true' }).WRENLY_APP_DATABASES_ENABLED).toBe('true')
 })
+
+test('official framework inspection is optional and accepts only an explicit boolean setting',()=>{
+  expect(parseApiEnvironment(BASE).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('false');
+  expect(parseApiEnvironment({...BASE,WRENLY_FRAMEWORK_INSPECTION_ENABLED:'true'}).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('true');
+  expect(()=>parseApiEnvironment({...BASE,WRENLY_FRAMEWORK_INSPECTION_ENABLED:'yes'})).toThrow('WRENLY_FRAMEWORK_INSPECTION_ENABLED');
+});

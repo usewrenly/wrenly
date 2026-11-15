@@ -28,7 +28,9 @@
   },
   "dependencies": {
     "@wrenly/db": "workspace:*",
-    "dockerode": "^4.0.2"
+    "dockerode": "^4.0.2",
+    "@wrenly/inference": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.32.0"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
