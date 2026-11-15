@@ -81,3 +81,27 @@ test("unsupported framework versions are rejected rather than silently upgraded"
   ).rejects.toThrow("regular branch");
   expect(client.paths).toHaveLength(0);
 });
+
+test("empty branch selection resolves the actual repository default instead of guessing main", async () => {
+  const base = fixture();
+  const paths: string[] = [];
+  const client: GitHubReadClient = {
+    get: async (path, signal) => {
+      paths.push(path);
+      if (path === "/repositories/12")
+        return {
+          ...((await base.get(path, signal)) as Record<string, unknown>),
+          default_branch: "master",
+        };
+      return base.get(path.replace("/heads/master", "/heads/main"), signal);
+    },
+  };
+  const review = await readImportSource(
+    client,
+    { repositoryId: "12", ref: "", stack: "nextjs" },
+    new AbortController().signal,
+  );
+  expect(review.snapshot.commitId).toBe("a".repeat(40));
+  expect(paths.some((path) => path.endsWith("/heads/master"))).toBe(true);
+  expect(paths.some((path) => path.endsWith("/heads/main"))).toBe(false);
+});

@@ -12,7 +12,7 @@ import { validateNextjsStyling } from "../../../../../../packages/sandbox/src/so
 const Selection = z
   .object({
     repositoryId: z.string().regex(/^[1-9][0-9]{0,19}$/),
-    ref: z.string().min(1).max(120),
+    ref: z.string().max(120),
     stack: z.enum(["nextjs", "laravel"]),
   })
   .strict();
@@ -33,7 +33,7 @@ export async function readImportSource(
     );
   const input = parsed.data;
   if (
-    !/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(input.ref) ||
+    (input.ref !== "" && !/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(input.ref)) ||
     input.ref.includes("..") ||
     input.ref.includes("//") ||
     input.ref.endsWith("/") ||
@@ -44,13 +44,33 @@ export async function readImportSource(
       "Use a regular branch name or an exact commit SHA.",
     );
   const signal = AbortSignal.any([externalSignal, AbortSignal.timeout(60000)]);
-  const repository = readGitHubRepository(
-    await client.get(`/repositories/${input.repositoryId}`, signal),
+  const metadata = await client.get(
+    `/repositories/${input.repositoryId}`,
+    signal,
   );
-  let commitId = input.ref;
+  const repository = readGitHubRepository(metadata);
+  // Empty selection means the repository's own default, never a guessed main branch.
+  const selectedRef =
+    input.ref ||
+    (record(metadata) && typeof metadata.default_branch === "string"
+      ? metadata.default_branch
+      : "");
+  if (
+    !selectedRef ||
+    !/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(selectedRef) ||
+    selectedRef.includes("..") ||
+    selectedRef.includes("//") ||
+    selectedRef.endsWith("/") ||
+    selectedRef.endsWith(".lock")
+  )
+    throw new SourceConnectionError(
+      409,
+      "This repository has no supported default branch. Enter a branch name or exact commit ID.",
+    );
+  let commitId = selectedRef;
   if (!/^[a-f0-9]{40}$/.test(commitId)) {
     const ref = await client.get(
-      `/repos/${repository.owner}/${repository.name}/git/ref/heads/${input.ref}`,
+      `/repos/${repository.owner}/${repository.name}/git/ref/heads/${selectedRef}`,
       signal,
     );
     if (
