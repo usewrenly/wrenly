@@ -114,3 +114,65 @@ test("snapshot rejects changed identities and blobs rather than saving partial s
   ).rejects.toThrow();
   expect(client.paths).toHaveLength(0);
 });
+
+test("blob reads are bounded and preserve tree order despite out-of-order completion", async () => {
+  let active = 0;
+  let peak = 0;
+  const source = Array.from({ length: 9 }, (_, index) => {
+    const content = `export default ${index};`;
+    const bytes = Buffer.from(content);
+    const sha = createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
+    return { path: `app/file-${index}.ts`, content, bytes, sha };
+  });
+  const base = fixture();
+  const client = {
+    async get(path: string): Promise<unknown> {
+      if (path.endsWith("?recursive=1")) return {
+        sha: treeId, truncated: false,
+        tree: source.map((file) => ({ path: file.path, mode: "100644", type: "blob", sha: file.sha, size: file.bytes.length })),
+      };
+      const index = source.findIndex((file) => path.endsWith(file.sha));
+      if (index < 0) return base.get(path);
+      const file = source[index]!;
+      active++;
+      peak = Math.max(peak, active);
+      try {
+        await Bun.sleep(index === 0 ? 20 : 1);
+        return { sha: file.sha, size: file.bytes.length, encoding: "base64", content: file.bytes.toString("base64") };
+      } finally { active--; }
+    },
+  };
+  const result = await readGitHubSnapshot(client, repository, commitId);
+  expect(peak).toBe(4);
+  expect(active).toBe(0);
+  expect(result.files).toEqual(source.map(({ path, content }) => ({ path, content })));
+});
+
+test("a failed blob cancels outstanding reads and never returns a partial snapshot", async () => {
+  const failure = new Error("fixture read failed");
+  let started = 0;
+  let settled = 0;
+  const base = fixture();
+  const client = {
+    async get(path: string, signal?: AbortSignal): Promise<unknown> {
+      if (path.endsWith("?recursive=1")) return {
+        sha: treeId, truncated: false,
+        tree: Array.from({ length: 9 }, (_, index) => ({ path: `file-${index}.ts`, mode: "100644", type: "blob", sha: blobId, size: bytes.length })),
+      };
+      if (!path.endsWith(blobId)) return base.get(path);
+      const index = started++;
+      try {
+        if (index === 0) { await Bun.sleep(1); throw failure; }
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) resolve();
+          else signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        signal?.throwIfAborted();
+        throw new Error("Expected cancellation");
+      } finally { settled++; }
+    },
+  };
+  await expect(readGitHubSnapshot(client, repository, commitId)).rejects.toBe(failure);
+  expect(started).toBe(4);
+  expect(settled).toBe(started);
+});
