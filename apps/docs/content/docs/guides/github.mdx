@@ -42,7 +42,11 @@ Wrenly stores the App credentials encrypted on this installation; you do not cop
 client secret into an environment file.
 
 GitHub requires both a homepage and a webhook URL in its registration manifest.
-Wrenly supplies those values; webhook delivery is disabled and no webhook setup is needed.
+Wrenly supplies an unused reserved-example address for the webhook because GitHub
+rejects localhost webhook destinations even when disabled. Delivery stays disabled,
+no events are subscribed, and Wrenly never calls that address. Your registration and
+authorization callbacks still return to your own instance. No webhook receiver or
+tunnel is needed for this integration.
 
 ## Connect your account
 

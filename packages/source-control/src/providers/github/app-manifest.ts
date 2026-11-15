@@ -1,3 +1,7 @@
+// GitHub validates webhook destinations even when delivery is disabled. This reserved
+// example address is inert configuration, never a Wrenly request or callback target.
+const DISABLED_WEBHOOK_URL = "https://example.com/github/webhook";
+
 /** Browser App registration payload; fixed permissions and routes are supplied by Wrenly, not the browser. */
 export interface GitHubAppManifest {
   name: string;
@@ -53,8 +57,8 @@ export function createGitHubAppManifest(input: {
     redirect_url: registration.href,
     callback_urls: [authorization.href],
     public: input.allowOtherAccounts === true,
-    // GitHub requires a webhook URL even when delivery and subscriptions are disabled.
-    hook_attributes: { active: false, url: home.href },
+    // Local instance URLs are valid browser callbacks but invalid webhook destinations.
+    hook_attributes: { active: false, url: DISABLED_WEBHOOK_URL },
     default_permissions: { contents: "write", metadata: "read" },
     default_events: [],
   };
