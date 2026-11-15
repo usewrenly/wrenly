@@ -1,0 +1,9 @@
+**
+!packages/
+!packages/audio/
+!packages/audio/src/
+!packages/audio/src/**
+!packages/sandbox/
+!packages/sandbox/images/
+!packages/sandbox/images/transcription/
+!packages/sandbox/images/transcription/transcribe.ts
