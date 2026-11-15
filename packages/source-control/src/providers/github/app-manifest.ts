@@ -5,7 +5,7 @@ export interface GitHubAppManifest {
   redirect_url: string;
   callback_urls: string[];
   public: boolean;
-  hook_attributes: { active: false };
+  hook_attributes: { active: false; url: string };
   default_permissions: { contents: "write"; metadata: "read" };
   default_events: [];
 }
@@ -53,7 +53,8 @@ export function createGitHubAppManifest(input: {
     redirect_url: registration.href,
     callback_urls: [authorization.href],
     public: input.allowOtherAccounts === true,
-    hook_attributes: { active: false },
+    // GitHub requires a webhook URL even when delivery and subscriptions are disabled.
+    hook_attributes: { active: false, url: home.href },
     default_permissions: { contents: "write", metadata: "read" },
     default_events: [],
   };

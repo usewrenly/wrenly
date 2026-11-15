@@ -15,7 +15,11 @@ test("App registration requests only source permissions with no webhooks or cent
     metadata: "read",
   });
   expect(manifest.default_events).toEqual([]);
-  expect(manifest.hook_attributes.active).toBe(false);
+  expect(manifest.url).toBe("http://localhost:3000/");
+  expect(manifest.hook_attributes).toEqual({
+    active: false,
+    url: "http://localhost:3000/",
+  });
   expect(manifest.public).toBe(false);
   expect(manifest.callback_urls).toEqual([input.authorizationCallback]);
 });

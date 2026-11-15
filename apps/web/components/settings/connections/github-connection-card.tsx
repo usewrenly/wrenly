@@ -102,9 +102,19 @@ function PersonalGitHubConnection({
         url.pathname === "/settings/apps/new" &&
         record(value.manifest)
       ) {
+        if (
+          typeof value.manifest.url !== "string" ||
+          !record(value.manifest.hook_attributes) ||
+          typeof value.manifest.hook_attributes.url !== "string" ||
+          value.manifest.hook_attributes.active !== false
+        )
+          throw new Error(
+            "GitHub registration settings are incomplete. Reload Connections and try again.",
+          );
         const form = document.createElement("form"),
           input = document.createElement("input");
         form.method = "POST";
+        form.enctype = "application/x-www-form-urlencoded";
         form.action = url.href;
         input.type = "hidden";
         input.name = "manifest";
@@ -112,7 +122,7 @@ function PersonalGitHubConnection({
         form.append(input);
         document.body.append(form);
         form.submit();
-        form.remove();
+        // Keep the submitted form attached until navigation has consumed its fields.
       } else if (
         value.kind === "authorization" &&
         url.pathname === "/login/oauth/authorize"
@@ -237,9 +247,10 @@ function PersonalGitHubConnection({
                   }
                   disabled={busy}
                 />
-                Allow members to install this App on their own GitHub accounts.
-                This makes the App registration public, not your repositories or
-                Wrenly instance.
+                Let members connect their own GitHub accounts using this
+                instance’s App. Everyone authorizes their own repository access.
+                The App becomes publicly installable; repositories and this
+                instance stay private.
               </label>
               <Button
                 disabled={busy || name.trim().length < 3}
