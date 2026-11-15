@@ -70,8 +70,8 @@ to authorize again; an uncertain single-use exchange is never automatically repe
 ## Import a project
 
 1. Select **Import from GitHub** on **Home** or **Projects**.
-2. Select **Load repositories**, then choose an accessible repository.
-3. Enter its branch name (for example `main`) or a full commit SHA.
+2. Select **Load repositories**, search by owner or repository name, then choose an accessible repository.
+3. Leave **Branch or commit** empty to use that repository’s default branch, or enter a specific branch name or full commit SHA.
 4. Choose the framework **already used by the repository** and a name for your
    private Wrenly project. This is a manual choice in v1. The server verifies
    compatibility; it does not convert a Laravel repository into Next.js.
@@ -157,3 +157,17 @@ existing App needs installations on teammates' accounts, its owner can change it
 visibility in **GitHub → Settings → Developer settings → GitHub Apps → Edit**.
 Keep installations limited to selected repositories. App visibility does not bypass
 Wrenly sign-in or project sharing. See [GitHub's installation visibility guide](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private).
+
+
+## Current import limits
+
+Import supports root Next.js 15 and Laravel 13 apps. It does not yet accept normal
+binary assets such as PNG/JPEG images, monorepo roots or other framework versions.
+The limits are fixed in this release: 256 text files, 512 KiB per file, 8 MiB in total,
+and bounded provider responses. There is no settings slider or environment override.
+These are implementation limits, not GitHub account limits. Increasing them alone
+would not add binary storage, framework compatibility or large-project editing.
+
+A GitHub 404 can mean a missing branch or repository access; it is not a size-limit
+error. A source-read failure can mean a connection failure or deadline. Use the
+specific message and API diagnostic category when reporting an import problem.
