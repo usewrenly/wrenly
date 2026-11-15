@@ -183,9 +183,6 @@ export function Dashboard(): React.JSX.Element {
         <p className="home-description">
           Start with an idea. Shape it together. Make it yours.
         </p>
-        <div className="mt-4 mb-6">
-          <GitHubImportButton />
-        </div>
         {ideaError && (
           <p role="alert" className="home-notice">
             {ideaError}
@@ -235,6 +232,10 @@ export function Dashboard(): React.JSX.Element {
           }
           variant="home"
         />
+        <div className="mt-3 mb-5 flex items-center justify-center gap-3 text-sm text-muted-foreground">
+          <span>Already have code?</span>
+          <GitHubImportButton />
+        </div>
         {submissionError && (
           <div role="alert" className="home-notice">
             <p>{submissionError}</p>

@@ -1,0 +1,124 @@
+.trigger {
+  gap: 8px;
+  color: var(--color-text-1);
+  font-size: 13px;
+}
+.content {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  padding: 28px;
+  gap: 22px;
+}
+.mark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 14px;
+  background: var(--color-surface-2);
+  margin-bottom: 8px;
+}
+.steps {
+  display: flex;
+  gap: 24px;
+  padding: 15px 0;
+  border-block: 1px solid var(--color-border-2);
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stepNumber {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border-2);
+  font-size: 11px;
+}
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.access {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.connectionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+.fieldLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.optional,
+.note {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--color-text-2);
+}
+.optional {
+  margin-top: -4px;
+}
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border-2);
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+.content :global([data-slot="input"]) {
+  border: 1px solid var(--color-border-2);
+  border-radius: 9px;
+  background: var(--color-surface-2);
+  height: 40px;
+  padding: 9px 12px;
+  font-size: 13px;
+}
+.content :global([data-slot="button"]) {
+  border-radius: 9px;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.content .primary {
+  background: var(--color-text-1);
+  color: var(--color-surface);
+  border: 1px solid var(--color-text-1);
+  min-height: 40px;
+}
+.note summary {
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .content {
+    padding: 22px;
+  }
+  .access {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .steps {
+    gap: 14px;
+  }
+}

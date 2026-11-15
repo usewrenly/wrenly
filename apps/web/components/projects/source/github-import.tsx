@@ -1,5 +1,8 @@
 "use client";
 /** A review pins the commit; only explicit confirmation creates a project or queues Docker validation. */
+import Image from "next/image";
+import { ArrowRight, FolderGit2, Check } from "lucide-react";
+import styles from "./github-import.module.css";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -160,7 +163,12 @@ function ImportFlow(): React.JSX.Element {
   }
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        variant="ghost"
+        className={styles.trigger}
+        onClick={() => setOpen(true)}
+      >
+        <Image src="/connectors/github.svg" alt="" width={16} height={16} />{" "}
         Import from GitHub
       </Button>
       <Dialog
@@ -169,42 +177,52 @@ function ImportFlow(): React.JSX.Element {
           if (!busy) setOpen(next);
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className={styles.content}>
           <DialogHeader>
-            <DialogTitle>Bring your source into Wrenly</DialogTitle>
+            <div className={styles.mark}>
+              <Image
+                src="/connectors/github.svg"
+                alt=""
+                width={23}
+                height={23}
+              />
+            </div>
+            <DialogTitle>Start with your repository</DialogTitle>
             <DialogDescription>
-              Import one exact commit into a private project. Its code is
-              checked in Docker, without a model rewriting it.
+              Bring an existing app into a private Wrenly project. Review the
+              source first, then import and check it before making changes.
             </DialogDescription>
           </DialogHeader>
-          <ol
-            className="flex gap-6 text-sm text-muted-foreground"
-            aria-label="Import steps"
-          >
+          <ol className={styles.steps} aria-label="Import steps">
             <li className={!review ? "text-foreground" : ""}>
-              01 · Choose source
+              <span className={styles.stepNumber}>
+                {review ? <Check size={12} /> : "1"}
+              </span>{" "}
+              Choose source
             </li>
             <li className={review ? "text-foreground" : ""}>
-              02 · Review & import
+              <span className={styles.stepNumber}>2</span> Review & import
             </li>
           </ol>
           {!review ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between gap-4">
+            <div className={styles.fields}>
+              <div className={styles.access}>
                 <Link
-                  className="text-sm underline"
+                  className={styles.connectionLink}
                   href="/settings/connections"
                 >
-                  Connect GitHub
+                  Manage GitHub connection{" "}
+                  <ArrowRight size={13} aria-hidden="true" />
                 </Link>
                 <Button
                   variant="outline"
                   disabled={busy}
                   onClick={() => void load()}
                 >
-                  Load repositories
+                  {busy ? "Loading…" : "Load repositories"}
                 </Button>
               </div>
+              <label className={styles.fieldLabel}>Repository</label>
               <ChoiceSelect
                 label="Repository"
                 value={repositoryId || null}
@@ -215,8 +233,9 @@ function ImportFlow(): React.JSX.Element {
                 onChange={setRepositoryId}
                 disabled={busy || !repositories.length}
               />
-              <label className="block space-y-2 text-sm">
-                Branch or commit
+              <label className={styles.fieldLabel}>
+                Branch or commit{" "}
+                <span className={styles.optional}>Use main or a commit ID</span>
                 <Input
                   value={ref}
                   onChange={(event) => setRef(event.target.value)}
@@ -224,6 +243,10 @@ function ImportFlow(): React.JSX.Element {
                   disabled={busy}
                 />
               </label>
+              <div className={styles.sectionHeading}>
+                <FolderGit2 size={15} aria-hidden="true" /> Your Wrenly project
+              </div>
+              <label className={styles.fieldLabel}>Framework</label>
               <ChoiceSelect
                 label="Framework"
                 value={stack}
@@ -234,7 +257,7 @@ function ImportFlow(): React.JSX.Element {
                 onChange={setStack}
                 disabled={busy}
               />
-              <label className="block space-y-2 text-sm">
+              <label className={styles.fieldLabel}>
                 Project name
                 <Input
                   value={name}
@@ -244,12 +267,26 @@ function ImportFlow(): React.JSX.Element {
                   placeholder="My imported app"
                 />
               </label>
-              <p className="text-sm text-muted-foreground">
-                Root applications only. Binary assets, submodules and Git LFS
-                are unsupported. Private configuration is excluded. No
-                dependencies run during review.
+              <p className={styles.note}>
+                Choose the framework used by this repository. Wrenly checks
+                compatibility during review; it does not convert the app.
               </p>
+              <details className={styles.note}>
+                <summary>Supported source and privacy</summary>
+                <p>
+                  Root applications only. Binary assets, submodules and Git LFS
+                  are unsupported. Private configuration is excluded. No
+                  dependencies run during review.
+                </p>
+              </details>
+              {!repositories.length && (
+                <p className={styles.note}>
+                  Connect GitHub and load the repositories you allowed this App
+                  to access.
+                </p>
+              )}
               <Button
+                className={styles.primary}
                 disabled={busy || !repositoryId || !ref || !name.trim()}
                 onClick={() => void prepare()}
               >
@@ -257,7 +294,7 @@ function ImportFlow(): React.JSX.Element {
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className={styles.fields}>
               <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
                 <p className="font-medium">{command.current?.name}</p>
                 <p className="text-sm">
@@ -303,7 +340,11 @@ function ImportFlow(): React.JSX.Element {
                 >
                   Back
                 </Button>
-                <Button disabled={busy} onClick={() => void confirm()}>
+                <Button
+                  className={styles.primary}
+                  disabled={busy}
+                  onClick={() => void confirm()}
+                >
                   {busy
                     ? "Saving import…"
                     : error
