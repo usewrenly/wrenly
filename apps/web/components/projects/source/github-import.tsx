@@ -56,9 +56,18 @@ function ImportFlow(): React.JSX.Element {
     z.infer<typeof Repositories>["repositories"]
   >([]);
   const [repositoryId, setRepositoryId] = useState(""),
-    [ref, setRef] = useState("main"),
+    [ref, setRef] = useState(""),
     [stack, setStack] = useState("nextjs"),
     [name, setName] = useState("");
+  const [repositorySearch, setRepositorySearch] = useState("");
+  const visibleRepositories = repositories.filter((repo) =>
+    `${repo.owner}/${repo.name}`
+      .toLowerCase()
+      .includes(repositorySearch.trim().toLowerCase()),
+  );
+  const selectedRepository = repositories.find(
+    (repo) => repo.id === repositoryId,
+  );
   const [uncertain, setUncertain] = useState(false);
   const [review, setReview] = useState<ImportReview | null>(null);
   const command = useRef<{
@@ -207,23 +216,55 @@ function ImportFlow(): React.JSX.Element {
                   {busy ? "Loading…" : "Load repositories"}
                 </Button>
               </div>
+              {repositories.length > 0 && (
+                <label className={styles.fieldLabel}>
+                  Find a repository
+                  <Input
+                    type="search"
+                    value={repositorySearch}
+                    onChange={(event) =>
+                      setRepositorySearch(event.target.value)
+                    }
+                    placeholder="Search by owner or repository name"
+                    disabled={busy}
+                    maxLength={200}
+                  />
+                </label>
+              )}
               <label className={styles.fieldLabel}>Repository</label>
               <ChoiceSelect
                 popupClassName={styles.repositoryPopup}
                 label="Repository"
                 value={repositoryId || null}
-                options={repositories.map((repo) => ({
+                displayValue={
+                  selectedRepository
+                    ? `${selectedRepository.owner}/${selectedRepository.name}`
+                    : undefined
+                }
+                options={visibleRepositories.map((repo) => ({
                   value: repo.id,
                   label: `${repo.owner}/${repo.name}`,
                 }))}
-                onChange={setRepositoryId}
+                onChange={(value) => {
+                  setRepositoryId(value);
+                  setRef("");
+                  setError(null);
+                }}
                 disabled={busy || !repositories.length}
               />
+              {repositorySearch && (
+                <p className={styles.note} role="status">
+                  {visibleRepositories.length} matching repositories
+                </p>
+              )}
               <label className={styles.fieldLabel}>
                 Branch or commit{" "}
-                <span className={styles.optional}>Use main or a commit ID</span>
+                <span className={styles.optional}>
+                  Optional · leave empty for the repository’s default branch
+                </span>
                 <Input
                   value={ref}
+                  placeholder="Repository default branch"
                   onChange={(event) => setRef(event.target.value)}
                   maxLength={120}
                   disabled={busy}
@@ -273,7 +314,7 @@ function ImportFlow(): React.JSX.Element {
               )}
               <Button
                 className={styles.primary}
-                disabled={busy || !repositoryId || !ref || !name.trim()}
+                disabled={busy || !repositoryId || !name.trim()}
                 onClick={() => void prepare()}
               >
                 {busy ? "Reading source…" : "Review this source"}
