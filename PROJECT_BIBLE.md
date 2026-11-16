@@ -240,3 +240,19 @@ provide only its HTTP and role-scoped database sockets. Every application image 
 pinned to its validated digest. Existing stateless image publishing retains its adapter.
 This path becomes available only after the complete host, lifecycle and deployed-data
 acceptance checks pass.
+
+## Database requests in the conversation
+
+“Build a notes app that remembers notes” first offers the project owner a Development
+database proposal. Approval saves the requested instructions and exact model, Skills
+and source context; background work creates/connects the resource and admits one build.
+After generation, a second card presents the saved migration files. Its separate approval
+authorizes verified backup, disposable rehearsal and application of that exact review.
+No model response grants permission to change saved tables. Plan remains discussion only.
+
+Migration 0049 stores these continuations. A continuation means the next saved step after
+an operation finishes. Each operation has a stable request ID, so restart/reload observes
+its existing receipt. Stop prevents later phases; sign-out and access changes remove the
+authority needed to continue. Unknown effects remain blocked for inspection. The Database
+tab retains advanced resource controls. This Development flow does not automatically
+publish an app or promote its data to the separately configured Production environment.

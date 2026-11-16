@@ -13,36 +13,41 @@ A notes app needs somewhere to keep its notes. That database is separate from Wr
 accounts, projects and conversation history. Wrenly manages a private PostgreSQL resource
 for Development; it never gives generated code access to the instance's own database.
 
-## Does the AI create the database for me?
+## Build an app that remembers things
 
-**No—not automatically in this beta.** You create one Development database for the
-project, then explicitly select it for a request. The model writes the code and the
-table changes your app needs. You review those changes before Wrenly applies them.
-You do not normally create tables or type database passwords yourself.
+Ask in **Auto**: “Build a notes app that remembers my notes, with add, edit and delete.”
+When the app needs persistent storage, Wrenly offers a database card in the conversation.
+Nothing is created just because the model suggested it.
 
-For example, a notes app has a form on screen and a `notes` table that keeps the text.
-A page that only puts notes in browser storage has not demonstrated this database flow.
+1. As the project owner, choose **Create database & build**. If this project already
+   has a ready Development database, the card offers **Connect database & build**.
+2. Wrenly sets up the approved database and continues the saved build request. You do
+   not need to select a resource, copy credentials or send the prompt again.
+3. After the build, review the migration files in the conversation. A **migration** is
+   a saved instruction for changing tables or columns.
+4. Choose **Back up, rehearse & apply**. Wrenly verifies a backup, tests the exact changes
+   against a disposable copy, then applies them to Development when those checks pass.
+5. When the card says ready, open its saved revision and prepare the preview.
 
-| Who | What they do |
-| --- | --- |
-| You, as project owner | Create/select Development, review backups and table changes, then confirm |
-| The model, through the framework MCP server | Write the app, its database connection code and migration files |
-| Wrenly | Run isolated validation, perform the confirmed database work and connect the preview |
-| The running generated app | Read and save notes when someone uses it |
-
-A **migration** is a saved instruction for changing tables or columns. Next.js uses
-Drizzle migrations; Laravel uses its native migration files. Both use PostgreSQL.
-The framework MCP server does not receive passwords or direct access to your saved
-rows. It receives instructions for the selected database and works from saved source.
+You approve two different things: creating/connecting the resource and building the app,
+then changing its saved tables after the generated files exist. A model answer cannot
+provide either approval. **Plan** discusses the app without starting database work.
 
 ```text
-You create and select Development
-  → Model writes app + table changes
-  → Wrenly tests a temporary copy
-  → You create a backup and confirm reviewed changes
-  → Wrenly applies them to Development
-  → Preview app can save real data
+Describe persistent app → approve setup → database + build
+  → review saved migrations → approve backup/rehearsal/application
+  → prepare preview → save and read records
 ```
+
+The conversation follows saved operation receipts even if you reload the page. A lost
+approval reply calls for **Reload card**, not another new request. **Stop after current
+step** prevents later phases; already-started work may finish and is not undone.
+Signing out or losing owner access prevents further phases under that approval.
+
+The model writes application code and migration files through the framework MCP server.
+It receives neither database passwords nor direct access to your saved rows. Next.js
+uses Drizzle migrations; Laravel uses its native migration files. Both use PostgreSQL.
+The Database tab remains available for inspection, read-only browsing and resource controls.
 
 **Ready** means the database is running. It does not mean the app's tables already
 exist. **Build succeeded** means validation passed; it does not mean new table changes
@@ -86,34 +91,21 @@ its environment, then reload an authenticated project workspace. The tab appears
 Preview, Code and Logs; it is not a separate main-sidebar page. Opening it creates no
 resource until you explicitly choose setup.
 
-## Build a notes app
+## Existing projects and manual controls
 
-1. Open **Database** in a project and explicitly set up **Development**. Wait for **Ready**.
-2. Above the composer, change **No database** to **Development database**.
-3. Describe the app. Wrenly saves that exact resource choice with your request.
-4. Let the build finish. Validation uses a separate temporary database: compiling an
-   app never applies its migrations to your existing Development data.
+Select the saved revision you want to change before asking for a database-backed edit.
+The conversation asks before connecting an existing Development resource and preserves
+that exact source/model/Skills context for the continuation. Keep an existing preview
+stopped while reviewing changes to saved data.
 
-No resource is selected automatically. A missing or changed resource blocks admission
-rather than silently using a different database. Plan remains a discussion mode.
+You can still use **Database → Manage resource** for individual backup and migration
+controls. These are advanced controls, not prerequisites for the conversational path.
+For Laravel, review application source as well as migration files because Artisan starts
+application bootstrap code when running migrations.
 
-## Review changes before using saved data
-
-With the successful revision selected:
-
-1. Stop any running preview and wait for other project work to finish. Open
-   **Database → Manage resource** and create a verified backup. Verification restores
-   a separate disposable copy; it does not replace the original database.
-2. Choose **Review database changes**. Read the saved migration files and select a
-   verified backup. For Laravel, review the saved application source too: Artisan
-   starts application bootstrap code while running migrations.
-3. Acknowledge the review and confirm the exact migration request. Wrenly rehearses it
-   against a restored copy before applying changes to Development.
-4. When it succeeds, prepare the same revision in **Preview**.
-
-The preview uses the resource saved with that build and rechecks its current schema.
-Development credentials are delivered only to the isolated runtime through its scoped
-connection. Package installation and compilation have no database access.
+The preview uses the resource saved with its build and rechecks the current schema.
+Credentials reach only its isolated runtime through a scoped connection. Package
+installation and compilation have no access to saved Development data.
 
 ## Inspect and manage Development
 
@@ -150,26 +142,21 @@ currently selectable. See [the roadmap](/docs/roadmap) for the separate Producti
 
 Use test data while this feature is experimental.
 
-1. If starting from Home, use **+ → Plan mode** to plan a notes app first. Wait for
-   the response, then open **Database** in the project. This gives you a project
-   before requesting database-backed code.
-2. Create Development and wait for Ready. Choose **Development database** above the
-   composer, then turn Plan mode off. Ask for a notes app that stores notes in the
-   selected managed PostgreSQL database, with add, edit and delete controls.
-3. After a successful build, follow the backup/review/confirmation steps above.
-4. Prepare that saved revision's preview. Add `My first database note`. Open
-   **Database → Browse data** and find that row in the app's notes table.
-5. Edit the note, reload the preview, then reopen Browse data. The updated text
-   should persist. Delete a second test note and check that its row disappears.
-6. Reload the workspace. The resource and saved activity should remain. Before
-   sending a new request, check the composer selection: reloading may reset a new
-   prompt to **No database**. Existing saved revisions retain their original binding.
-7. Stop the preview, stop Development, then start Development again. Inspect the
-   saved notes; Stop is not Delete. Preparing a preview again is a separate action.
-8. For an app change, keep the database selected and request a new optional note
-   field. Review the new saved revision and repeat backup/review when required.
-   Existing notes should remain. A review belongs to its exact saved source, so
-   even an edited app may need a fresh review before its preview can open.
+1. From Home or a project workspace, use Auto and request persistent notes with add,
+   edit and delete controls. Approve the inline database setup card.
+2. Wait for the automatic build. Review its migrations in the conversation and approve
+   **Back up, rehearse & apply**. Wait for completion before preparing the preview.
+3. Add `My first database note`. In **Database → Browse data**, find the saved row.
+4. Edit the note and reload the app. The edit must persist. Delete a second test note
+   and check that it disappears from both the app and Browse data.
+5. Reload the workspace while a step is running. Its card should show the same saved
+   operation, without a second database or build being created.
+6. Stop the preview, stop Development, then start it again. Prepare the same revision;
+   the saved note should still exist. Stop is not Delete.
+7. Select that revision and ask for a small UI change, preserving its database and rows.
+   Approve the continuation if offered. For a genuine table change, review and approve
+   the new migration card. Existing records must remain.
+8. Repeat in a separate Laravel project. Do not reuse one project's resource for another.
 
 A verified backup is checked by restoring a separate disposable copy. It does not
 replace your current notes. There is no general one-click restore-over-current-data
