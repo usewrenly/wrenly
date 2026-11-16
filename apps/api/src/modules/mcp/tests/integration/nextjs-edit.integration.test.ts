@@ -1,6 +1,8 @@
 // Real MCP server and trusted local inference fixture; no model or generated app execution.
 import { describe, expect, test } from 'bun:test'
 import { resolve } from 'path'
+import { createSourceAsset } from '@wrenly/source-control/assets'
+import type { RevisionFile } from '@wrenly/source-control/revision'
 import { generateWithMcp } from '../../mcp-generation'
 const integration = process.env.WRENLY_TEST_MCP === 'true' ? describe : describe.skip
 integration('Next.js MCP revision editing', () => {
@@ -15,15 +17,22 @@ integration('Next.js MCP revision editing', () => {
       expect(new URL(request.url).pathname).toBe('/v1/chat/completions')
       const input = await request.json() as { messages: Array<{ content: string }> }
       expect(input.messages[1]?.content).toContain('Unrelated functionality')
+      expect(JSON.stringify(input)).not.toContain('preserved-lockfile')
+      expect(JSON.stringify(input)).not.toContain(logo.asset.base64)
       if (providerError) return new Response('provider-private-detail', { status: 500 })
       return Response.json({ id: 'fixture', object: 'chat.completion', created: 1, model: 'fixture', choices: [{ index: 0, finish_reason: finishReason, message: { role: 'assistant', content: contentOverride ?? JSON.stringify(invalidOutput ? { version: 2, private: 'provider-private-detail', operations: [] } : { version: 1, operations: [{ type: 'update', path: 'app/page.tsx', content: 'Changed heading' }] }) } }] })
     } })
-    const base = [{ path: 'package.json', content: '{"dependencies":{"next":"16.4.5"}}' }, { path: 'app/page.tsx', content: 'Original heading' }, { path: 'app/keep.tsx', content: 'Unrelated functionality' }]
+    const base: RevisionFile[] = [{ path: 'package.json', content: '{"dependencies":{"next":"16.4.5"}}' }, { path: 'app/page.tsx', content: 'Original heading' }, { path: 'app/keep.tsx', content: 'Unrelated functionality' }]
+    const logo = { path: 'public/logo.png', content: '', asset: createSourceAsset('public/logo.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoLYj5DwAFQAJZssNTVgAAAABJRU5ErkJggg==', 'base64')) }
+    const lock = { path: 'bun.lock', content: 'preserved-lockfile'.repeat(12_000) }
+    base.push(logo, lock)
     try {
       const output = await generateWithMcp({ command: process.execPath, args: ['--no-env-file', resolve(import.meta.dir, '../../../../../../../packages/agents/nextjs-agent/src/server.ts')],
         env: { WRENLY_MODEL_BASE_URL: `http://127.0.0.1:${provider.port}/v1`, WRENLY_MODEL_API_KEY: 'fixture', WRENLY_MODEL_NAME: 'fixture' } },
       { prompt: 'Change the heading', previousFiles: base, previousErrors: [], attempt: 1 }, undefined, 5000)
       expect(calls).toBe(1)
+      expect(output.files.find(file => file.path === logo.path)).toEqual(logo)
+      expect(output.files.find(file => file.path === lock.path)).toEqual(lock)
       expect(output.files.find(file => file.path === 'app/keep.tsx')?.content).toBe('Unrelated functionality')
       expect(output.files.find(file => file.path === 'app/page.tsx')?.content).toBe('Changed heading')
       expect(output.files.find(file => file.path === 'package.json')).toEqual(base[0])

@@ -1,3 +1,4 @@
+import { isSourceAsset, type RevisionFile } from "@wrenly/source-control/revision"
 // COMPONENT: Build event reader
 // PURPOSE: Read chunked SSE and reject an unconfirmed terminal outcome.
 // INPUTS: Response body and event callback.
@@ -71,7 +72,7 @@ export async function readBuildEvents(
   }
 }
 
-export type GeneratedFiles = Array<{ path: string; content: string }>
+export type GeneratedFiles = RevisionFile[]
 
 /** Narrows untrusted event artifacts before the editor accesses them. */
 export function isGeneratedFiles(value: unknown): value is GeneratedFiles {
@@ -82,7 +83,7 @@ export function isGeneratedFiles(value: unknown): value is GeneratedFiles {
         typeof file === 'object' &&
         file !== null &&
         typeof file.path === 'string' &&
-        typeof file.content === 'string',
+        typeof file.content === 'string' && (file.asset === undefined || (file.content === '' && isSourceAsset(file.asset))),
     )
   )
 }

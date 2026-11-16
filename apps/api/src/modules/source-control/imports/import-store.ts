@@ -1,3 +1,5 @@
+import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "@wrenly/source-control";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 /**
  * COMPONENT: Reviewed private-project import
  * PURPOSE: Save reviewed source and queue one exact-source validation, atomically.
@@ -41,7 +43,7 @@ import {
 const REVIEW_TTL_MS = 10 * 60 * 1000;
 const MAX_REVIEWS = 4;
 const MAX_QUEUED_BUILDS = 20;
-const MAX_BUILD_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_BUILD_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const ImportCommand = z
   .object({
     requestId: z.uuid(),
@@ -93,17 +95,18 @@ export async function saveSourceImportReview(
   connectionVersion: string,
   snapshot: GitHubSourceSnapshot,
   stack: "nextjs" | "laravel",
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): Promise<{
   reviewId: string;
   expiresAt: Date;
   fileCount: number;
   excludedPaths: string[];
 }> {
-  const files = validateSourceFiles(snapshot.files);
+  const files = validateSourceFiles(snapshot.files, limits);
   if (Buffer.byteLength(JSON.stringify(files)) > MAX_BUILD_SOURCE_BYTES)
     throw new SourceConnectionError(
       400,
-      "This repository exceeds the current 2 MiB build source limit.",
+      "This repository exceeds the saved revision byte limit.",
     );
   return database.transaction(async (tx) => {
     await assertSourcePrincipal(tx, principal);
@@ -155,6 +158,7 @@ export async function admitSourceImport(
   database: typeof db,
   principal: AccessPrincipal,
   raw: unknown,
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): Promise<{ projectId: string; buildId: string; replayed: boolean }> {
   const command = ImportCommand.safeParse(raw);
   if (!command.success)
@@ -215,6 +219,7 @@ export async function admitSourceImport(
         409,
         "The import review expired or is unavailable. Review the repository again.",
       );
+    validateSourceFiles(review.files, limits);
     await assertSourceImportConnection(tx, principal, review.connectionVersion);
     const [consumed] = await tx
       .select({ id: sourceProjectOrigins.projectId })

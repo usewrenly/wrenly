@@ -1,3 +1,4 @@
+import { supportsImportedVersion } from "@wrenly/source-control/framework-versions";
 import { skillGuidanceMessage, SKILL_AUTHORITY, type SkillGuidance } from "@wrenly/inference"
 //
 // Laravel code generation agent.
@@ -266,7 +267,7 @@ export async function editApp(value: unknown): Promise<EditOutput> {
   const requirements = typeof manifest === 'object' && manifest !== null && 'require' in manifest ? manifest.require : null
   const framework = typeof requirements === 'object' && requirements !== null && 'laravel/framework' in requirements
     ? requirements['laravel/framework'] : null
-  if (typeof framework !== 'string' || !/^[~^]?(?:12|13)\.\d+(?:\.\d+)?$/.test(framework))
+  if (typeof framework !== 'string' || !supportsImportedVersion('laravel', framework))
     throw new EditContractError('invalid_edit_input', 'Laravel editing requires an existing Laravel 12 or 13 revision; preserve its declared version.')
   try {
     const response = await client.chat.completions.create({ model: MODEL, temperature: 0.1,

@@ -170,7 +170,7 @@ test("Laravel review binds bootstrap and provider bytes, independent of input or
   expect(readAppDatabaseManifest([...files, { path: "config/app.php", content: "<?php" }], "laravel")?.digest).not.toBe(reviewed?.digest);
   expect(readAppDatabaseManifest(files.filter(file => file.path !== "composer.lock"), "laravel")?.digest).not.toBe(reviewed?.digest);
   expect(() => readAppDatabaseManifest([...files, {
-    path: "public/large.txt", content: "x".repeat(2 * 1024 * 1024),
+    path: "public/large.txt", content: "x".repeat(2 * 1024 * 1024 + 1),
   }], "laravel")).toThrow("source exceeds");
 });
 

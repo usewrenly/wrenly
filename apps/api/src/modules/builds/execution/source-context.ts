@@ -15,7 +15,7 @@ export function buildPreviousFilesContext(files: unknown): string {
       typeof f === "object" &&
       f !== null &&
       typeof (f as { path?: unknown }).path === "string" &&
-      typeof (f as { content?: unknown }).content === "string",
+      typeof (f as { content?: unknown }).content === "string" && !(f as { asset?: unknown }).asset,
   );
   if (entries.length === 0) return "";
 

@@ -1,3 +1,5 @@
+import { REVISION_LIMITS } from "../revision/contracts";
+import { materializeSourceFile } from "../revision/assets";
 /**
  * COMPONENT: Imported text source policy
  * PURPOSE: Bound a remote source selection before any generated-code validation.
@@ -9,11 +11,13 @@
  */
 import { SourceControlError, type SourceFile } from "../contracts/source";
 export const SOURCE_LIMITS = {
-  files: 256,
+  files: REVISION_LIMITS.files,
   pathCharacters: 512,
-  fileBytes: 512 * 1024,
-  totalBytes: 8 * 1024 * 1024,
+  fileBytes: REVISION_LIMITS.textFileBytes,
+  totalBytes: REVISION_LIMITS.textBytes,
 } as const;
+export interface SourceImportLimits { files: number; fileBytes: number; totalBytes: number; assetFileBytes: number; assetBytes: number }
+export const DEFAULT_IMPORT_LIMITS: SourceImportLimits = { ...SOURCE_LIMITS, assetFileBytes: REVISION_LIMITS.assetFileBytes, assetBytes: REVISION_LIMITS.assetBytes };
 const EXCLUDED_DIRECTORIES = new Set([
   ".git",
   ".ssh",
@@ -71,18 +75,26 @@ export function assertDistinctSourcePaths(paths: readonly string[]): void {
 /** This validates text only, not whether an app is safe, supported or successfully built. */
 export function validateSourceFiles(
   files: readonly SourceFile[],
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): SourceFile[] {
-  if (!files.length || files.length > SOURCE_LIMITS.files)
+  if (!files.length || files.length > limits.files)
     throw new SourceControlError("size_limit");
   assertDistinctSourcePaths(files.map((file) => file.path));
   let total = 0;
+  let assetTotal = 0;
   return files.map((file) => {
     if (shouldExcludeSourcePath(file.path))
       throw new SourceControlError("unsafe_path");
+    if (file.asset) {
+      try { materializeSourceFile(file); } catch { throw new SourceControlError("invalid_content"); }
+      if (file.asset.byteLength > limits.assetFileBytes) throw new SourceControlError("size_limit");
+      if ((assetTotal += file.asset.byteLength) > limits.assetBytes) throw new SourceControlError("size_limit");
+      return { path: file.path, content: "", asset: { ...file.asset } };
+    }
     const bytes = Buffer.byteLength(file.content, "utf8");
     if (
-      bytes > SOURCE_LIMITS.fileBytes ||
-      (total += bytes) > SOURCE_LIMITS.totalBytes
+      bytes > limits.fileBytes ||
+      (total += bytes) > limits.totalBytes
     )
       throw new SourceControlError("size_limit");
     if (

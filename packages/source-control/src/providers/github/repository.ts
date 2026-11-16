@@ -1,3 +1,4 @@
+import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "../../policy/import-policy";
 /** GitHub response decoding; no network requests, tokens or authorization decisions live here. */
 import {
   SourceControlError,
@@ -5,7 +6,6 @@ import {
   type SourceTreeEntry,
 } from "../../contracts/source";
 import {
-  SOURCE_LIMITS,
   assertDistinctSourcePaths,
   assertSourcePath,
   shouldExcludeSourcePath,
@@ -62,6 +62,7 @@ export function readGitHubSourceTree(
   value: unknown,
   expectedTreeId: string,
   applicationRoot = "",
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): {
   entries: SourceTreeEntry[];
   excludedPaths: string[];
@@ -107,9 +108,9 @@ export function readGitHubSourceTree(
     if (
       !Number.isSafeInteger(entry.size) ||
       Number(entry.size) < 0 ||
-      Number(entry.size) > SOURCE_LIMITS.fileBytes ||
-      (total += Number(entry.size)) > SOURCE_LIMITS.totalBytes ||
-      entries.length >= SOURCE_LIMITS.files
+      Number(entry.size) > (/\.(?:png|jpe?g|webp|ico|woff2?|ttf|otf)$/i.test(path) ? limits.assetFileBytes : limits.fileBytes) ||
+      (total += Number(entry.size)) > (limits.totalBytes + limits.assetBytes) ||
+      entries.length >= limits.files
     )
       throw new SourceControlError("size_limit");
     entries.push({

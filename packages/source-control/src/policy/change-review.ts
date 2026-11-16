@@ -18,17 +18,19 @@ export function reviewSourceChanges(
   revision: readonly SourceFile[],
 ): SourceChange[] {
   const before = new Map(
-    validateSourceFiles(baseline).map((file) => [file.path, file.content]),
+    validateSourceFiles(baseline).map((file) => [file.path, file]),
   );
   const after = new Map(
-    validateSourceFiles(revision).map((file) => [file.path, file.content]),
+    validateSourceFiles(revision).map((file) => [file.path, file]),
   );
   const paths = [...new Set([...before.keys(), ...after.keys()])].sort();
   const changes: SourceChange[] = [];
   for (const path of paths) {
     const previous = before.get(path),
       content = after.get(path);
-    if (previous === content) continue;
+    if (previous?.asset && content?.asset && previous.asset.sha256 === content.asset.sha256) continue;
+    if (previous?.asset || content?.asset) throw new Error('Imported binary assets must remain unchanged when pushing this revision.');
+    if (previous?.content === content?.content) continue;
     // Contents permission deliberately excludes GitHub Actions workflow modification.
     if (path.toLowerCase().startsWith(".github/workflows/"))
       throw new Error(
@@ -39,7 +41,7 @@ export function reviewSourceChanges(
       changes.push({
         kind: previous === undefined ? "add" : "update",
         path,
-        content,
+        content: content.content,
       });
   }
   return changes;

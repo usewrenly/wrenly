@@ -1,3 +1,4 @@
+import { isSourceAsset, type SourceAsset } from "@wrenly/source-control/revision";
 /**
  * Accepting and remembering a build request.
  * Checks the current actor/project, resolves the chosen model/source/skills and commits one queued operation before any model or Docker call.
@@ -37,7 +38,7 @@ const QUEUE_LOCK_ID = 1;
 const MAX_PENDING_BUILDS = 20;
 const MAX_RETRY_ERROR_CHARS = 6000;
 const FilesSchema = z.array(
-  z.object({ path: z.string(), content: z.string() }),
+  z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }),
 );
 
 type RequestInput = z.infer<typeof GenerateRequestSchema>;

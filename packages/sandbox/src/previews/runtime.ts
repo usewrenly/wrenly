@@ -1,3 +1,6 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 // Prepares saved source, starts its isolated app and trusted ingress, then proves HTTP readiness.
 // Retained resources belong to one preview/build/claim; uncertain cleanup requires recovery.
 import Docker from 'dockerode'
@@ -16,7 +19,8 @@ const IMAGE = 'oven/bun:alpine'
 const MAX_PREPARATION_MS = 300_000
 const MAX_READINESS_MS = 60_000
 const MAX_LOG_CHARS = 256_000
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024
+const MAX_INGRESS_BUNDLE_BYTES = 2 * 1024 * 1024
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes
 const POLL_MS = 100
 const MAX_REDIRECTS = 5
 const INGRESS_PORT = '8080/tcp'
@@ -232,6 +236,7 @@ export async function startPreviewRuntime(input: PreviewRuntimeInput): Promise<P
   const laravel = input.stack === 'laravel'
   if (input.stack && !['nextjs', 'laravel'].includes(input.stack)) throw new PreviewRuntimeError('unsupported stack')
   const environment = laravel ? laravelValidationEnvironment() : ENVIRONMENT
+  assertRevisionBudget(input.files)
   validateFilePaths(input.files)
   try { if (laravel) validateLaravelSource(input.files); else validateNextjsStyling(input.files) } catch (error) {
     if (error instanceof NextjsStylingError) {
@@ -244,7 +249,7 @@ export async function startPreviewRuntime(input: PreviewRuntimeInput): Promise<P
   }
   if (!input.files.length || input.files.length > 1000 || Buffer.byteLength(JSON.stringify(input.files)) > MAX_SOURCE_BYTES || !input.files.some(file => file.path === (laravel ? 'composer.json' : 'package.json')))
     throw new PreviewRuntimeError('source validation')
-  if (!input.ingressBundle.length || input.ingressBundle.length > MAX_SOURCE_BYTES) throw new PreviewRuntimeError('trusted ingress bundle validation')
+  if (!input.ingressBundle.length || input.ingressBundle.length > MAX_INGRESS_BUNDLE_BYTES) throw new PreviewRuntimeError('trusted ingress bundle validation')
   const preparationMs = input.preparationTimeoutMs ?? MAX_PREPARATION_MS
   const readinessMs = input.readinessTimeoutMs ?? MAX_READINESS_MS
   if (![preparationMs, readinessMs].every(value => Number.isSafeInteger(value) && value > 0) || preparationMs > MAX_PREPARATION_MS || readinessMs > MAX_READINESS_MS)
@@ -274,7 +279,7 @@ export async function startPreviewRuntime(input: PreviewRuntimeInput): Promise<P
     for (const file of input.files) {
       const target = join(source, file.path)
       await mkdir(join(target, '..'), { recursive: true, mode: 0o755 })
-      await writeFile(target, file.content, { flag: 'wx', mode: 0o644 })
+      await writeFile(target, materializeSourceFile(file), { flag: 'wx', mode: 0o644 })
     }
     const volume = volumeName(input.identity)
     await input.beforeEffect?.(); checkAbort(controller.signal)

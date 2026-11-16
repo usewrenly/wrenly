@@ -78,5 +78,18 @@ test("unsafe paths, extraction collisions and bounds fail without truncating sou
     createSourceZip([
       { path: "large.txt", content: "x".repeat(MAX_SOURCE_BYTES + 1) },
     ]),
-  ).toThrow("20 MiB");
+  ).toThrow("byte limit");
+});
+
+test('ZIP preserves imported image bytes independently of model-visible source', async () => {
+  const { createSourceAsset } = await import('@wrenly/source-control');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoLYj5DwAFQAJZssNTVgAAAABJRU5ErkJggg==', 'base64');
+  const directory=await mkdtemp(join(tmpdir(),'wrenly-asset-zip-'));
+  try {
+    const path=join(directory,'assets.zip');
+    await Bun.write(path,createSourceZip([{ path:'public/logo.png',content:'',asset:createSourceAsset('public/logo.png',png) }]));
+    const reader=Bun.spawn(['python3','-c',"import sys,zipfile,base64; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(base64.b64encode(z.read('public/logo.png')).decode())",path],{stdout:'pipe',stderr:'pipe'});
+    expect(await new Response(reader.stdout).text()).toBe(png.toString('base64')+'\n');
+    expect(await reader.exited).toBe(0);
+  } finally { await rm(directory,{recursive:true,force:true}); }
 });

@@ -1,3 +1,7 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import type { RevisionFile } from "@wrenly/source-control/revision";
+import { isSourceAsset, REVISION_LIMITS, type SourceAsset } from "@wrenly/source-control/revision";
 /**
  * Publishing source policy.
  * Used at admission and again during execution to validate and digest the exact saved revision.
@@ -10,14 +14,14 @@ import { validateFilePaths } from "@wrenly/sandbox/file-paths";
 import { z } from "zod";
 
 const MAX_FILES = 1000;
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const MAX_PATH_BYTES = 1024;
 const FilesSchema = z
   .array(
     z
       .object({
         path: z.string().min(1).max(MAX_PATH_BYTES),
-        content: z.string(),
+        content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional(),
       })
       .strict(),
   )
@@ -39,7 +43,7 @@ const PRIVATE_KEY_MARKER = /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----/;
 
 /** Returns a bounded canonical snapshot and digest, never silently filters confidential files. */
 export function validateDeploymentSource(input: unknown): {
-  files: Array<{ path: string; content: string }>;
+  files: RevisionFile[];
   sha256: string;
 } {
   const parsed = FilesSchema.safeParse(input);
@@ -47,11 +51,12 @@ export function validateDeploymentSource(input: unknown): {
     throw new Error(
       "Deployment source is missing, invalid or exceeds file limits.",
     );
+  assertRevisionBudget(parsed.data);
   validateFilePaths(parsed.data);
   let bytes = 0;
   const caseFolded = new Set<string>();
   for (const file of parsed.data) {
-    bytes += Buffer.byteLength(file.path) + Buffer.byteLength(file.content);
+    bytes += Buffer.byteLength(file.path) + materializeSourceFile(file).byteLength;
     if (Buffer.byteLength(file.path) > MAX_PATH_BYTES)
       throw new Error("Deployment source contains an oversized file path.");
     const normalized = file.path.toLowerCase();
@@ -92,7 +97,7 @@ export function validateDeploymentSource(input: unknown): {
   return {
     files,
     sha256: createHash("sha256")
-      .update(JSON.stringify(files.map((file) => [file.path, file.content])))
+      .update(JSON.stringify(files.map((file) => file.asset ? [file.path, file.asset.sha256] : [file.path, file.content])))
       .digest("hex"),
   };
 }

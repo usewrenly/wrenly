@@ -90,7 +90,7 @@ test("unsafe paths, special Git entries and oversized replies never become sourc
   for (const entry of [
     blob("link", { mode: "120000" }),
     blob("submodule", { type: "commit", mode: "160000" }),
-    blob("large", { size: 600000 }),
+    blob("large", { size: 2 * 1024 * 1024 + 1 }),
     blob("bad", { size: -1 }),
   ])
     expect(() => readGitHubSourceTree(tree([entry]), sha)).toThrow();
@@ -110,7 +110,7 @@ test("decoded content is checked independently of tree metadata", () => {
     "binary\u0000",
     "version https://git-lfs.github.com/spec/v1\noid sha256:abc",
     "\ud800",
-    "x".repeat(600000),
+    "x".repeat(2 * 1024 * 1024 + 1),
   ])
     expect(() =>
       validateSourceFiles([{ path: "file.txt", content }]),

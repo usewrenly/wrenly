@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 // Durable execution claims and immutable inputs; build records separately hold source/history.
 import type { SkillGuidance } from "@wrenly/inference"
 import type { BuildDatabaseSelection } from "../../application-databases/build-contract"
@@ -23,7 +24,7 @@ export interface BuildJobInput {
   stack: 'nextjs' | 'laravel' | 'vue' | 'django'
   model: string
   provider: string
-  previousFiles: Array<{ path: string; content: string }>
+  previousFiles: RevisionFile[]
   previousErrors: string[]
 }
 

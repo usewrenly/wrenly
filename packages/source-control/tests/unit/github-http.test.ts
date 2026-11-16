@@ -39,7 +39,7 @@ test("provider errors and excessive streamed bodies never expose remote content"
   await expect(client.get("/user")).rejects.toThrow("http_error");
   const large = createGitHubReadClient(
     "token",
-    async () => new Response("x".repeat(2 * 1024 * 1024 + 1)),
+    async () => new Response("x".repeat(6 * 1024 * 1024 + 1)),
   );
   await expect(large.get("/user")).rejects.toThrow("response_limit");
   const invalid = createGitHubReadClient(

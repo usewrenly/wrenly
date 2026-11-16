@@ -1,3 +1,5 @@
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 // Runs trusted query/migration bundles through one authenticated Unix socket.
 // Generated client containers retain blocked IP egress; caller intent/lease fences every effect.
 import Docker from "dockerode";
@@ -27,7 +29,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024,
   MAX_INPUT_BYTES = 65536,
   MAX_OUTPUT_BYTES = 128 * 1024,
-  MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+  MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 /** Runs only a server-built helper; no generated command, network destination or browser-supplied bundle is accepted. */
 export async function runDatabaseSocketWorker(input: {
   kind: "query" | "migration";
@@ -154,7 +156,7 @@ export async function runDatabaseSocketWorker(input: {
     for (const file of files) {
       const path = join(workspace, file.path);
       await mkdir(dirname(path), { recursive: true, mode: 0o755 });
-      await writeFile(path, file.content, { flag: "wx", mode: 0o644 });
+      await writeFile(path, materializeSourceFile(file), { flag: "wx", mode: 0o644 });
     }
     await input.fence.beforeEffect(effect);
     await input.fence.assertHeld();

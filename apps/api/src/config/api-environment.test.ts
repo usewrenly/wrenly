@@ -101,3 +101,11 @@ test('Development databases require explicit opt-in and verified preview configu
   expect(() => parseApiEnvironment({ ...BASE, WRENLY_APP_DATABASES_ENABLED: 'true' })).toThrow('WRENLY_PREVIEW_ENABLED')
   expect(parseApiEnvironment({ ...BASE, WRENLY_AUTH_SECRET: 'a'.repeat(64), WRENLY_PREVIEW_ENABLED: 'true', WRENLY_APP_DATABASES_ENABLED: 'true' }).WRENLY_APP_DATABASES_ENABLED).toBe('true')
 })
+
+test('owner import budgets default consistently and cannot exceed runtime ceilings', () => {
+  const defaults=parseApiEnvironment(BASE);
+  expect(defaults.WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(1000);
+  expect(defaults.WRENLY_SOURCE_IMPORT_TEXT_BYTES).toBe(8*1024*1024);
+  expect(parseApiEnvironment({ ...BASE, WRENLY_SOURCE_IMPORT_MAX_FILES:'500' }).WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(500);
+  for (const value of ['0','1001','Infinity','1.5']) expect(()=>parseApiEnvironment({...BASE,WRENLY_SOURCE_IMPORT_MAX_FILES:value})).toThrow('WRENLY_SOURCE_IMPORT_MAX_FILES');
+});

@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 // Server-only deployment source snapshots, encrypted credentials and durable effect tracking.
 // Handlers must select safe public fields explicitly instead of spreading these records.
 import { pgEnum, pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index, integer, bigint } from 'drizzle-orm/pg-core'
@@ -54,7 +55,7 @@ export const deployments = pgTable('deployments', {
   idempotencyKey: uuid('idempotency_key').notNull(),
   requestIdentity: text('request_identity').notNull(),
   stack: stackEnum('stack').notNull(),
-  files: jsonb('files').$type<Array<{ path: string; content: string }>>().notNull(),
+  files: jsonb('files').$type<RevisionFile[]>().notNull(),
   sourceSha256: text('source_sha256').notNull(),
   status: deploymentStatusEnum('status').notNull().default('queued'),
   claimToken: uuid('claim_token'),

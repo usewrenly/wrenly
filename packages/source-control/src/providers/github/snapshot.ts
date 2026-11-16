@@ -1,3 +1,5 @@
+import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "../../policy/import-policy";
+import { createSourceAsset } from "../../revision/assets";
 /**
  * COMPONENT: Immutable repository reader
  * PURPOSE: Download one exact commit without running any repository code.
@@ -36,7 +38,7 @@ async function decodeBlob(
   raw: unknown,
   id: string,
   size: number,
-): Promise<string> {
+): Promise<Uint8Array> {
   if (
     !record(raw) ||
     raw.sha !== id ||
@@ -48,7 +50,7 @@ async function decodeBlob(
   const encoded = raw.content.replace(/\n/g, "");
   if (
     encoded.length !== 4 * Math.ceil(size / 3) ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(
       encoded,
     )
   )
@@ -65,11 +67,7 @@ async function decodeBlob(
     byte.toString(16).padStart(2, "0"),
   ).join("");
   if (actual !== id) throw new SourceControlError("invalid_content");
-  try {
-    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
-  } catch {
-    throw new SourceControlError("invalid_content");
-  }
+  return bytes;
 }
 /** Callers must recheck local account authority before saving or exposing the returned snapshot. */
 export async function readGitHubSnapshot(
@@ -78,6 +76,7 @@ export async function readGitHubSnapshot(
   commitId: string,
   externalSignal?: AbortSignal,
   applicationRoot = "",
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): Promise<GitHubSourceSnapshot> {
   validateApplicationRoot(applicationRoot);
   if (!SHA.test(commitId)) throw new SourceControlError("invalid_tree");
@@ -107,6 +106,7 @@ export async function readGitHubSnapshot(
     await client.get(`${root}/git/trees/${treeId}?recursive=1`, signal),
     treeId,
     applicationRoot,
+    limits,
   );
   const files: SourceFile[] = new Array(tree.entries.length);
   const controller = new AbortController();
@@ -122,10 +122,16 @@ export async function readGitHubSnapshot(
         if (!entry) return;
         const raw = await client.get(`${root}/git/blobs/${entry.blobId}`, readSignal);
         readSignal.throwIfAborted();
-        const content = await decodeBlob(raw, entry.blobId, entry.size);
+        const bytes = await decodeBlob(raw, entry.blobId, entry.size);
         readSignal.throwIfAborted();
         // Completion order must never change the saved tree or its review identity.
-        files[index] = { path: entry.path, content };
+        if (/\.(?:png|jpe?g|webp|ico|woff2?|ttf|otf)$/i.test(entry.path)) {
+          try { files[index] = { path: entry.path, content: "", asset: createSourceAsset(entry.path, bytes) }; }
+          catch { throw new SourceControlError("invalid_content", entry.path); }
+        } else {
+          try { files[index] = { path: entry.path, content: new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes) }; }
+          catch { throw new SourceControlError("invalid_content", entry.path); }
+        }
       }
     } catch (error) {
       if (!failed) {
@@ -149,7 +155,7 @@ export async function readGitHubSnapshot(
     applicationRoot,
     commitId,
     treeId,
-    files: validateSourceFiles(files),
+    files: validateSourceFiles(files, limits),
     excludedPaths: tree.excludedPaths,
   };
 }

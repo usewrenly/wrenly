@@ -1,3 +1,5 @@
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS, assertRevisionBudget, type RevisionFile } from "@wrenly/source-control/revision";
 /**
  * Private source snapshot transport
  * Used by publishing execution; recovery invokes cleanup after subprocesses are known to have settled.
@@ -16,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 const MAX_FILES = 1000;
-const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = REVISION_LIMITS.serializedBytes;
 const GIT_DEADLINE_MS = 60_000;
 const MAX_TOKEN_CHARACTERS = 16_000;
 const MAX_CAPTURE_CHARACTERS = 100;
@@ -34,7 +36,7 @@ export class PrivateGitError extends Error {
 export async function pushPrivateSnapshot(
   input: {
     deploymentId?: string;
-    files: Array<{ path: string; content: string }>;
+    files: RevisionFile[];
     repositoryUrl: string;
     username: string;
     token: string;
@@ -67,6 +69,7 @@ export async function pushPrivateSnapshot(
     )
       throw new PrivateGitError();
     const paths = new Set<string>();
+    assertRevisionBudget(input.files);
     for (const file of input.files) {
       if (
         !file.path ||
@@ -173,7 +176,7 @@ export async function pushPrivateSnapshot(
       execution.throwIfAborted();
       const target = join(directory, file.path);
       await mkdir(join(target, ".."), { recursive: true });
-      await writeFile(target, file.content, { flag: "wx", mode: 0o600 });
+      await writeFile(target, materializeSourceFile(file), { flag: "wx", mode: 0o600 });
     }
     // The snapshot must include generated files even when their own .gitignore excludes them.
     await run(["add", "--force", "--", "."]);

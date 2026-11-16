@@ -41,6 +41,7 @@ const Review = z.object({
   reviewId: z.uuid(),
   commitId: z.string().regex(/^[a-f0-9]{40}$/),
   fileCount: z.number().int().positive(),
+  assetCount: z.number().int().nonnegative().default(0),
   excludedPaths: z.array(z.string()),
   expiresAt: z.string().datetime(),
 });
@@ -310,8 +311,7 @@ function ImportFlow(): React.JSX.Element {
               <details className={styles.note}>
                 <summary>Supported source and privacy</summary>
                 <p>
-                  Choose a standalone application directory. Binary assets, submodules and Git LFS
-                  are unsupported. Private configuration is excluded. No
+                  Choose a standalone application directory. PNG, JPEG, WebP, ICO and fonts are preserved. Submodules and Git LFS are unsupported. Private configuration is excluded. No
                   dependencies run during review.
                 </p>
               </details>
@@ -337,7 +337,7 @@ function ImportFlow(): React.JSX.Element {
                   {review.repository.owner}/{review.repository.name}
                 </p>
                 <p className="text-sm">
-                  {review.stack === "nextjs" ? "Next.js" : "Laravel"} · {review.fileCount} source files · Private project
+                  {review.stack === "nextjs" ? "Next.js" : "Laravel"} · {review.fileCount} files{review.assetCount > 0 ? ` · ${review.assetCount} image/font assets` : ""} · Private project
                 </p>
                 <p className="break-all font-mono text-xs">
                   Directory {review.applicationRoot || "/"}<br />

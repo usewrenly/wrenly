@@ -9,8 +9,8 @@
  */
 const API_ORIGIN = "https://api.github.com";
 const API_VERSION = "2022-11-28";
-const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const MAX_REQUEST_BYTES = 3 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const TIMEOUT_MS = 15_000;
 const MAX_TOKEN_CHARACTERS = 8192;
 export class GitHubRequestError extends Error {

@@ -1,3 +1,4 @@
+import { createSourceAsset } from "@wrenly/source-control/assets";
 import {
   createSourcePushReview,
   admitSourcePush,
@@ -464,7 +465,7 @@ integration("session-bound GitHub authorization persistence", () => {
     expect(await database.select().from(schema.projects)).toHaveLength(1);
   });
 
-  async function pushFixture(applicationRoot = "") {
+  async function pushFixture(applicationRoot = "", withAsset = false) {
     const appVersion = crypto.randomUUID(),
       connectionVersion = crypto.randomUUID();
     await database.insert(schema.sourceGitHubApp).values({
@@ -498,6 +499,7 @@ integration("session-bound GitHub authorization persistence", () => {
       commitId: "a".repeat(40),
       treeId: "b".repeat(40),
       files: [
+        ...(withAsset ? [{ path: "public/logo.png", content: "", asset: createSourceAsset("public/logo.png", Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoLYj5DwAFQAJZssNTVgAAAABJRU5ErkJggg==", "base64")) }] : []),
         {
           path: "package.json",
           content: '{"dependencies":{"next":"15.5.28"}}',
@@ -664,6 +666,24 @@ integration("session-bound GitHub authorization persistence", () => {
       sha: "e".repeat(40),
     });
     expect(await claimSourcePush(database)).toBeNull();
+  });
+  test("private import, saved build and reviewed push preserve passive asset identity", async () => {
+    const f = await pushFixture("apps/web", true);
+    const [origin] = await database.select().from(schema.sourceProjectOrigins);
+    const [saved] = await database.select().from(schema.builds).where(eq(schema.builds.id, f.imported.buildId));
+    const [job] = await database.select().from(schema.buildJobs).where(eq(schema.buildJobs.buildId, f.imported.buildId));
+    expect(origin?.baseline).toEqual(f.snapshot.files);
+    expect(job?.input.previousFiles).toEqual(f.snapshot.files);
+    expect(saved?.files).toEqual(expect.arrayContaining(f.snapshot.files));
+    const [review] = await database.select().from(schema.sourcePushReviews);
+    expect(review?.changes.map(change => change.path)).toEqual(["apps/web/app/page.tsx"]);
+    await admitSourcePush(database, owner, {requestId:crypto.randomUUID(),reviewId:f.prepared.reviewId});
+    const claim=await claimSourcePush(database);
+    const remote=remoteFixture(false,"apps/web");
+    await executeSourcePush(database,claim!,remote.client,new AbortController().signal);
+    expect(remote.posts).toHaveLength(3);
+    expect(JSON.stringify(remote.posts[0]?.body)).not.toContain("logo.png");
+    expect((remote.posts[0]?.body as {base_tree:string}).base_tree).toBe(f.snapshot.treeId);
   });
   test("selected application directory survives admission and scopes every reviewed remote change", async () => {
     const f = await pushFixture("apps/web");

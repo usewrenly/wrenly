@@ -72,7 +72,7 @@
         "@tailwindcss/postcss": "^4.3.3",
         "@tanstack/react-query": "^5.104.1",
         "@wrenly/db": "*",
-        "@wrenly/source-control": "*",
+        "@wrenly/source-control": "workspace:*",
         "better-auth": "^1.7.7",
         "class-variance-authority": "^0.7.1",
         "cn": "^0.4.0",
@@ -108,6 +108,7 @@
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@wrenly/inference": "*",
+        "@wrenly/source-control": "workspace:*",
         "openai": "^7.31.0",
       },
       "devDependencies": {
@@ -157,6 +158,9 @@
     "packages/deploy": {
       "name": "@wrenly/deploy",
       "version": "0.0.1",
+      "dependencies": {
+        "@wrenly/source-control": "workspace:*",
+      },
       "devDependencies": {
         "@repo/typescript-config": "*",
         "@types/node": "*",
@@ -194,6 +198,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@wrenly/db": "workspace:*",
+        "@wrenly/source-control": "workspace:*",
         "dockerode": "^4.0.2",
       },
       "devDependencies": {

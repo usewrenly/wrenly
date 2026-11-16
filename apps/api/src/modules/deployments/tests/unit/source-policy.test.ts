@@ -87,7 +87,7 @@ test("rejects malformed, empty and oversized snapshots before materialization", 
     expect(() => validateDeploymentSource(files)).toThrow("invalid");
   expect(() =>
     validateDeploymentSource([
-      { path: "a", content: "a".repeat(2 * 1024 * 1024) },
+      { path: "a", content: "a".repeat(2 * 1024 * 1024 + 1) },
     ]),
   ).toThrow("byte limit");
 });

@@ -1,3 +1,4 @@
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 // COMPONENT: API startup configuration
 // PURPOSE: Reject missing API configuration before opening database/auth services.
 // INPUTS: Environment variables.
@@ -11,6 +12,11 @@ import { resolve } from 'node:path'
 const OptionalPublishingString = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional())
 
 const ApiEnvironmentSchema = z.object({
+  WRENLY_SOURCE_IMPORT_MAX_FILES: z.coerce.number().int().min(1).max(REVISION_LIMITS.files).default(REVISION_LIMITS.files),
+  WRENLY_SOURCE_IMPORT_TEXT_FILE_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.textFileBytes).default(REVISION_LIMITS.textFileBytes),
+  WRENLY_SOURCE_IMPORT_TEXT_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.textBytes).default(REVISION_LIMITS.textBytes),
+  WRENLY_SOURCE_IMPORT_ASSET_FILE_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.assetFileBytes).default(REVISION_LIMITS.assetFileBytes),
+  WRENLY_SOURCE_IMPORT_ASSET_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.assetBytes).default(REVISION_LIMITS.assetBytes),
   WRENLY_DATA_DIR: z.string().min(1).default('.local/wrenly').transform(value => resolve(value)),
   WRENLY_DATABASE_URL: z.url().regex(/^postgres(?:ql)?:\/\//),
   WRENLY_AUTH_SECRET: z.string().min(1),

@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 import type { SkillGuidance } from "@wrenly/inference"
 // Starts the selected framework MCP server for one build attempt. MCP is the
 // tool-call protocol; the chosen model supplies the answer through that server.
@@ -13,10 +14,7 @@ import { buildModelEnvironment } from '../models/environment/model-environment'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FileTree = Array<{
-    path: string
-    content: string
-}>
+export type FileTree = RevisionFile[]
 
 export type AgentInput = {
     skills_v1?: SkillGuidance

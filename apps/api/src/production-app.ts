@@ -104,7 +104,11 @@ export function createProductionApp(environment: ApiEnvironment): Hono {
         principal: async headers => {
           const userId = await getUserId(headers)
           return userId ? accessContext.getStore()?.principal ?? null : null
-        }, service: createGitHubConnectionService(db, { webUrl: environment.WRENLY_WEB_URL, directory: environment.WRENLY_DATA_DIR }) }),
+        }, service: createGitHubConnectionService(db, { webUrl: environment.WRENLY_WEB_URL, directory: environment.WRENLY_DATA_DIR, importLimits: {
+          files: environment.WRENLY_SOURCE_IMPORT_MAX_FILES, fileBytes: environment.WRENLY_SOURCE_IMPORT_TEXT_FILE_BYTES,
+          totalBytes: environment.WRENLY_SOURCE_IMPORT_TEXT_BYTES, assetFileBytes: environment.WRENLY_SOURCE_IMPORT_ASSET_FILE_BYTES,
+          assetBytes: environment.WRENLY_SOURCE_IMPORT_ASSET_BYTES,
+        } }) }),
       providerConfiguration: createProviderConfigurationHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, service: providerConfiguration }),
       catalog: createCatalogHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, catalog: () => getAvailableCatalog(db), refresh: actorId => refreshProviderCatalog(db, actorId) }),
       profilePictures: createProfilePictureHandlers({webUrl: environment.WRENLY_WEB_URL, session: getUserId, metadata: actor => getProfilePicture(db, actor), image: (actor, target, revision) => readProfilePicture(db, actor, target, revision), decode: decodeProfilePicture, save: (actor, input, bytes) => saveProfilePicture(db, actor, input, bytes)}),

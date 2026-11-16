@@ -1,3 +1,4 @@
+import { isSourceAsset, REVISION_LIMITS, type SourceAsset } from "@wrenly/source-control/revision";
 /**
  * COMPONENT: Reviewed source export persistence
  * PURPOSE: Freeze owner-approved changes and persist intent before remote Git mutations.
@@ -31,13 +32,13 @@ import {
   SourceConnectionError,
 } from "../github/authorization-store";
 import { assertSourceImportConnection } from "../imports/import-store";
-const MAX_SOURCE_FILES = 256;
-const MAX_REVIEW_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_FILES = REVISION_LIMITS.files;
+const MAX_REVIEW_BYTES = REVISION_LIMITS.serializedBytes;
 const MAX_PENDING_REVIEWS = 8;
 const MAX_QUEUED_PUSHES = 20;
 const UUID = z.uuid();
 const Files = z
-  .array(z.object({ path: z.string(), content: z.string() }).strict())
+  .array(z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }).strict())
   .min(1)
   .max(MAX_SOURCE_FILES);
 const ReviewInput = z
@@ -328,7 +329,7 @@ export async function createSourcePushReview(
     if (Buffer.byteLength(JSON.stringify(changes)) > MAX_REVIEW_BYTES)
       throw new SourceConnectionError(
         400,
-        "The source change set exceeds the current 2 MiB limit.",
+        "The source change set exceeds its reviewed-source byte limit.",
       );
     const [pending] = await tx
       .select({ total: count() })

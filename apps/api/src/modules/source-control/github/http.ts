@@ -155,12 +155,12 @@ export function createGitHubConnectionHandlers(options: {
           unsafe_path:
             "This repository contains an unsupported or ambiguous file path. Review its source before importing.",
           size_limit:
-            "This repository exceeds import limits: 256 files, 512 KiB per file and 8 MiB total.",
+            "This repository exceeds the configured source or asset limits. Review the instance import limits in the GitHub guide.",
           invalid_content:
-            "This repository contains binary files, Git LFS pointers or unsupported text. Import currently accepts text source only.",
+            "This repository contains an unsupported or malformed asset, Git LFS pointer or unsupported text. Supported passive assets include PNG, JPEG, WebP, ICO and fonts.",
         };
         return Response.json(
-          { error: messages[error.code] },
+          { error: messages[error.code] + (error.path ? ` File: ${error.path.slice(0, 512)}` : "") },
           { status: 400, headers: PRIVATE },
         );
       }

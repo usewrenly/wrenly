@@ -2,6 +2,8 @@
 import { describe, expect, test } from 'bun:test'
 import Docker from 'dockerode'
 import { resolve } from 'node:path'
+import { createSourceAsset, materializeSourceFile } from '@wrenly/source-control/assets'
+import type { RevisionFile } from '@wrenly/source-control/revision'
 import { runSandbox } from '../src/index'
 import { buildRuntimeArtifact, cleanupRuntimeArtifactPreparation } from '../src/artifacts/runtime-artifact'
 import { startPreviewRuntime, cleanupPreviewRuntime } from '../src/previews/runtime'
@@ -11,7 +13,7 @@ const integration = process.env.WRENLY_TEST_IMPORT_VERSIONS === 'true' ? describ
 const docker = new Docker({ socketPath: '/var/run/docker.sock' })
 const ACCEPTANCE_TIMEOUT_MS = 300_000
 
-type Fixture = { stack: 'nextjs' | 'laravel'; version: string; files: Array<{ path: string; content: string }> }
+type Fixture = { stack: 'nextjs' | 'laravel'; version: string; files: RevisionFile[] }
 function fixtures(): Fixture[] {
   const laravel = laravelFixture().map(file => file.path === 'composer.json' ? {
     ...file, content: JSON.stringify({ ...JSON.parse(file.content), require: { php: '^8.4', 'laravel/framework': '^12.0' } }),
@@ -32,6 +34,8 @@ function fixtures(): Fixture[] {
 integration('imported framework versions', () => {
   for (const fixture of fixtures()) {
     test(`${fixture.stack} ${fixture.version} builds, previews and packages without upgrading`, async () => {
+      const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoLYj5DwAFQAJZssNTVgAAAABJRU5ErkJggg==', 'base64')
+      fixture.files.push({ path: 'public/import-logo.png', content: '', asset: createSourceAsset('public/import-logo.png', png) })
       const original = JSON.stringify(fixture.files)
       const result = await runSandbox({ projectId: crypto.randomUUID(), stack: fixture.stack, files: fixture.files })
       if (!result.success) throw new Error(`${result.error}\n${result.output}`)
@@ -44,6 +48,9 @@ integration('imported framework versions', () => {
           ingressBundle: new Uint8Array(await bundle.outputs[0].arrayBuffer()),
           ingress: { previewOrigin: 'http://fixture-version.localhost:3003', controlOrigin: 'http://localhost:3000', capability: 'e'.repeat(64), blockedCookieNames: [] } })
         const response = await fetch(runtime.ingressUrl, { headers: { host: 'fixture-version.localhost:3003', 'x-wrenly-preview-ingress': 'e'.repeat(64) } })
+        const imageReply = await fetch(`${runtime.ingressUrl}/import-logo.png`, { headers: { host: 'fixture-version.localhost:3003', 'x-wrenly-preview-ingress': 'e'.repeat(64) } })
+        expect(imageReply.status).toBe(200)
+        expect(Buffer.from(await imageReply.arrayBuffer())).toEqual(png)
         expect(response.status).toBe(200)
         expect(await response.text()).toContain(fixture.stack === 'nextjs' ? 'Version preserved' : 'Équipe, together.')
       } finally { await cleanupPreviewRuntime(identity) }
@@ -56,6 +63,14 @@ integration('imported framework versions', () => {
         const image = await docker.getImage(imageId).inspect()
         expect(image.Config.Labels?.['io.wrenly.deployment-id']).toBe(deploymentId)
         expect(image.Config.User).toBe('1000:1000')
+        const reader = await docker.createContainer({ Image: imageId, Cmd: ['sha256sum', '/app/public/import-logo.png'], HostConfig: { NetworkMode: 'none', ReadonlyRootfs: true }, User: '1000:1000' })
+        try {
+          await reader.start(); expect((await reader.wait()).StatusCode).toBe(0)
+          const log=await reader.logs({ stdout: true, stderr: true })
+          const expected=fixture.files.find(file=>file.asset)!
+          expect(Buffer.from(log).toString()).toContain(expected.asset!.sha256)
+          expect(Buffer.from(materializeSourceFile(expected))).toEqual(png)
+        } finally { await reader.remove({ force: true }) }
       } finally {
         await cleanupRuntimeArtifactPreparation(deploymentId)
         if (imageId) await docker.getImage(imageId).remove({ force: true })

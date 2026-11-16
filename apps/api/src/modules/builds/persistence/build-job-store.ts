@@ -1,3 +1,4 @@
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 /**
  * Saved build ownership and progress.
  * A worker claim identifies who may update a build; its lease expires unless renewed.
@@ -25,7 +26,7 @@ import { logger } from "../../../lib/logger";
 const QUEUE_LOCK_ID = 1;
 const BUILD_LEASE_MS = 30_000;
 const MAX_BUILD_LOG_CHARS = 256_000;
-const MAX_GENERATED_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_GENERATED_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const MAX_GENERATED_FILES = 1000;
 const MAX_BUILD_ATTEMPTS = 3;
 const INTERRUPTED_MESSAGE =

@@ -1,7 +1,7 @@
 // Reauthorizes exact saved source; never falls back to cached or latest files.
 import { parseDurableSnapshot } from "../builds/durable-build-client";
 import { createSourceZip } from "./zip";
-const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 const TERMINAL_OUTCOMES = new Set([
   "success",
   "failed",

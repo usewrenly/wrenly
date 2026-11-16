@@ -1,3 +1,5 @@
+import { supportsImportedVersion } from "@wrenly/source-control/framework-versions";
+import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "@wrenly/source-control";
 /** Inspects selected source as data; never installs packages or executes repository configuration. */
 import { z } from "zod";
 import {
@@ -27,6 +29,7 @@ export async function readImportSource(
   client: GitHubReadClient,
   raw: unknown,
   externalSignal: AbortSignal,
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): Promise<{ snapshot: GitHubSourceSnapshot; stack: "nextjs" | "laravel" }> {
   const parsed = Selection.safeParse(raw);
   if (!parsed.success)
@@ -97,6 +100,7 @@ export async function readImportSource(
     commitId,
     signal,
     input.applicationRoot,
+    limits,
   );
   let stack: "nextjs" | "laravel";
   try {
@@ -111,7 +115,7 @@ export async function readImportSource(
         !record(manifest) ||
         !record(manifest.dependencies) ||
         typeof manifest.dependencies.next !== "string" ||
-        !/^[~^]?(?:15|16)\.\d+(?:\.\d+)?$/.test(manifest.dependencies.next)
+        !supportsImportedVersion('nextjs', manifest.dependencies.next)
       )
         throw new Error(
           "This import runtime accepts Next.js 15 or 16 with an explicit version range. The repository version is preserved, never upgraded during import.",

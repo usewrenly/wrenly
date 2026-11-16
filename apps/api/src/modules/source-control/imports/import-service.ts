@@ -1,3 +1,4 @@
+import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "@wrenly/source-control";
 /** Coordinates personal authorization, immutable source review and atomic project admission. */
 import type { db } from "@wrenly/db";
 import { createGitHubReadClient } from "@wrenly/source-control";
@@ -11,6 +12,7 @@ const IMPORT_REVIEW_TIMEOUT_MS = 45_000;
 export function createSourceImportService(
   database: typeof db,
   directory: string,
+  limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
 ): {
   prepare(
     principal: AccessPrincipal,
@@ -20,7 +22,7 @@ export function createSourceImportService(
   confirm(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
 } {
   return {
-    confirm: (principal, raw) => admitSourceImport(database, principal, raw),
+    confirm: (principal, raw) => admitSourceImport(database, principal, raw, limits),
     prepare: async (principal, raw, signal) => {
       // Leave time for a structured response before the API and browser deadlines.
       const reviewSignal = AbortSignal.any([
@@ -36,6 +38,7 @@ export function createSourceImportService(
         createGitHubReadClient(personal.token),
         raw,
         reviewSignal,
+        limits,
       );
       reviewSignal.throwIfAborted();
       const review = await saveSourceImportReview(
@@ -44,6 +47,7 @@ export function createSourceImportService(
         personal.version,
         snapshot,
         stack,
+        limits,
       );
       return {
         ...review,
@@ -51,6 +55,8 @@ export function createSourceImportService(
         commitId: snapshot.commitId,
         applicationRoot: snapshot.applicationRoot ?? "",
         stack,
+        limits,
+        assetCount: snapshot.files.filter(file => file.asset).length,
       };
     },
   };

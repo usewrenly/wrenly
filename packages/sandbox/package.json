@@ -28,7 +28,8 @@
   },
   "dependencies": {
     "@wrenly/db": "workspace:*",
-    "dockerode": "^4.0.2"
+    "dockerode": "^4.0.2",
+    "@wrenly/source-control": "workspace:*"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

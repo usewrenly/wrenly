@@ -11,3 +11,6 @@ export * from "./providers/github/snapshot";
 export * from "./policy/change-review";
 export * from "./policy/framework-detection";
 export * from "./policy/application-root";
+
+export * from "./revision/contracts";
+export * from "./revision/assets";

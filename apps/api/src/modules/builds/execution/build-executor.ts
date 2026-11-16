@@ -1,3 +1,5 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { isSourceAsset, REVISION_LIMITS, type SourceAsset } from "@wrenly/source-control/revision";
 /**
  * One saved build’s generation and validation attempts.
  * Calls the framework MCP tool, saves generated source, validates it in Docker and feeds errors into bounded repair attempts.
@@ -22,10 +24,10 @@ const MAX_ATTEMPTS = 3;
 const MAX_REPAIR_ERROR_CHARS = 6000;
 const MAX_DIAGNOSTIC_CHARS = 256_000;
 const FilesSchema = z
-  .array(z.object({ path: z.string().min(1), content: z.string() }))
+  .array(z.object({ path: z.string().min(1), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }))
   .min(1)
   .max(1000);
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 
 export interface BuildExecutorDependencies {
   generate: (
@@ -45,6 +47,7 @@ export interface BuildExecutorDependencies {
 
 function validateFiles(value: unknown, stack: string): FileTree {
   const files = FilesSchema.parse(value);
+  assertRevisionBudget(files);
   const required =
     stack === "laravel"
       ? "composer.json"

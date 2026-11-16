@@ -1,3 +1,4 @@
+import { supportsImportedVersion } from "@wrenly/source-control/framework-versions";
 // COMPONENT: Laravel source policy and trusted runtime commands
 // Composer plugins/scripts and Bun lifecycle hooks stay disabled during installation.
 // Generated PHP and asset builds run only in the subsequent offline container.
@@ -39,7 +40,7 @@ export function validateLaravelSource(files: Array<{ path: string; content: stri
     throw new Error('Laravel application keys are injected at runtime; do not define APP_KEY in generated source.')
   const composer: unknown = JSON.parse(files.find(file => file.path === 'composer.json')!.content)
   if (!record(composer) || !record(composer.require) || typeof composer.require['laravel/framework'] !== 'string' ||
-    !/^[~^]?(?:12|13)\.\d+(?:\.\d+)?$/.test(composer.require['laravel/framework']))
+    !supportsImportedVersion('laravel', composer.require['laravel/framework']))
     throw new Error('This PHP 8.4 runtime accepts Laravel 12 or 13 with an explicit version range. Existing projects are not automatically upgraded.')
   if ('scripts' in composer || 'repositories' in composer || composer.type === 'composer-plugin' ||
     Object.keys(composer.require).some(name => name === 'composer-plugin-api' || name === 'composer-runtime-api') ||

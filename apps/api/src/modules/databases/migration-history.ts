@@ -1,3 +1,4 @@
+import { isSourceAsset, type SourceAsset } from "@wrenly/source-control/revision";
 /** Reject edits to applied migration history before they can reach a disposable rehearsal. */
 import { z } from "zod";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
@@ -125,7 +126,7 @@ export async function assertAppliedMigrationHistory(
     .limit(1);
   if (previous) {
     const saved = z
-      .array(z.object({ path: z.string(), content: z.string() }))
+      .array(z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }))
       .min(1)
       .max(1000)
       .parse(previous.files);

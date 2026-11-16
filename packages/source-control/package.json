@@ -4,7 +4,10 @@
   "private": true,
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./revision": "./src/revision/contracts.ts",
+    "./assets": "./src/revision/assets.ts",
+    "./framework-versions": "./src/revision/framework-versions.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

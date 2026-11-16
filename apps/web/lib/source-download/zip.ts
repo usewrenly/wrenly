@@ -1,7 +1,8 @@
+import { sourceFileBytes, REVISION_LIMITS, type RevisionFile } from "@wrenly/source-control/revision";
 // Writes standard uncompressed ZIP records locally; saved text is never executed.
 // Header offsets below follow the ZIP format; a fixed DOS epoch avoids local-time variation.
 export const MAX_SOURCE_FILES = 1000;
-export const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+export const MAX_SOURCE_BYTES = REVISION_LIMITS.textBytes + REVISION_LIMITS.assetBytes;
 const MAX_PATH_BYTES = 4096;
 const MAX_SEGMENT_BYTES = 255;
 const UTF8_FLAG = 0x0800;
@@ -49,7 +50,7 @@ function pathBytes(path: string): Uint8Array {
 }
 /** Archives exact saved text files; rejects ambiguous paths and limits before allocating the ZIP. */
 export function createSourceZip(
-  files: ReadonlyArray<{ path: string; content: string }>,
+  files: ReadonlyArray<RevisionFile>,
 ): Uint8Array<ArrayBuffer> {
   if (!files.length || files.length > MAX_SOURCE_FILES)
     throw new Error(
@@ -65,15 +66,15 @@ export function createSourceZip(
     identities.add(identity);
     // UTF-8 is never smaller than this safe lower bound; reject large inputs before encoding.
     if (file.content.length > MAX_SOURCE_BYTES - sourceBytes)
-      throw new Error("Source download is limited to 20 MiB.");
-    const content = encoder.encode(file.content);
-    if (decoder.decode(content) !== file.content)
+      throw new Error("Source download exceeds its saved-source byte limit.");
+    const content = sourceFileBytes(file);
+    if (!file.asset && decoder.decode(content) !== file.content)
       throw new Error(
         "This revision contains text that cannot be preserved as UTF-8.",
       );
     sourceBytes += content.length;
     if (sourceBytes > MAX_SOURCE_BYTES)
-      throw new Error("Source download is limited to 20 MiB.");
+      throw new Error("Source download exceeds its saved-source byte limit.");
     return { name, content, crc: crc32(content) };
   });
   for (const identity of identities) {

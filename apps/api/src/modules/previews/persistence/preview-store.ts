@@ -1,3 +1,4 @@
+import { isSourceAsset, REVISION_LIMITS, type SourceAsset } from "@wrenly/source-control/revision";
 // Saves preview admission, worker ownership, status and recovery atomically.
 // Queue locks bound capacity; source snapshots and claim tokens prevent revision or executor substitution.
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
@@ -24,10 +25,10 @@ const MAX_PREVIEW_REQUEST_KEYS = 64
 export const PREVIEW_LEASE_MS = 30_000
 const INACTIVITY_MS = 60 * 60 * 1000
 const MAX_LOG_CHARS = 256_000
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes
 const MAX_ERROR_CHARS = 2000
 const UUID = z.string().uuid()
-const FILES = z.array(z.object({ path: z.string(), content: z.string() })).min(1).max(1000)
+const FILES = z.array(z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() })).min(1).max(1000)
 const LIVE_STATES = ['preparing', 'starting', 'ready'] as const
 const TERMINAL_STATES = ['failed', 'expired', 'stopped', 'interrupted'] as const
 const LOG_MARKER = '[Earlier preview output truncated]\n'
@@ -102,12 +103,12 @@ async function admitSelectedPreview(database: typeof db, buildId: string, userId
         return { previewId: replay.preview.id, replayed: true }
       }
       if (build.build.status !== 'success') throw new PreviewStoreError(409, 'Only a successful build can be previewed.')
-      if (!['nextjs', 'laravel'].includes(build.build.stack ?? build.projectStack)) throw new PreviewStoreError(400, 'Local preview supports Next.js and Laravel 13 builds.')
+      if (!['nextjs', 'laravel'].includes(build.build.stack ?? build.projectStack)) throw new PreviewStoreError(400, 'Local preview supports Next.js and Laravel builds.')
       const files = FILES.safeParse(build.build.files)
       if (!files.success || Buffer.byteLength(JSON.stringify(files.data)) > MAX_SOURCE_BYTES)
         throw new PreviewStoreError(409, 'This build has no valid saved source for preview.')
       if ((build.build.stack ?? build.projectStack) === 'laravel') {
-        try { validateLaravelSource(files.data) } catch { throw new PreviewStoreError(409, 'This revision needs valid Laravel 13 source before it can be previewed. Older revisions are not silently upgraded.') }
+        try { validateLaravelSource(files.data) } catch { throw new PreviewStoreError(409, 'This revision needs supported Laravel source before it can be previewed. Older revisions are not silently upgraded.') }
       }
       try {
         const manifest = readAppDatabaseManifest(files.data, build.build.stack ?? build.projectStack);

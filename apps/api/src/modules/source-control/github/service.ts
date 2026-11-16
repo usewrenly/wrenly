@@ -1,3 +1,4 @@
+import type { SourceImportLimits } from "@wrenly/source-control";
 import {
   readSourceProject,
   bindSourceRepository,
@@ -60,10 +61,10 @@ const Repositories = z.object({
 /** Dependency construction performs no network calls or credential loading. */
 export function createGitHubConnectionService(
   database: typeof db,
-  options: { webUrl: string; directory: string },
+  options: { webUrl: string; directory: string; importLimits?: SourceImportLimits },
 ): GitHubConnectionService {
   const origin = new URL(options.webUrl).origin;
-  const imports = createSourceImportService(database, options.directory);
+  const imports = createSourceImportService(database, options.directory, options.importLimits);
   return {
     sourceProject: (principal, projectId) =>
       readSourceProject(database, principal, projectId),

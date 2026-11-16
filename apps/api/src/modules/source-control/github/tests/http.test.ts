@@ -161,7 +161,7 @@ test("import policy and provider failures return actionable JSON without remote 
     expect(body.error).not.toContain("private fixture detail");
     expect(body.error).toContain(
       error instanceof SourceControlError
-        ? "binary"
+        ? "asset"
         : error instanceof GitHubRequestError
           ? "branch"
           : "Reload",
