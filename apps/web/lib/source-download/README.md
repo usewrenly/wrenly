@@ -7,7 +7,7 @@ before exporting. A denied read never falls back to files already visible in the
 - `client.ts` reads the authenticated build endpoint without caching, checks the
   returned revision identity and requires finished work with saved files. It bounds
   the response to 32 MiB and cancels/releases the response reader after use.
-- `zip.ts` creates a standard ZIP containing only saved file paths and text. It
+- `zip.ts` creates a standard ZIP containing only saved file paths, text and private passive asset bytes. It
   does not add logs, job metadata or runtime-only credentials. Saved source text is
   preserved as supplied, not scanned or redacted. It rejects unsafe paths,
   extraction collisions and files that cannot be preserved as UTF-8 text.
@@ -20,7 +20,7 @@ change or unmount, sets a 20-second deadline and releases the temporary browser 
 URL after starting the download. Exporting never starts a build or publishes an app.
 The API, not the button's enabled state, decides whether the user can read source.
 
-The archive supports up to 1,000 files and 20 MiB of source text. Bounds are checked
+The archive supports up to 1,000 files, 8 MiB of text and 12 MiB of passive assets. Bounds are checked
 before allocating the final archive. Platform-reserved names and case/Unicode
 collisions are rejected so extraction does not overwrite a different file.
 
