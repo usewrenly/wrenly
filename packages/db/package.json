@@ -28,7 +28,8 @@
     "./production-publishing-contract": "./src/application-databases/production-publishing-contract.ts",
     "./production-maintenance-contract": "./src/application-databases/maintenance/contract.ts",
     "./production-project-contract": "./src/application-databases/production-project-contract.ts",
-    "./production-maintenance-attempt": "./src/application-databases/maintenance/attempt.ts"
+    "./production-maintenance-attempt": "./src/application-databases/maintenance/attempt.ts",
+    "./conversation-workflow": "./src/application-databases/conversation-workflow.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

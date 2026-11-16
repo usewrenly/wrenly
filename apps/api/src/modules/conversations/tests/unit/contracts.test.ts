@@ -103,11 +103,58 @@ describe("conversation action contract", () => {
   });
 });
 
-
 test("database selection accepts only non-secret Development identities and is not model action authority", () => {
-  const database = { version: 1 as const, environment: "development" as const, resourceId: crypto.randomUUID(), resourceRevision: crypto.randomUUID() };
-  expect(ConversationRequestSchema.parse({ message: "Plan a booking app", mode: "plan", database }).database).toEqual(database);
-  expect(ConversationRequestSchema.safeParse({ message: "Build", database: { ...database, password: "PRIVATE" } }).success).toBe(false);
-  expect(ConversationRequestSchema.safeParse({ message: "Build", database: { ...database, environment: "production" } }).success).toBe(false);
-  expect(() => validateConversationDecision({ type: "propose_build", content: "Build", prompt: "Build", database }, "auto")).toThrow();
+  const database = {
+    version: 1 as const,
+    environment: "development" as const,
+    resourceId: crypto.randomUUID(),
+    resourceRevision: crypto.randomUUID(),
+  };
+  expect(
+    ConversationRequestSchema.parse({
+      message: "Plan a booking app",
+      mode: "plan",
+      database,
+    }).database,
+  ).toEqual(database);
+  expect(
+    ConversationRequestSchema.safeParse({
+      message: "Build",
+      database: { ...database, password: "PRIVATE" },
+    }).success,
+  ).toBe(false);
+  expect(
+    ConversationRequestSchema.safeParse({
+      message: "Build",
+      database: { ...database, environment: "production" },
+    }).success,
+  ).toBe(false);
+  expect(() =>
+    validateConversationDecision(
+      { type: "propose_build", content: "Build", prompt: "Build", database },
+      "auto",
+    ),
+  ).toThrow();
+});
+
+test("database proposals are bounded requests, never model-supplied execution authority", () => {
+  const proposal = {
+    type: "propose_database",
+    content: "Notes need persistent storage.",
+    prompt: "Build notes with PostgreSQL.",
+  };
+  expect(validateConversationDecision(proposal, "auto").type).toBe(
+    "propose_database",
+  );
+  for (const mode of ["plan", "ask"] as const)
+    expect(() => validateConversationDecision(proposal, mode)).toThrow();
+  for (const injected of [
+    { resourceId: crypto.randomUUID() },
+    { sql: "DROP TABLE notes" },
+    { environment: "production" },
+    { confirm: true },
+  ])
+    expect(() =>
+      validateConversationDecision({ ...proposal, ...injected }, "auto"),
+    ).toThrow();
 });

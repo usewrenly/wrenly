@@ -324,6 +324,7 @@ export async function admitDatabaseAction(
   actorId: string,
   body: unknown,
   dataDirectory: string,
+  coordination?: { beforeAdmission: (transaction: Transaction) => Promise<void> },
 ): Promise<{ operationId: string; resourceId: string; replayed: boolean }> {
   const parsed = DatabaseAction.safeParse(body);
   if (!parsed.success)
@@ -353,8 +354,9 @@ export async function admitDatabaseAction(
     .digest("hex");
   try {
     return await database.transaction(async (transaction) => {
-      await lockDatabaseQueues(transaction);
+      await lockDatabaseQueues(transaction, { wait: Boolean(coordination) });
       await requireProjectCapability(transaction, projectId, actorId, "manage");
+      await coordination?.beforeAdmission(transaction);
       const [replay] = await transaction
         .select()
         .from(appDatabaseOperations)

@@ -1,3 +1,4 @@
+import type { DatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
 import type { OwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
 import type { MaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
 import type { ProjectProductionCreationHandlers } from "./modules/databases/production-targets/project-provisioning/http"
@@ -65,6 +66,7 @@ export interface ApiHandlers {
   setupSummary?: RequestHandler
   instanceAccess?: RequestHandler
   deployments?: DeploymentHttpHandlers
+  conversationDatabases?: DatabaseWorkflowHandlers
   conversations?: ConversationHttpHandlers
   previews?: PreviewHttpHandlers
   builds?: BuildHttpHandlers
@@ -302,6 +304,11 @@ export function createApp(
     app.post('/api/previews/:id/access', c => previews.access(c.req.raw, c.req.param('id')))
   }
 
+  if (handlers.conversationDatabases) {
+    const workflows=handlers.conversationDatabases;
+    app.get('/api/projects/:id/database-workflows',c=>workflows.read(c.req.raw,c.req.param('id')));
+    app.post('/api/projects/:id/database-workflows/:workflowId',c=>workflows.approve(c.req.raw,c.req.param('id'),c.req.param('workflowId')));
+  }
   if (handlers.conversations) {
     const conversations = handlers.conversations
     app.post('/api/projects/:id/messages', c => conversations.create(c.req.raw, c.req.param('id')))

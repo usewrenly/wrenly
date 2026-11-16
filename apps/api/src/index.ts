@@ -116,7 +116,7 @@ try {
       publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
-    conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
+    conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
     app = createProductionApp(environment, { productionDatabases: productionCluster })
   } catch (error) {
     await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])

@@ -1,3 +1,4 @@
+import { createDatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
 import { createOwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
 import { runOwnerRuntimeControl, readOwnerRuntimeControl } from "./modules/deployments/maintenance/owner-control";
 import { createOwnerRuntimeControlServices } from "./modules/deployments/maintenance/control-services";
@@ -171,6 +172,7 @@ export function createProductionApp(
       productionProjectCreation: productionDatabases?.projectCreation,
       projectDatabases: productionDatabases?.projectDatabases ?? (environment.WRENLY_APP_DATABASES_ENABLED === 'true' ? createProductionDatabaseHandlers(db, { directory: environment.WRENLY_DATA_DIR, webUrl: environment.WRENLY_WEB_URL, userId: getUserId }) : undefined),
       builds: buildHandlers,
+      conversationDatabases: environment.WRENLY_APP_DATABASES_ENABLED === "true" ? createDatabaseWorkflowHandlers(db,getUserId,environment.WRENLY_WEB_URL) : undefined,
       conversations: createConversationHttpHandlers({
         userId: getUserId,
         admit: (projectId, userId, key, body) => admitConversationTurn(projectId, userId, key, body, {
