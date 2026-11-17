@@ -41,6 +41,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
       ["/docs/guides/private-publishing", "rocket"],
       ["/docs/guides/publishing-setup", "terminal"],
       ["/docs/guides/app-databases", "database"],
+      ["/docs/guides/production-database-evaluation", "database"],
       ["/docs/troubleshooting/build-failures", "info"],
     ],
   },

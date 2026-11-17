@@ -1,15 +1,18 @@
 // Runs trusted query/migration bundles through one authenticated Unix socket.
 // Generated client containers retain blocked IP egress; caller intent/lease fences every effect.
 import Docker from "dockerode";
-import { ARTIFACT_WORKSPACE_LABEL, ARTIFACT_WORKSPACE_VERSION } from "../artifacts/artifact-policy";
+import {
+  ARTIFACT_WORKSPACE_LABEL,
+  ARTIFACT_WORKSPACE_VERSION,
+} from "../artifacts/artifact-policy";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { validateFilePaths } from "../source-policy/file-paths";
 import {
   DATABASE_SOCKET_DIRECTORY,
-  managedDatabaseLabels,
-  type ManagedDatabaseScope,
+  databaseClientLabels,
+  type DatabaseClientScope,
 } from "./database-resource-policy";
 import {
   DatabaseRuntimeError,
@@ -31,7 +34,7 @@ const MAX_BUNDLE_BYTES = 2 * 1024 * 1024,
 /** Runs only a server-built helper; no generated command, network destination or browser-supplied bundle is accepted. */
 export async function runDatabaseSocketWorker(input: {
   kind: "query" | "migration";
-  scope: ManagedDatabaseScope;
+  scope: DatabaseClientScope;
   socket: DatabaseSocketIdentity;
   operationId: string;
   request: { resourceId: string; user: string; password: string } & Record<
@@ -64,7 +67,7 @@ export async function runDatabaseSocketWorker(input: {
     child?.kill("SIGKILL");
   };
   const labels = {
-    ...managedDatabaseLabels(
+    ...databaseClientLabels(
       input.scope,
       input.kind === "query" ? "database-query" : "database-migration",
     ),
@@ -88,14 +91,24 @@ export async function runDatabaseSocketWorker(input: {
       throw new Error("Invalid private socket helper identity");
     let executionImage = input.socket.imageId;
     if (input.laravel) {
-      if (input.kind !== "migration" || input.laravel.preparationId !== input.operationId || !UUID.test(input.laravel.preparationId) ||
-        !/^sha256:[a-f0-9]{64}$/.test(input.laravel.imageId) || input.files?.length)
+      if (
+        input.kind !== "migration" ||
+        input.laravel.preparationId !== input.operationId ||
+        !UUID.test(input.laravel.preparationId) ||
+        !/^sha256:[a-f0-9]{64}$/.test(input.laravel.imageId) ||
+        input.files?.length
+      )
         throw new Error("Invalid Laravel migration artifact");
       const prepared = await docker.getImage(input.laravel.imageId).inspect();
-      if (prepared.Id !== input.laravel.imageId || prepared.Config.User !== "1000:1000" ||
-        prepared.Config.Labels?.["io.wrenly.deployment-id"] !== input.laravel.preparationId ||
+      if (
+        prepared.Id !== input.laravel.imageId ||
+        prepared.Config.User !== "1000:1000" ||
+        prepared.Config.Labels?.["io.wrenly.deployment-id"] !==
+          input.laravel.preparationId ||
         prepared.Config.Labels?.["io.wrenly.artifact-role"] !== "runtime" ||
-        prepared.Config.Labels?.[ARTIFACT_WORKSPACE_LABEL] !== ARTIFACT_WORKSPACE_VERSION)
+        prepared.Config.Labels?.[ARTIFACT_WORKSPACE_LABEL] !==
+          ARTIFACT_WORKSPACE_VERSION
+      )
         throw new Error("Laravel migration artifact ownership changed");
       executionImage = prepared.Id;
     }
@@ -110,7 +123,7 @@ export async function runDatabaseSocketWorker(input: {
       docker.getImage(input.socket.imageId).inspect(),
     ]);
     const socketLabels = {
-      ...managedDatabaseLabels(input.scope, "database-socket"),
+      ...databaseClientLabels(input.scope, "database-socket"),
       "io.wrenly.database-socket-id": input.socket.id,
     };
     if (
@@ -187,20 +200,29 @@ export async function runDatabaseSocketWorker(input: {
           "--label",
           `${key}=${value}`,
         ]),
-        ...(input.laravel ? [
-          "--tmpfs", "/tmp:rw,nosuid,nodev,size=64m",
-          "--tmpfs", "/app/bootstrap/cache:rw,nosuid,nodev,size=8m,uid=1000,gid=1000",
-          "--tmpfs", "/app/storage:rw,nosuid,nodev,size=16m,uid=1000,gid=1000",
-        ] : [
-          "--mount", `type=bind,source=${bundlePath},target=/wrenly/worker.js,readonly`,
-          "--mount", `type=bind,source=${workspace},target=/app,readonly`,
-        ]),
+        ...(input.laravel
+          ? [
+              "--tmpfs",
+              "/tmp:rw,nosuid,nodev,size=64m",
+              "--tmpfs",
+              "/app/bootstrap/cache:rw,nosuid,nodev,size=8m,uid=1000,gid=1000",
+              "--tmpfs",
+              "/app/storage:rw,nosuid,nodev,size=16m,uid=1000,gid=1000",
+            ]
+          : [
+              "--mount",
+              `type=bind,source=${bundlePath},target=/wrenly/worker.js,readonly`,
+              "--mount",
+              `type=bind,source=${workspace},target=/app,readonly`,
+            ]),
         "--mount",
         `type=volume,source=${input.socket.volumeName},target=${DATABASE_SOCKET_DIRECTORY},readonly`,
         "--entrypoint",
         "bun",
         executionImage,
-        ...(input.laravel ? ["--no-env-file", "/wrenly/migration-watchdog.ts"] : ["--no-env-file", "/wrenly/worker.js"]),
+        ...(input.laravel
+          ? ["--no-env-file", "/wrenly/migration-watchdog.ts"]
+          : ["--no-env-file", "/wrenly/worker.js"]),
       ],
       {
         stdin: "pipe",
@@ -209,7 +231,10 @@ export async function runDatabaseSocketWorker(input: {
         env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
       },
     );
-    timer = setTimeout(stop, input.kind === "query" ? QUERY_TIMEOUT_MS : MIGRATION_TIMEOUT_MS);
+    timer = setTimeout(
+      stop,
+      input.kind === "query" ? QUERY_TIMEOUT_MS : MIGRATION_TIMEOUT_MS,
+    );
     input.signal.addEventListener("abort", stop, { once: true });
     child.stdin.write(request);
     await child.stdin.flush();

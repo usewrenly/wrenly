@@ -74,3 +74,13 @@ bun src/modules/deployments/recovery/reconcile-deployment.ts DEPLOYMENT_UUID --c
 Run it only after checking the exact remote operation. It changes saved recovery state;
 it is not a harmless way to dismiss a blocked status message. See the public publishing
 operations guide for the full procedure.
+
+
+## Production route recovery
+
+A published app can be running even when a final HTTP check timed out. The explicit
+`reconcile-production-route` command reuses the existing Production route verifier
+and original saved effect. It takes a fresh verification lease under the publishing
+kernel lock, preserves every original receipt and performs no remote mutation.
+Earlier unknown effects remain blocked. See the public publishing-operations guide
+for the command and its prerequisites.

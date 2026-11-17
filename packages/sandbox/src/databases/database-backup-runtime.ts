@@ -7,11 +7,15 @@ import {
   DatabaseRuntimeError,
   type ManagedDatabaseIdentity,
   type DatabaseRuntimeFence,
+  POSTGRES_RUNTIME_IMAGE,
 } from "./database-runtime";
 import {
-  managedDatabaseLabels,
+  databaseClientLabels,
+  DATABASE_SOCKET_DIRECTORY,
+  DATABASE_SOCKET_PORT,
   type ManagedDatabaseScope,
 } from "./database-resource-policy";
+import type { DatabaseSocketIdentity } from "./database-socket";
 const docker = new Docker({
   socketPath: "/var/run/docker.sock",
   timeout: 10_000,
@@ -26,8 +30,16 @@ interface Input {
   fence: DatabaseRuntimeFence;
   signal: AbortSignal;
 }
+interface ProductionInput {
+  scope: { resourceId: string; projectId: string; environment: "production" };
+  socket: DatabaseSocketIdentity;
+  operationId: string;
+  role: { user: string; password: string };
+  fence: DatabaseRuntimeFence;
+  signal: AbortSignal;
+}
 async function archiveCommand(
-  input: Input,
+  input: Input | ProductionInput,
   archive?: Uint8Array,
 ): Promise<Uint8Array> {
   let child: Bun.Subprocess<"pipe", "pipe", "pipe"> | undefined;
@@ -55,12 +67,66 @@ async function archiveCommand(
       throw new Error("Invalid archive request");
     await input.fence.assertHeld();
     input.signal.throwIfAborted();
-    if (
-      (await inspectManagedDatabaseState(input.scope, input.database)) !==
-      "ready"
-    )
-      throw new Error("Database is not ready");
-    const upstream = await inspectManagedDatabase(input.scope, input.database);
+    let executionImage: string, network: string, host: string, port: number;
+    let mounts: string[] = [];
+    if ("socket" in input) {
+      if (archive)
+        throw new Error(
+          "Production restoration is not an archive-helper operation",
+        );
+      const identity = input.socket;
+      if (
+        identity.resourceId !== input.scope.resourceId ||
+        identity.projectId !== input.scope.projectId ||
+        !/^[a-f0-9-]{36}$/.test(identity.id) ||
+        identity.volumeName !== `wrenly-database-socket-${identity.id}`
+      )
+        throw new Error("Invalid backup socket identity");
+      const [socket, volume, image] = await Promise.all([
+        docker.getContainer(identity.containerId).inspect(),
+        docker.getVolume(identity.volumeName).inspect(),
+        docker.getImage(POSTGRES_RUNTIME_IMAGE).inspect(),
+      ]);
+      const labels = {
+        ...databaseClientLabels(input.scope, "database-socket"),
+        "io.wrenly.database-socket-id": identity.id,
+      };
+      if (
+        !socket.State.Running ||
+        socket.Image !== identity.imageId ||
+        volume.Driver !== "local" ||
+        Object.keys(volume.Options ?? {}).length ||
+        image.Config.User !== "70:70" ||
+        Object.entries(labels).some(
+          ([key, value]) =>
+            socket.Config.Labels?.[key] !== value ||
+            volume.Labels?.[key] !== value,
+        )
+      )
+        throw new Error("Backup socket ownership changed");
+      executionImage = image.Id;
+      network = "none";
+      host = DATABASE_SOCKET_DIRECTORY;
+      port = DATABASE_SOCKET_PORT;
+      mounts = [
+        "--mount",
+        `type=volume,source=${identity.volumeName},target=${DATABASE_SOCKET_DIRECTORY},readonly`,
+      ];
+    } else {
+      if (
+        (await inspectManagedDatabaseState(input.scope, input.database)) !==
+        "ready"
+      )
+        throw new Error("Database is not ready");
+      const upstream = await inspectManagedDatabase(
+        input.scope,
+        input.database,
+      );
+      executionImage = input.database.imageId;
+      network = input.database.networkId;
+      host = upstream.address;
+      port = 5432;
+    }
     try {
       await docker.getContainer(name).inspect();
       throw new Error("Existing archive helper requires recovery");
@@ -82,7 +148,7 @@ async function archiveCommand(
     // pre-provisioned schema and omit only its archive creation entry.
     const prefix =
       'IFS= read -r PGPASSWORD; test "${#PGPASSWORD}" -eq 64; export PGPASSWORD; ';
-    const connection = ' --host "$1" --port 5432 --username "$2" --dbname app';
+    const connection = ' --host "$1" --port "$3" --username "$2" --dbname app';
     const script = archive
       ? prefix +
         `cat >/tmp/archive; pg_restore --list /tmp/archive | awk '$4 != "SCHEMA" || $6 != "public"' >/tmp/restore.list; exec pg_restore --exit-on-error --single-transaction --no-owner --no-acl --use-list=/tmp/restore.list` +
@@ -92,7 +158,7 @@ async function archiveCommand(
         "exec pg_dump --format=custom --compress=0 --lock-wait-timeout=5000 --no-owner --no-acl --schema=public --large-objects" +
         connection;
     const labels = {
-      ...managedDatabaseLabels(input.scope, "database-backup"),
+      ...databaseClientLabels(input.scope, "database-backup"),
       "io.wrenly.database-operation-id": input.operationId,
     };
     child = Bun.spawn(
@@ -104,7 +170,9 @@ async function archiveCommand(
         "--name",
         name,
         "--network",
-        input.database.networkId,
+        network,
+        "--sig-proxy=false",
+        ...mounts,
         "--user",
         "70:70",
         "--read-only",
@@ -129,12 +197,13 @@ async function archiveCommand(
         ]),
         "--entrypoint",
         "sh",
-        input.database.imageId,
+        executionImage,
         "-ec",
         script,
         "sh",
-        upstream.address,
+        host,
         input.role.user,
+        String(port),
       ],
       {
         stdin: "pipe",
@@ -254,4 +323,11 @@ export async function restoreDisposableDatabaseBackup(
   input: Input & { archive: Uint8Array },
 ): Promise<void> {
   await archiveCommand(input, input.archive);
+}
+
+/** Captures Production through a verified migrator socket; this helper has no IP network or management credential. */
+export async function captureProductionDatabaseBackup(
+  input: ProductionInput,
+): Promise<Uint8Array> {
+  return archiveCommand(input);
 }

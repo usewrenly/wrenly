@@ -1,3 +1,6 @@
+import { saveDatabaseProposal } from "../database-workflow/store";
+import { reconcileDatabaseWorkflows } from "../database-workflow/worker";
+import { conversationDatabaseWorkflows } from "@wrenly/db";
 /**
  * Connecting conversation workers to real server services.
  * Resolves the frozen provider, uses shared safe inference transport and separates answers from build actions.
@@ -51,7 +54,11 @@ export async function verifyConversationSchema(
       .from(conversations)
       .limit(1);
     await database
-      .select({ id: conversationTurns.id, actorId: conversationTurns.actorId, databaseV1: conversationTurns.databaseV1 })
+      .select({
+        id: conversationTurns.id,
+        actorId: conversationTurns.actorId,
+        databaseV1: conversationTurns.databaseV1,
+      })
       .from(conversationTurns)
       .limit(1);
     await database
@@ -70,6 +77,10 @@ export async function verifyConversationSchema(
       .from(conversationActions)
       .limit(1);
     await database
+      .select({ id: conversationDatabaseWorkflows.id })
+      .from(conversationDatabaseWorkflows)
+      .limit(1);
+    await database
       .select({ id: conversationQueue.id })
       .from(conversationQueue)
       .limit(1);
@@ -81,7 +92,7 @@ export async function verifyConversationSchema(
       .limit(1);
   } catch {
     throw new Error(
-      "Conversation persistence requires migrations through 0035. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
+      "Conversation persistence requires migrations through 0049. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
     );
   }
 }
@@ -90,6 +101,7 @@ export async function verifyConversationSchema(
 export async function startProductionConversationWorker(
   database: typeof db,
   timeoutSeconds: number,
+  databaseWorkflow?: { enabled: boolean; directory: string },
 ): Promise<{ done: Promise<void>; stop: () => Promise<void> }> {
   try {
     await verifyConversationSchema(database);
@@ -101,7 +113,10 @@ export async function startProductionConversationWorker(
         recover: async () =>
           (await reconcileConversationBuild(database)) ||
           (await interruptExpiredConversationTurn(database)),
-        context: (claim) => loadConversationContext(database, claim),
+        context: async (claim) => ({
+          ...(await loadConversationContext(database, claim)),
+          databaseWorkflowAvailable: databaseWorkflow?.enabled === true,
+        }),
         infer: async (claim, context, signal) => {
           let provider;
           try {
@@ -127,7 +142,18 @@ export async function startProductionConversationWorker(
           );
         },
         complete: async (claim, decision) => {
-          if (decision.type === "propose_build")
+          if (
+            decision.type === "propose_database" ||
+            (decision.type === "propose_build" &&
+              claim.input.databaseV1 &&
+              databaseWorkflow?.enabled)
+          ) {
+            if (!databaseWorkflow?.enabled)
+              throw new ConversationModelError(
+                "Managed database workflows are disabled. Enable app databases before requesting setup.",
+              );
+            await saveDatabaseProposal(database, claim, decision);
+          } else if (decision.type === "propose_build")
             await admitConversationBuildAction(database, claim, decision, {
               resolveProvider: getProvider,
               resolveSelection: (provider, model, transaction) =>
@@ -152,6 +178,16 @@ export async function startProductionConversationWorker(
         ) {
           /* Existing jobs only. */
         }
+        if (databaseWorkflow?.enabled && !shutdown.signal.aborted)
+          await reconcileDatabaseWorkflows(database, {
+            directory: databaseWorkflow.directory,
+            build: {
+              resolveProvider: getProvider,
+              resolveSelection: (provider, model, transaction) =>
+                resolveInferenceSelection(transaction, provider, model),
+              defaultModel: "",
+            },
+          });
       })()
         .catch((error) => {
           logger.error("Conversation result polling failed", {
@@ -173,7 +209,7 @@ export async function startProductionConversationWorker(
     };
   } catch {
     throw new Error(
-      "Conversation worker could not start. Check PostgreSQL and migration 0005.",
+      "Conversation worker could not start. Check PostgreSQL and apply the checked-in migrations through 0049.",
     );
   }
 }

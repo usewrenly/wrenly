@@ -1,3 +1,4 @@
+import { recoverProductionOperation } from "../../../../../apps/api/src/modules/databases/production-targets/data/operation-recovery";
 import { recoverDatabaseRehearsal } from "../../../../../apps/api/src/modules/databases/rehearsal-recovery";
 import { acknowledgeFailedValidationArtifact } from "../../../../../apps/api/src/modules/databases/validation/validation-artifact-store";
 import { databasePreviewApplication, validatePreviewBuild, verifyLiveDatabasePreview } from "../../helpers/database-live-preview-acceptance";
@@ -189,7 +190,7 @@ integration("generated-app database metadata lifecycle", () => {
       { projectId, userId: "db-editor", role: "editor" },
       { projectId, userId: "db-viewer", role: "viewer" },
     ]);
-    await expect(verifyDatabaseSchema(database)).rejects.toThrow("0025");
+    await expect(verifyDatabaseSchema(database)).rejects.toThrow("Application database persistence is unavailable");
     await migrate(database, { migrationsFolder: folder });
   }, FIXTURE_SETUP_TIMEOUT_MS);
   afterAll(async () => {
@@ -197,7 +198,7 @@ integration("generated-app database metadata lifecycle", () => {
     if (directory) await rm(directory, { recursive: true, force: true });
   });
 
-  test("failed rehearsal recovery verifies original schema, rejects stale/access/mismatch and replays without SQL", async () => {
+  for (const environment of ["development", "production"] as const) test(`failed ${environment} rehearsal recovery verifies original schema, rejects stale/access/mismatch and replays without SQL`, async () => {
     const project = crypto.randomUUID(), buildId = crypto.randomUUID(), oldId = crypto.randomUUID();
     await database.insert(schema.projects).values({ id: project, userId: "db-owner", name: "Rehearsal", stack: "nextjs" });
     await database.insert(schema.builds).values({ id: buildId, projectId: project, prompt: "fixture", status: "success", files: appDatabaseSource("nextjs") });
@@ -205,7 +206,7 @@ integration("generated-app database metadata lifecycle", () => {
     const resourceId = created.resourceId, revision = crypto.randomUUID(), digest = "f".repeat(64), schemaDigest = "a".repeat(64);
     const runtime = { version: 1 as const, containerId: "b".repeat(64), networkId: "c".repeat(64), volumeName: "fixture", imageId: `sha256:${"d".repeat(64)}` };
     await database.update(schema.appDatabaseOperations).set({ status: "success", completedAt: new Date() }).where(eq(schema.appDatabaseOperations.id, created.operationId));
-    await database.update(schema.appDatabases).set({ status: "recovery_required", revision, schemaDigest, runtimeIdentity: runtime }).where(eq(schema.appDatabases.id, resourceId));
+    await database.update(schema.appDatabases).set({ status: "recovery_required", revision, schemaDigest, environment, provider: environment === "production" ? "postgres-cluster" : "local", providerIdentity: environment === "production" ? { version: "1", provider: "postgres-cluster", connectionId: crypto.randomUUID(), clusterId: "12345", database: `wrenly_${resourceId.replaceAll("-", "")}`, networkId: "c".repeat(64) } : null, runtimeIdentity: environment === "production" ? null : runtime }).where(eq(schema.appDatabases.id, resourceId));
     const pairs = [["create-network", `wrenly-database-${oldId}-network`], ["create-volume", `wrenly-database-${oldId}-data`],
       ["initialize", `wrenly-database-${oldId}-initialize-${oldId}`], ["create-container", `wrenly-database-${oldId}`], ["start", "e".repeat(64)],
       ["provision-roles", `wrenly-database-administrator-${oldId}`], ["restore-backup", `wrenly-database-restore-${oldId}`],
@@ -243,14 +244,37 @@ integration("generated-app database metadata lifecycle", () => {
       },
       cleanupInspector: async (_scope, _id, held) => { await held(); inspectorCleanups++; },
     };
+    const production = environment === "production" ? { directory, controlDatabaseUrl: url! } : undefined;
+    let productionFailure: "none" | "mismatch" | "lost" | "stopped" = "none";
+    const inspectProduction: NonNullable<Parameters<typeof recoverDatabaseRehearsal>[9]> = async (connection, inspectedProject, actor, inspectedResource, inspectedRevision, target) => {
+      expect(connection).toBe(database); expect(inspectedProject).toBe(project); expect(actor).toBe("db-owner");
+      expect(inspectedResource).toBe(resourceId); expect(inspectedRevision).toBe(revision); expect(target).toEqual(production);
+      inspections++;
+      if (productionFailure === "mismatch") throw new Error("Original schema mismatch");
+      if (productionFailure === "lost") throw new Error("Inspector lost response");
+      if (productionFailure === "stopped") return "stopped";
+      return "ready";
+    };
+    const recover: typeof recoverDatabaseRehearsal = (...args) => recoverDatabaseRehearsal(
+      args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], production, inspectProduction,
+    );
     const request = { operationId: oldId, expectedRevision: revision, requestId: crypto.randomUUID() };
-    await expect(recoverDatabaseRehearsal(database, project, "db-outsider", request, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 404 });
-    await expect(recoverDatabaseRehearsal(database, project, "db-owner", { ...request, expectedRevision: crypto.randomUUID() }, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 409 });
+    await expect(recover(database, project, "db-outsider", request, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 404 });
+    await expect(recover(database, project, "db-owner", { ...request, expectedRevision: crypto.randomUUID() }, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 409 });
     expect(cleanups).toBe(0);
-    await expect(recoverDatabaseRehearsal(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, directory, clean,
-      async input => { await inspect(input); return "9".repeat(64); }, runtimeAdapter)).rejects.toMatchObject({ status: 409 });
+    if (environment === "production") {
+      await expect(recoverDatabaseRehearsal(database, project, "db-owner", request, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 409 });
+      expect(cleanups).toBe(0);
+      productionFailure = "stopped";
+      await expect(recover(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, directory, clean, inspect, runtimeAdapter)).rejects.toMatchObject({ status: 409 });
+      expect(starts).toBe(0);
+    }
+    productionFailure = "mismatch";
+    await expect(recover(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, directory, clean,
+      async input => { await inspect(input); return "9".repeat(64); }, runtimeAdapter)).rejects.toMatchObject({ status: environment === "production" ? 503 : 409 });
     expect((await database.select().from(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId)))[0]!.status).toBe("recovery_required");
-    await expect(recoverDatabaseRehearsal(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, directory, clean,
+    productionFailure = "lost";
+    await expect(recover(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, directory, clean,
       async input => {
         await input.fence.beforeEffect({ kind: "inspect-schema", id: `wrenly-database-administrator-${input.operationId}` });
         throw new Error("Inspector lost response");
@@ -260,12 +284,13 @@ integration("generated-app database metadata lifecycle", () => {
       .find(row => row.cleanupEffect?.kind === "verify-rehearsal-source")!;
     expect(previous.status).toBe("interrupted");
     expect((await readDatabaseRecoveryReview(database, project, "db-owner", resourceId, previous.id)).choices).toEqual(["recover-rehearsal"]);
+    productionFailure = "none";
     request.operationId = previous.id;
-    const receipt = await recoverDatabaseRehearsal(database, project, "db-owner", request, directory, clean, inspect, runtimeAdapter);
+    const receipt = await recover(database, project, "db-owner", request, directory, clean, inspect, runtimeAdapter);
     const count = inspections;
-    expect(await recoverDatabaseRehearsal(database, project, "db-owner", request, directory, clean, inspect, runtimeAdapter)).toEqual({ ...receipt, replayed: true });
+    expect(await recover(database, project, "db-owner", request, directory, clean, inspect, runtimeAdapter)).toEqual({ ...receipt, replayed: true });
     expect(inspections).toBe(count);
-    expect(starts).toBe(1); expect(inspectorCleanups).toBeGreaterThan(0);
+    expect(starts).toBe(environment === "production" ? 0 : 1); expect(inspectorCleanups).toBeGreaterThan(0);
     const [settled] = await database.select().from(schema.appDatabaseOperations).where(eq(schema.appDatabaseOperations.id, previous.id));
     expect(settled!.status).toBe("failed");
     expect(settled!.cleanupEffect).toEqual(previous.cleanupEffect);
@@ -273,7 +298,7 @@ integration("generated-app database metadata lifecycle", () => {
     expect(savedRecovery!.completedCleanupEffects.some(effect => effect.kind === "cleanup-prior-inspector" &&
       effect.id === `wrenly-database-administrator-${previous.id}`)).toBe(true);
     const [resource] = await database.select().from(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId));
-    expect(resource!.status).toBe("ready"); expect(resource!.revision).not.toBe(revision); expect(resource!.runtimeIdentity).toEqual(runtime);
+    expect(resource!.status).toBe("ready"); expect(resource!.revision).not.toBe(revision); expect(resource!.runtimeIdentity).toEqual(environment === "production" ? null : runtime);
     const [old] = await database.select().from(schema.appDatabaseOperations).where(eq(schema.appDatabaseOperations.id, oldId));
     expect(old!.status).toBe("failed"); expect(old!.effect!.kind).toBe("apply-migrations");
     await database.delete(schema.appDatabaseMigrations).where(eq(schema.appDatabaseMigrations.operationId, oldId));
@@ -282,6 +307,56 @@ integration("generated-app database metadata lifecycle", () => {
     await database.delete(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId));
     await database.delete(schema.builds).where(eq(schema.builds.id, buildId));
     await database.delete(schema.projects).where(eq(schema.projects.id, project));
+  }, FIXTURE_LIFECYCLE_TIMEOUT_MS);
+
+  for (const kind of ["backup", "migrate"] as const) test(`Production ${kind} recovery separates cleanup from verified native outcome and preserves replay`, async () => {
+    const project = crypto.randomUUID(), buildId = crypto.randomUUID(), oldId = crypto.randomUUID();
+    await database.insert(schema.projects).values({ id: project, userId: "db-owner", name: "Production recovery", stack: "nextjs" });
+    await database.insert(schema.builds).values({ id: buildId, projectId: project, prompt: "fixture", status: "success", files: appDatabaseSource("nextjs") });
+    const created = await admitDatabaseAction(database, project, "db-owner", create(), directory);
+    const resourceId = created.resourceId, revision = crypto.randomUUID(), before = "a".repeat(64), after = "b".repeat(64), digest = "f".repeat(64);
+    const binding = { version: "1", provider: "postgres-cluster", connectionId: crypto.randomUUID(), clusterId: "12345", database: `wrenly_${resourceId.replaceAll("-", "")}`, networkId: "c".repeat(64) };
+    await database.update(schema.appDatabaseOperations).set({ status: "success", completedAt: new Date() }).where(eq(schema.appDatabaseOperations.id, created.operationId));
+    await database.update(schema.appDatabases).set({ status: "recovery_required", revision, schemaDigest: before, environment: "production", provider: "postgres-cluster", providerIdentity: binding, runtimeIdentity: null }).where(eq(schema.appDatabases.id, resourceId));
+    const effect = { kind: kind === "migrate" ? "apply-migrations" : "capture-backup", id: `wrenly-database-${kind === "migrate" ? "migration" : "dump"}-${oldId}`, startedAt: new Date().toISOString() };
+    await database.insert(schema.appDatabaseOperations).values({ id: oldId, databaseId: resourceId, projectId: project, actorId: "db-owner", requestId: crypto.randomUUID(), requestIdentity: "fixture", kind, status: "interrupted", buildId: kind === "migrate" ? buildId : null, migrationDigest: kind === "migrate" ? digest : null, effect });
+    const backupId = crypto.randomUUID();
+    if (kind === "migrate") {
+      await database.insert(schema.appDatabaseBackups).values({ id: backupId, databaseId: resourceId, operationId: created.operationId, schemaDigest: before, sha256: before, encryptedPath: "fixture", verifiedAt: new Date() });
+      await database.insert(schema.appDatabaseMigrations).values({ operationId: oldId, databaseId: resourceId, buildId, digest, beforeSchemaDigest: before, rehearsedSchemaDigest: after, manifest: [], backupId });
+    }
+    expect((await readDatabaseRecoveryReview(database, project, "db-owner", resourceId, oldId)).choices).toEqual(["recover-production-operation"]);
+    let cleanups = 0, inspections = 0, mismatch = false, lost = false;
+    const adapters: NonNullable<Parameters<typeof recoverProductionOperation>[5]> = {
+      clients: async input => { await input.assertHeld(); cleanups++; if (lost) throw new Error("lost cleanup reply"); },
+      disposable: async (scope, operation, source, fence) => { expect(scope.resourceId).toBe(oldId); expect(operation).toBe(oldId); expect(source).toBe(resourceId); await fence.assertHeld(); },
+      inspect: async (_db, targetProject, actor, targetResource, targetRevision, _target, expected, held) => {
+        await held(); inspections++; expect(targetProject).toBe(project); expect(actor).toBe("db-owner"); expect(targetResource).toBe(resourceId); expect(targetRevision).toBe(revision);
+        expect(expected).toEqual([kind === "migrate" ? after : before]);
+        return { state: "ready", schemaDigest: mismatch ? "e".repeat(64) : expected[0]! };
+      },
+    };
+    const target = { directory, controlDatabaseUrl: url! };
+    const request = { operationId: oldId, expectedRevision: revision, requestId: crypto.randomUUID() };
+    await expect(recoverProductionOperation(database, project, "db-outsider", request, target, adapters)).rejects.toMatchObject({ status: 404 });
+    expect(cleanups).toBe(0);
+    mismatch = true;
+    await expect(recoverProductionOperation(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, target, adapters)).rejects.toMatchObject({ status: 409 });
+    expect((await database.select().from(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId)))[0]!.status).toBe("recovery_required");
+    mismatch = false; lost = true;
+    await expect(recoverProductionOperation(database, project, "db-owner", { ...request, requestId: crypto.randomUUID() }, target, adapters)).rejects.toMatchObject({ status: 503 });
+    lost = false;
+    const receipt = await recoverProductionOperation(database, project, "db-owner", request, target, adapters);
+    const count = inspections;
+    expect(await recoverProductionOperation(database, project, "db-owner", request, target, adapters)).toEqual({ ...receipt, replayed: true });
+    expect(inspections).toBe(count);
+    const [resource] = await database.select().from(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId));
+    expect(resource!.status).toBe("ready"); expect(resource!.schemaDigest).toBe(kind === "migrate" ? after : before); expect(resource!.providerIdentity).toEqual(binding);
+    const [old] = await database.select().from(schema.appDatabaseOperations).where(eq(schema.appDatabaseOperations.id, oldId));
+    expect(old!.status).toBe(kind === "migrate" ? "success" : "failed"); expect(old!.effect).toEqual(effect);
+    if (kind === "migrate") { await database.delete(schema.appDatabaseMigrations).where(eq(schema.appDatabaseMigrations.operationId, oldId)); await database.delete(schema.appDatabaseBackups).where(eq(schema.appDatabaseBackups.id, backupId)); }
+    await database.delete(schema.appDatabaseOperations).where(eq(schema.appDatabaseOperations.projectId, project));
+    await database.delete(schema.appDatabases).where(eq(schema.appDatabases.id, resourceId)); await database.delete(schema.builds).where(eq(schema.builds.id, buildId)); await database.delete(schema.projects).where(eq(schema.projects.id, project));
   }, FIXTURE_LIFECYCLE_TIMEOUT_MS);
 
   test("upgrade preserves project ownership, has no automatic resources and is repeatable", async () => {

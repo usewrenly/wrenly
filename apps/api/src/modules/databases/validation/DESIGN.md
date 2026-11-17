@@ -27,8 +27,8 @@ ERROR STATES:
 - Unknown work remains interrupted and blocks new conflicting actions.
 - No factory or schema change activates a database worker, route or build path.
 
-Ordinary build execution and runtime integration must be wired and accepted before
-this can be activated.
+The API connects this validator to ordinary build execution only under the explicit
+Development-database setting. It does not activate Production resources or publishing.
 
 ## Execution and completion continuation
 

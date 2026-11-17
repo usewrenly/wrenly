@@ -4,11 +4,8 @@
  * Session verification captures the authenticated account, session and access revision here so transactional admissions can reject a principal suspended or restored while its request was running.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-export interface AccessPrincipal {
-  userId: string;
-  sessionId: string;
-  revision: string;
-}
+import type { AccessPrincipal } from "@wrenly/db/conversation-workflow";
+export type { AccessPrincipal } from "@wrenly/db/conversation-workflow";
 export const accessContext = new AsyncLocalStorage<{
   principal?: AccessPrincipal;
 }>();
