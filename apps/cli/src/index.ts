@@ -26,6 +26,8 @@ const HELP = `Wrenly · guided local setup
 
 No arguments in an interactive terminal opens the setup guide.
 Stop preserves data. This version does not upgrade or uninstall an instance.
+Optional major updates: https://www.usewrenly.org/#join
+Subscribe on the website; the CLI never collects your email.
 `;
 function renderReport(report: Report, write: (text: string) => void): void {
   write("Wrenly · installation checks\n\n");
@@ -130,7 +132,7 @@ export async function runCli(
     await confirm("install", options.yes);
     const state = await installNew(options, import.meta.path, write);
     write(
-      `\nWrenly is running: http://localhost:${state.webPort}\nConfiguration: ${join(state.directory, ".env")} (keep this private and back it up).\nPublishing and app databases remain separate optional setup.\n`,
+      `\nWrenly is running: http://localhost:${state.webPort}\nConfiguration: ${join(state.directory, ".env")} (keep this private and back it up).\nPublishing and app databases remain separate optional setup.\nOptional major updates: https://www.usewrenly.org/#join (subscribe in your browser).\n`,
     );
     if (process.stdin.isTTY && process.stdout.isTTY)
       await openOwnerSetup(state.directory, true);

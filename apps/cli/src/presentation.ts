@@ -30,11 +30,11 @@ export function createTerminalWriter(
         .split("\n")
         .map((line) => {
           if (line.startsWith("Wrenly ·"))
-            return `${BOLD}${WOOD}${line}${RESET}`;
+            return `\n${WOOD}  ┌─ wrenly ──────────────────────────────${RESET}\n${BOLD}${WOOD}  │ ${line}${RESET}\n${WOOD}  └──────────────────────────────────────${RESET}`;
           const check = /^(PASS|FAILED|UNCONFIRMED)( {2}.*)$/.exec(line);
           if (check) return `${BOLD}${WOOD}${check[1]}${RESET}${check[2]}`;
-          if (line.startsWith("Preparing ")) return `${WOOD}${line}${RESET}`;
-          if (line.endsWith(" ready.")) return `${BOLD}${line}${RESET}`;
+          if (line.startsWith("Preparing ")) return `\n${WOOD}  ◇ ${line}${RESET}`;
+          if (line.endsWith(" ready.")) return `  ${WOOD}✓${RESET} ${BOLD}${line}${RESET}`;
           if (line.startsWith("Destination:") || line.startsWith("Browser:"))
             return `${MUTED}${line}${RESET}`;
           return line;

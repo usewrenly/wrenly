@@ -23,7 +23,8 @@ bun --no-env-file apps/cli/dist/wrenly.js install --directory "$HOME/wrenly"
 ```
 
 Interactive reports use restrained colour; `NO_COLOR=1` disables it. Redirected output
-and JSON remain plain.
+and JSON remain plain. Help and the installation summary include an optional major-updates
+link. Subscription happens only on the website; the CLI never collects or sends an email address.
 
 Review the plan and type `install` to proceed. Running the executable without arguments
 in an interactive terminal opens the guided questions instead. `--yes` provides explicit
