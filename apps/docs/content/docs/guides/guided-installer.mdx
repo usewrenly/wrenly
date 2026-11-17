@@ -27,7 +27,9 @@ bun --no-env-file apps/cli/dist/wrenly.js install --directory "$HOME/wrenly"
 
 Review the plan and type `install` to proceed. Running the executable without arguments
 in an interactive terminal opens the guided questions instead. `--yes` provides explicit
-confirmation for a non-interactive install after reviewing the same plan.
+confirmation for a non-interactive install after reviewing the same plan. Help and the
+installation summary also link to an optional major-updates signup page on the website;
+the CLI never collects or submits an email address.
 
 The bundled `dist/wrenly.js` also works outside this repository; only Bun is needed to
 run the CLI itself. Node and Docker are needed to install/run Wrenly. The npm package
@@ -39,20 +41,26 @@ If a port is occupied, choose another rather than stopping an unrelated service:
 bun --no-env-file apps/cli/dist/wrenly.js install \
   --directory "$HOME/wrenly" \
   --web-port 41000 --api-port 41002 --database-port 65433 \
-  --previews --preview-port 41003
+  --previews --preview-port 41003 --databases
 ```
 
 Use a short absolute path with letters, numbers, `/`, `.`, `-` or `_`, and an existing
 parent directory. Existing destinations and symlink ancestors are refused. `--previews`
 prepares the Next.js preview image; `--laravel` builds the repository's Laravel toolchain
-and should be paired with `--previews` if you want Laravel previews. Downloads require
-internet during setup. No Wrenly cloud account is required.
+and should be paired with `--previews` if you want Laravel previews; `--databases`
+enables Development app databases alongside isolated previews and builds the trusted
+PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images.
+Production app databases and publishing require a separate server/host connection setup
+and stay disabled by default. Downloads require internet during setup. No Wrenly cloud
+account is required.
 
 ## Create your owner account
 
-After an interactive install, the CLI prints a private setup link. Open it within ten
-minutes, choose your account details, then sign in normally. Do not share or record
-that link. A non-interactive installation prints instructions to run:
+After an interactive install, the CLI prints a private setup link. On a local desktop
+session, it also offers to open the public `/setup` page in your browser without
+passing the one-time token in browser arguments; use the private `#setup=` link printed
+in the terminal to finish creating your owner account within ten minutes. Do not share
+or record that link. A non-interactive installation prints instructions to run:
 
 ```bash
 bun --no-env-file apps/cli/dist/wrenly.js setup --directory "$HOME/wrenly"
@@ -60,8 +68,9 @@ bun --no-env-file apps/cli/dist/wrenly.js setup --directory "$HOME/wrenly"
 
 Run that in an interactive terminal. It reuses protected owner setup and cannot replace
 an existing owner. After sign-in, open **Settings → Providers**, connect your model,
-then create a project. Publishing and generated-app databases have their own optional
-setup guides; the installer leaves them disabled.
+then create a project. If you enabled `--databases`, approve project database storage
+and migrations directly in the project conversation; Production databases and publishing
+still have their own separate setup guides.
 
 ## Start, stop and check
 

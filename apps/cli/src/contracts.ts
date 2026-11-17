@@ -20,6 +20,7 @@ export interface Options {
   previewPort: number;
   previews: boolean;
   laravel: boolean;
+  databases: boolean;
 }
 export interface Check {
   name: string;

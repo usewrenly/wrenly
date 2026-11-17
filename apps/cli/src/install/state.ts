@@ -18,6 +18,7 @@ export const InstallationState = z
     previewPort: z.number().int().min(1024).max(65535),
     previews: z.boolean(),
     laravel: z.boolean(),
+    databases: z.boolean().default(false),
     phase: z.enum(["prepared", "installing", "ready", "stopped", "attention"]),
     steps: z.record(
       z.string(),

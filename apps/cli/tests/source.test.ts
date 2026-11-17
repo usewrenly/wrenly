@@ -13,6 +13,10 @@ import { inspectArchive } from "../src/install/archive";
 import { verifyRelease } from "../src/install/release";
 import { prepareInstallation } from "../src/install/prepare";
 import { readState } from "../src/install/state";
+import {
+  offerSetupBrowserHandoff,
+  verifyConfiguration,
+} from "../src/commands/management";
 import { tarFixture, REVISION } from "./source-fixture";
 test("archive rejects traversal, links, reserved files and collisions before extraction", () => {
   for (const item of [
@@ -82,4 +86,84 @@ test("preparation preserves private secrets and refuses existing destinations or
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+test("databases option enables preview settings and persists development flag", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wrenly-db-source-"));
+  try {
+    const directory = join(root, "instance"),
+      fixture = tarFixture();
+    const state = await prepareInstallation(
+      {
+        directory,
+        webPort: 41000,
+        apiPort: 41001,
+        databasePort: 41002,
+        previewPort: 41003,
+        previews: false,
+        laravel: false,
+        databases: true,
+      },
+      fixture.release,
+      fixture.bytes,
+    );
+    const saved = await readState(directory);
+    expect(saved.databases).toBe(true);
+    expect(saved.previews).toBe(true);
+    const env = await readFile(join(directory, ".env"), "utf8");
+    expect(env).toContain("WRENLY_PREVIEW_ENABLED=true\n");
+    expect(env).toContain("WRENLY_APP_DATABASES_ENABLED=true\n");
+    expect(env).toContain("WRENLY_PRODUCTION_DATABASES_ENABLED=false\n");
+    await verifyConfiguration(state);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test("browser handoff opens only the public setup route without tokens", async () => {
+  const opened: string[] = [];
+  let output = "";
+  await offerSetupBrowserHandoff(41000, {
+    desktop: false,
+    ask: async () => {
+      throw Error("must not prompt without desktop");
+    },
+    open: async (url) => {
+      opened.push(url);
+      return true;
+    },
+    write: (text) => {
+      output += text;
+    },
+  });
+  expect(opened).toHaveLength(0);
+  expect(output).toContain("http://localhost:41000/setup");
+  expect(output).not.toContain("#setup=");
+
+  output = "";
+  await offerSetupBrowserHandoff(41000, {
+    desktop: true,
+    ask: async () => "n",
+    open: async (url) => {
+      opened.push(url);
+      return true;
+    },
+    write: (text) => {
+      output += text;
+    },
+  });
+  expect(opened).toHaveLength(0);
+
+  await offerSetupBrowserHandoff(41000, {
+    desktop: true,
+    ask: async () => "y",
+    open: async (url) => {
+      opened.push(url);
+      return false;
+    },
+    write: (text) => {
+      output += text;
+    },
+  });
+  expect(opened).toEqual(["http://localhost:41000/setup"]);
+  expect(output).toContain("Could not open a browser automatically");
+  expect(output).not.toContain("#setup=");
 });

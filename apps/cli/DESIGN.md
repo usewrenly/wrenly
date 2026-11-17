@@ -37,12 +37,14 @@ STEPS:
 1. Hold a kernel command lock. A second step lock stays with surviving child commands,
    preventing Resume from overlapping work after a lost terminal.
 2. Install locked dependencies without lifecycle scripts, build API/web and prepare
-   explicitly selected preview/framework images.
+   explicitly selected preview, framework and Development app database images.
 3. Start only the labelled PostgreSQL composition and apply native control migrations.
 4. Start API/web under an identity-bound supervisor; wait for real health responses.
-5. Print the protected owner link only in an interactive terminal.
+5. Print the protected owner link only in an interactive terminal, and on a local desktop
+   offer opening only the public `/setup` page without passing tokens to the browser opener.
 EDGE CASES: Resume preserves keys and skips completed steps. Transactional migration
-   history recognizes committed migrations after an interrupted acknowledgement.
+   history recognizes committed migrations after an interrupted acknowledgement. No desktop
+   opener or a declined prompt leaves the printed terminal link and keeps setup valid.
 ERROR STATES: Unconfirmed steps remain visible; no automatic upgrade or destructive reset.
 
 COMPONENT: Status and Stop/start
@@ -71,3 +73,14 @@ STEPS:
 4. Honour NO_COLOR, CI and TERM=dumb; add no dependency or full-screen state.
 EDGE CASES: Redirected output stays plain; cancellation and failed checks retain exit codes.
 ERROR STATES: Presentation never hides a check or turns an uncertain operation into success.
+
+COMPONENT: Development database option and owner setup handoff
+PURPOSE: Prepare optional Development app databases and guide the owner to protected setup without leaking tokens.
+INPUTS: Explicit `--databases` flag or interactive choice, saved installation ports and desktop session availability.
+OUTPUTS: Persisted Development database configuration/images and a token-free browser open prompt.
+STEPS:
+1. Enable isolated previews whenever `--databases` is selected and build `wrenly/postgres-runtime:17` and `wrenly/database-socket:1`.
+2. Persist `WRENLY_APP_DATABASES_ENABLED=true` while leaving Production databases disabled.
+3. Run protected `setup-cli.ts` in the interactive terminal, then offer to open only `http://localhost:<webPort>/setup` when a local desktop session is present.
+EDGE CASES: No desktop session or a failed browser opener prints the `/setup` URL and keeps the printed terminal link valid. Existing owners cannot be replaced.
+ERROR STATES: Failed image builds preserve the journal for explicit `resume`; tokens never enter browser-opener arguments or logs.

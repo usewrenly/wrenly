@@ -37,16 +37,18 @@ export function parseArguments(
     previewPort: 3003,
     previews: false,
     laravel: false,
+    databases: false,
   };
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index++) {
     const flag = args[index]!;
     if (seen.has(flag)) throw new Error(`Repeated option: ${flag}`);
     seen.add(flag);
-    if (["--yes", "--previews", "--laravel"].includes(flag)) {
+    if (["--yes", "--previews", "--laravel", "--databases"].includes(flag)) {
       if (flag === "--yes") result.yes = true;
       else if (flag === "--previews") result.previews = true;
-      else result.laravel = true;
+      else if (flag === "--laravel") result.laravel = true;
+      else result.databases = true;
       continue;
     }
     if (flag === "--json") {
@@ -93,6 +95,8 @@ export function parseArguments(
       else result.previewPort = port;
     }
   }
+  // Development app databases use the isolated preview runtime, so the reviewed plan includes both.
+  if (result.databases) result.previews = true;
   if (
     new Set([
       result.webPort,

@@ -19,6 +19,7 @@ import { acquireInstallationLock } from "../runtime/lock";
 import { startDatabase, inspectDatabase } from "../runtime/compose";
 import { runCommand } from "../runtime/process";
 import { startRuntime, verifyConfiguration } from "./management";
+const IMAGE_BUILD_TIMEOUT_MS = 20 * 60 * 1000;
 export interface InstallOptions extends Settings {
   archive?: string;
 }
@@ -182,7 +183,7 @@ export async function resumeInstallation(
               "packages/sandbox/images/laravel",
             ],
             directory,
-            20 * 60 * 1000,
+            IMAGE_BUILD_TIMEOUT_MS,
           ),
         write,
       );
@@ -204,6 +205,16 @@ export async function resumeInstallation(
           ),
         write,
       );
+    if (state.databases) {
+      for (const [name, image, context] of [
+        ["app PostgreSQL image", "wrenly/postgres-runtime:17", "packages/sandbox/images/postgres"],
+        ["app database socket image", "wrenly/database-socket:1", "packages/sandbox/images/database-socket"],
+      ] as const) {
+        await step(state, name, () => trustedStep(state, [
+          "docker", "--host", "unix:///var/run/docker.sock", "build", "-t", image, context,
+        ], directory, IMAGE_BUILD_TIMEOUT_MS), write);
+      }
+    }
     await step(state, "database", () => startDatabase(state), write);
     if ((await inspectDatabase(state)) !== "running")
       await startDatabase(state);

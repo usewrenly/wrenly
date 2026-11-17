@@ -20,6 +20,21 @@ import { acquireInstallationLock } from "../runtime/lock";
 const RUNTIME_START_TIMEOUT_MS = 100000;
 const RUNTIME_POLL_MS = 500;
 const OWNER_SETUP_TIMEOUT_MS = 30000;
+const BROWSER_OPEN_TIMEOUT_MS = 5000;
+const SAFE_DESKTOP_ENVIRONMENT = [
+  "DISPLAY",
+  "WAYLAND_DISPLAY",
+  "XDG_RUNTIME_DIR",
+  "DBUS_SESSION_BUS_ADDRESS",
+  "XDG_CURRENT_DESKTOP",
+] as const;
+
+export interface BrowserHandoff {
+  desktop: boolean;
+  ask(question: string): Promise<string>;
+  open(url: string): Promise<boolean>;
+  write(text: string): void;
+}
 function environment(text: string): Map<string, string> {
   const result = new Map<string, string>();
   for (const line of text.split("\n")) {
@@ -61,6 +76,7 @@ export async function verifyConfiguration(state: State): Promise<void> {
     WRENLY_APP_URL: `http://localhost:${state.apiPort}`,
     WRENLY_PREVIEW_ENABLED: String(state.previews),
     WRENLY_PREVIEW_GATEWAY_PORT: String(state.previewPort),
+    WRENLY_APP_DATABASES_ENABLED: String(state.databases),
   }))
     if (values.get(name) !== value)
       throw new Error(
@@ -192,10 +208,73 @@ export async function changeInstallationRuntime(
     await release();
   }
 }
+function publicSetupUrl(webPort: number): string {
+  const url = new URL("/setup", `http://localhost:${webPort}`);
+  if (url.hash !== "" || url.search !== "")
+    throw new Error("Setup browser URL must not carry parameters or tokens.");
+  return url.href;
+}
+/** Offer to open only the public setup page so the one-time token never enters desktop command arguments. */
+export async function offerSetupBrowserHandoff(
+  webPort: number,
+  handoff: BrowserHandoff,
+): Promise<void> {
+  const url = publicSetupUrl(webPort);
+  if (!handoff.desktop) {
+    handoff.write(
+      `Open ${url} in your browser and use the private setup link printed above.\n`,
+    );
+    return;
+  }
+  const answer = (
+    await handoff.ask(
+      `Open ${url} in your browser now? (Keep the private link above to complete setup) [y/N]: `,
+    )
+  )
+    .trim()
+    .toLowerCase();
+  if (answer !== "y") return;
+  const opened = await handoff.open(url);
+  if (!opened)
+    handoff.write(
+      `Could not open a browser automatically. Open ${url} and use the private setup link printed above.\n`,
+    );
+}
+async function openPublicSetupBrowser(url: string, cwd: string): Promise<boolean> {
+  if (url.includes("#") || url.includes("?")) return false;
+  const env = cleanEnvironment();
+  for (const key of SAFE_DESKTOP_ENVIRONMENT) {
+    const value = process.env[key];
+    if (value) env[key] = value;
+  }
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const child = spawn("xdg-open", [url], {
+      cwd,
+      env,
+      detached: true,
+      stdio: "ignore",
+    });
+    const timer = setTimeout(() => {
+      if (child.exitCode === null) child.kill("SIGTERM");
+      finish(false);
+    }, BROWSER_OPEN_TIMEOUT_MS);
+    child.once("error", () => finish(false));
+    child.once("close", (code) => finish(code === 0));
+    child.unref();
+  });
+}
 /** Native Better Auth setup prints its short-lived link only to an explicitly interactive terminal. */
 export async function openOwnerSetup(
   directory: string,
   interactive: boolean,
+  write: (text: string) => void = (text) => process.stdout.write(text),
 ): Promise<void> {
   if (!interactive)
     throw new Error(
@@ -222,4 +301,27 @@ export async function openOwnerSetup(
   } finally {
     await release();
   }
+  await offerSetupBrowserHandoff(state.webPort, {
+    desktop: Boolean(
+      process.stdin.isTTY &&
+        process.stdout.isTTY &&
+        (process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
+    ),
+    ask: async (question) => {
+      const { createInterface } = await import("node:readline/promises");
+      const terminal = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      try {
+        return await terminal.question(question);
+      } catch {
+        return "";
+      } finally {
+        terminal.close();
+      }
+    },
+    open: (url) => openPublicSetupBrowser(url, state.directory),
+    write,
+  });
 }

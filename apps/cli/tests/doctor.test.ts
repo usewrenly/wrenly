@@ -93,3 +93,29 @@ test("old tools, unsupported hosts and insufficient disk cannot be ready", async
   ).toBe(1);
   expect(JSON.parse(output).ready).toBe(false);
 });
+test("databases option enables preview checks and explains the development workflow", async () => {
+  let output = "";
+  expect(
+    await runCli(
+      ["plan", "--json", "--databases", "--directory", "/tmp/new-wrenly"],
+      (text) => (output += text),
+      probes(),
+    ),
+  ).toBe(0);
+  const report: Report = JSON.parse(output);
+  expect(report.ready).toBe(true);
+  expect(report.checks).toHaveLength(13);
+  expect(report.checks.some((check) => check.name === "Preview port")).toBe(
+    true,
+  );
+  expect(report.plan?.join(" ")).toContain(
+    "Development app databases: enabled with previews.",
+  );
+  expect(
+    await runCli(
+      ["doctor", "--databases", "--web-port", "3003"],
+      () => {},
+      probes(),
+    ),
+  ).toBe(2);
+});

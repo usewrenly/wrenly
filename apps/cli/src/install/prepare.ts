@@ -21,6 +21,7 @@ export interface Settings {
   previewPort: number;
   previews: boolean;
   laravel: boolean;
+  databases?: boolean;
 }
 export function createState(settings: Settings, release: Release): State {
   return InstallationState.parse({
@@ -29,8 +30,9 @@ export function createState(settings: Settings, release: Release): State {
     apiPort: settings.apiPort,
     databasePort: settings.databasePort,
     previewPort: settings.previewPort,
-    previews: settings.previews,
+    previews: settings.previews || Boolean(settings.databases),
     laravel: settings.laravel,
+    databases: settings.databases ?? false,
     ...release,
     version: 1,
     id: crypto.randomUUID(),
@@ -141,7 +143,8 @@ export async function prepareInstallation(
       `WRENLY_PREVIEW_BASE_URL=http://wrenly-preview.localhost:${state.previewPort}`,
       `WRENLY_PREVIEW_GATEWAY_PORT=${state.previewPort}`,
       "WRENLY_PUBLISHING_ENABLED=false",
-      "WRENLY_APP_DATABASES_ENABLED=false",
+      `WRENLY_APP_DATABASES_ENABLED=${state.databases}`,
+      "WRENLY_PRODUCTION_DATABASES_ENABLED=false",
       "WRENLY_SINGLE_USER_MODE=false",
       "",
     ].join("\n"),

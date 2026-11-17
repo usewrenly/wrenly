@@ -171,6 +171,9 @@ export async function inspectInstallation(
       `Destination: ${options.directory}`,
       `Browser: http://localhost:${options.webPort}; API: http://localhost:${options.apiPort}`,
       "Installation verifies pinned source, prepares private configuration, builds the API/web, starts dedicated PostgreSQL and local API/web services, and applies checked-in migrations.",
+      options.databases
+        ? "Development app databases: enabled with previews. Builds trusted PostgreSQL and database-socket images; projects still require owner approval before creating storage or applying migrations. Production remains off."
+        : "Development app databases: off. Add --databases to prepare their toolchains and isolated previews.",
       "First-owner credentials will be chosen in protected browser setup.",
       "This command only checks and plans. It downloads nothing, writes no configuration and starts no services. Run install to apply a reviewed plan.",
     ];
