@@ -3,6 +3,7 @@
   "pages": [
     "---Get started---",
     "installation",
+    "guided-installer",
     "instance-setup",
     "model-provider-setup",
     "---Your workspace---",
