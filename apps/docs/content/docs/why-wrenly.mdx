@@ -4,18 +4,32 @@ description: Choose a workflow that fits your team, infrastructure and framework
 ---
 
 Wrenly is a shared AI app-building workspace you operate on your own server. It suits
-developers, agencies and teams who want to choose their inference, inspect generated
-source and control where builds and deployments run.
+developers, agencies, and teams who want to choose their inference, inspect generated
+source, and control where builds and deployments run.
 
 ## Built for your working environment
 
-An agency can run one instance for its developers, invite colleagues and share selected
+An agency can run one instance for its developers, invite colleagues, and share selected
 projects. Each person signs in with their own account. A project can stay private or
 have explicit Viewer and Editor roles, while its owner controls publishing.
 
 Choose a supported local or hosted model connection, work through changes in a
-conversation and inspect saved source revisions. Validation runs in isolated Docker
+conversation, and inspect saved source revisions. Validation runs in isolated Docker
 containers; local preview and publishing are separate, explicit steps.
+
+## How Wrenly compares
+
+Hosted AI builders are convenient for rapid browser prototypes, while IDE coding
+assistants speed up individual file editing. Wrenly focuses on teams that want
+end-to-end application generation, shared permissions, and server-side control.
+
+| Focus | Hosted AI Builders | IDE Coding Assistants | Wrenly |
+| --- | --- | --- | --- |
+| **Infrastructure & data** | Vendor-hosted cloud workspace; source and runtime live on platform servers | Local single-user editor without a shared preview or database control | Runs on your own Linux server and PostgreSQL database with Docker sandbox builds |
+| **Framework support** | Typically focused on one JavaScript/React stack | Generates snippets and files, leaving framework wiring to manual setup | Pluggable MCP stack servers: Next.js and Laravel 13 available now; Vue.js and Django planned |
+| **Model choice** | Bundled platform credits and curated provider tiers | Developer-managed API keys or per-seat subscriptions | Connect local Ollama or OpenAI-compatible providers server-side for the whole team |
+| **Team collaboration** | Per-seat SaaS workspace billing and vendor permissions | Built around one developer's editor rather than shared non-coder review | One self-hosted instance with invitations and Owner, Editor, and Viewer project roles |
+| **Databases & shipping** | Platform-managed databases and hosting tiers | Manual database provisioning, migrations, and deployment scripts | Conversational PostgreSQL backups, rehearsal, reviewed migrations, and private Coolify publishing |
 
 ## What ownership gives you
 
@@ -28,7 +42,7 @@ containers; local preview and publishing are separate, explicit steps.
 ## What you take responsibility for
 
 Self-hosting needs an operator. Plan for server capacity, HTTPS, Docker, updates,
-provider credentials and database backups. Model usage and hosting may have costs even
+provider credentials, and database backups. Model usage and hosting may have costs even
 when the source is available without a software subscription.
 
 Generated code needs review. A passing build establishes compilation and validation
@@ -39,10 +53,10 @@ results; it does not establish that every application behavior meets your requir
 <FrameworkCards />
 
 Vue and Django remain planned.
-Gitea, a private registry and Coolify are the current publishing path. Alternative Git
+Gitea, a private registry, and Coolify are the current publishing path. Alternative Git
 and deployment services need additional adapters and project bindings before selection
 is available. Figma/MCP connectors are planned separately from framework MCP servers.
 
 [See current capabilities and what comes next](/docs/roadmap).
 
-The public beta and source release are planned for **28 October 2026**.
+Wrenly is available as an open-source public beta.

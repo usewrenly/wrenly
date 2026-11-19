@@ -11,33 +11,34 @@ first. Your account needs access to the local Docker socket. The CLI does not us
 sudo, install prerequisites or change permissions on Docker. Allow at least 10 GiB
 on the destination disk, plus room for generated apps and Docker images.
 
-## Try the unpublished candidate
+## Quick start
 
-From this feature checkout, build the standalone executable:
+Run the guided installer with Bun:
 
 ```bash
-bun install --frozen-lockfile
-bun run --cwd apps/cli build
-bun --no-env-file apps/cli/dist/wrenly.js plan --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js install --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta
 ```
 
-Interactive reports use restrained colour; `NO_COLOR=1` disables it. Redirected output
+Or inspect your host and review the exact installation plan without making any changes:
+
+```bash
+bunx @wrenly/cli@beta doctor
+bunx @wrenly/cli@beta plan --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta install --directory "$HOME/wrenly"
+```
+
+Interactive reports use colour; `NO_COLOR=1` disables it. Redirected output
 and JSON remain plain. Help and the installation summary include an optional major-updates
 link. Subscription happens only on the website; the CLI never collects or sends an email address.
 
-Review the plan and type `install` to proceed. Running the executable without arguments
+Review the plan and type `install` to proceed. Running without arguments
 in an interactive terminal opens the guided questions instead. `--yes` provides explicit
 confirmation for a non-interactive install after reviewing the same plan.
-
-The bundled `dist/wrenly.js` also works outside this repository; only Bun is needed to
-run the CLI itself. Node and Docker are needed to install/run Wrenly. The npm package
-is not published yet, so there is no `bunx @wrenly/cli` installation command today.
 
 If a port is occupied, choose another rather than stopping an unrelated service:
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js install \
+bunx @wrenly/cli@beta install \
   --directory "$HOME/wrenly" \
   --web-port 41000 --api-port 41002 --database-port 65433 \
   --previews --preview-port 41003 --databases
@@ -62,7 +63,7 @@ link printed in the terminal to finish creating your owner account within ten mi
 Do not share or record that link. A non-interactive installation prints instructions to run:
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js setup --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta setup --directory "$HOME/wrenly"
 ```
 
 Run that in an interactive terminal. It reuses protected owner setup and cannot replace
@@ -74,9 +75,9 @@ still have their own separate setup guides.
 ## Start, stop and check
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js status --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js stop --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js start --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta status --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta stop --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta start --directory "$HOME/wrenly"
 ```
 
 Start and Stop ask for confirmation; use `--yes` after reviewing the action if needed.
@@ -93,8 +94,8 @@ install anything.
 ## Interrupted installation
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js status --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js resume --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta status --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta resume --directory "$HOME/wrenly"
 ```
 
 Resume requires confirmation and preserves the original keys. A kernel lock prevents
@@ -134,8 +135,9 @@ telemetry in this version. The installer does not change another Wrenly installa
 - `tests/`: archive attacks, private-file preservation, command checks, real child-process
   lifecycle and a packed executable running outside the monorepo.
 
-Run `bun run --cwd apps/cli test`, `bun run --cwd apps/cli check-types`,
-`bun run --cwd apps/cli lint` and `bun run --cwd apps/cli build` from the root.
+Run `bun run --cwd apps/cli build`, `bun run --cwd apps/cli test`,
+`bun run --cwd apps/cli check-types`, and `bun run --cwd apps/cli lint` from the repository root
+to build `apps/cli/dist/wrenly.js` and run the CLI checks locally.
 
 The opt-in real installation test downloads the pinned release, builds it and creates
 a dedicated PostgreSQL volume. It preserves its private test directory/data for review:
