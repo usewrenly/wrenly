@@ -3,56 +3,57 @@ title: Guided local installer
 description: Prepare a private local Wrenly instance and manage it safely.
 ---
 
-The installer prepares a local Wrenly instance for you. It checks your machine,
-downloads a verified source release, creates private configuration, builds Wrenly,
-and starts its own PostgreSQL database and web/API processes. You choose your account
-password in the existing protected browser setup. Invited teammates do not install it.
+The `@wrenly/cli` installer prepares a local Wrenly instance for you. It checks your
+machine, downloads a verified source release, generates private configuration, builds
+Wrenly, and starts its own PostgreSQL database and web/API processes. You choose your
+account password in protected browser setup. Invited teammates only visit your web
+address and do not install the CLI.
 
-This first version supports **Linux x86_64 on the same computer as your browser**.
-Install Bun 1.3.14+, Node 24+, Docker Engine with Compose v2, and util-linux (`flock`)
-first. Your account needs access to the local Docker socket. The CLI does not use
-sudo, install prerequisites or change permissions on Docker. Allow at least 10 GiB
-on the destination disk, plus room for generated apps and Docker images.
+## Prerequisites
 
-## Try the unpublished candidate
+- **Linux x86_64 host** — local workstation or self-hosted Linux server on the same computer as your browser
+- **[Bun 1.3.14+](https://bun.sh)** — runs the CLI installer and API server
+- **[Node.js 24+](https://nodejs.org)** — compiles the Next.js web application
+- **[Docker Engine & Compose v2](https://docs.docker.com/engine/install/)** — runs isolated builds, previews, and PostgreSQL (your account needs access to `/var/run/docker.sock`)
+- **`util-linux` (`flock`) & 10 GiB+ free disk space** — prevents overlapping steps and leaves room for images and generated projects
 
-From this feature checkout, build the standalone executable:
+The CLI never runs `sudo`, installs system packages, or changes Docker permissions.
+
+## Install with the Wrenly CLI
+
+Inspect prerequisites or preview the exact plan first without changing anything on disk:
 
 ```bash
-bun install --frozen-lockfile
-bun run --cwd apps/cli build
-bun --no-env-file apps/cli/dist/wrenly.js plan --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js install --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta doctor
+bunx @wrenly/cli@beta plan --directory "$HOME/wrenly"
 ```
 
-Review the plan and type `install` to proceed. Running the executable without arguments
-in an interactive terminal opens the guided questions instead. `--yes` provides explicit
-confirmation for a non-interactive install after reviewing the same plan. Help and the
-installation summary also link to an optional major-updates signup page on the website;
-the CLI never collects or submits an email address.
+Start the interactive setup wizard or run `install` directly:
 
-The bundled `dist/wrenly.js` also works outside this repository; only Bun is needed to
-run the CLI itself. Node and Docker are needed to install/run Wrenly. The npm package
-is not published yet, so there is no `bunx @wrenly/cli` installation command today.
+```bash
+bunx @wrenly/cli@beta
+# or explicitly:
+bunx @wrenly/cli@beta install --directory "$HOME/wrenly"
+```
+
+Review the plan and type `install` to proceed. Passing `--yes` confirms non-interactive
+execution after you have reviewed the plan. Help and the installation summary also link
+to an optional major-updates signup page on the website; the CLI never collects or
+submits an email address.
 
 If a port is occupied, choose another rather than stopping an unrelated service:
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js install \
+bunx @wrenly/cli@beta install \
   --directory "$HOME/wrenly" \
   --web-port 41000 --api-port 41002 --database-port 65433 \
   --previews --preview-port 41003 --databases
 ```
 
-Use a short absolute path with letters, numbers, `/`, `.`, `-` or `_`, and an existing
-parent directory. Existing destinations and symlink ancestors are refused. `--previews`
-prepares the Next.js preview image; `--laravel` builds the repository's Laravel toolchain
-and should be paired with `--previews` if you want Laravel previews; `--databases`
-enables Development app databases alongside isolated previews and builds the trusted
-PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images.
-Production app databases and publishing require a separate server/host connection setup
-and stay disabled by default. Downloads require internet during setup. No Wrenly cloud
-account is required.
+- Use a short absolute path containing letters, numbers, `/`, `.`, `-`, or `_` under an existing parent directory. Existing destinations and symlink ancestors are refused.
+- `--previews` prepares the Next.js preview runtime image (`oven/bun:alpine`).
+- `--laravel` builds the repository's Laravel 13 FrankenPHP toolchain (`wrenly/laravel-runtime:13-php8.4`) and should be paired with `--previews` for Laravel previews.
+- `--databases` enables Development app databases alongside isolated previews and builds the trusted PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images. Production app databases and publishing require a separate server/host connection setup and remain disabled by default.
 
 ## Create your owner account
 
@@ -63,7 +64,7 @@ in the terminal to finish creating your owner account within ten minutes. Do not
 or record that link. A non-interactive installation prints instructions to run:
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js setup --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta setup --directory "$HOME/wrenly"
 ```
 
 Run that in an interactive terminal. It reuses protected owner setup and cannot replace
@@ -75,27 +76,27 @@ still have their own separate setup guides.
 ## Start, stop and check
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js status --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js stop --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js start --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta status --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta stop --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta start --directory "$HOME/wrenly"
 ```
 
 Start and Stop ask for confirmation; use `--yes` after reviewing the action if needed.
-Stop preserves PostgreSQL's volume, accounts, projects and keys. Start checks the saved
+Stop preserves PostgreSQL's volume, accounts, projects, and keys. Start checks the saved
 configuration and resource ownership. It never adopts a process just because its port
 matches, and it never signals a saved process ID. API/web services run locally and need
 an explicit Start after a reboot. This is not a system service or a remote HTTPS setup.
 
-`status --json` returns structured non-secret state. Exit 0 means the requested action
-succeeded (or status is running); exit 1 means a check/action failed or remains
-unconfirmed; exit 2 means invalid arguments. Doctor and Plan also support JSON and never
-install anything.
+`status --json` returns structured non-secret state. Exit `0` means the requested action
+succeeded (or status is running); exit `1` means a check/action failed or remains
+unconfirmed; exit `2` means invalid arguments. `doctor` and `plan` also support `--json`
+and never install anything.
 
 ## Interrupted installation
 
 ```bash
-bun --no-env-file apps/cli/dist/wrenly.js status --directory "$HOME/wrenly"
-bun --no-env-file apps/cli/dist/wrenly.js resume --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta status --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta resume --directory "$HOME/wrenly"
 ```
 
 Resume requires confirmation and preserves the original keys. A kernel lock prevents
@@ -108,21 +109,20 @@ installation. Preserve that directory for inspection and choose a different empt
 path; do not copy another instance's keys or invent replacement keys. If runtime
 ownership is uncertain, Stop leaves the database running rather than risking its data.
 
-Private files live in the installation: `.env`, `apps/web/.env.local` and `.wrenly/`.
+Private files live in the installation: `.env`, `apps/web/.env.local`, and `.wrenly/`.
 The journal contains release identity and step receipts, not secrets. `.wrenly/runtime.log`
 contains local API/web diagnostics and should be treated as private. Back up the root
-`.env`, `.wrenly/data` and the PostgreSQL data together using the backup guide. A source
+`.env`, `.wrenly/data`, and the PostgreSQL data together using the backup guide. A source
 archive alone is not a backup of accounts or projects.
 
 ## Release integrity and scope
 
 This CLI pins public commit `d04c82bd1e2b052e80c114fca7883eca2ddd1300` and checks the
 archive's SHA-256 before extracting or executing source. It rejects links, unsafe paths,
-collisions and oversized archives. `--archive /absolute/source.tgz` accepts only those
+collisions, and oversized archives. `--archive /absolute/source.tgz` accepts only those
 same pinned bytes; it does not allow arbitrary code or a moving branch. The checksum
 is an integrity check, not a publisher signature. Dependencies come from the pinned
 lockfile with installation scripts disabled.
 
-There is no automatic upgrade, uninstall, destructive reset, package publication or
-telemetry in this version. The installer does not change another Wrenly installation.
-
+There is no automatic upgrade, uninstall, destructive reset, or telemetry in this version.
+The installer does not modify another Wrenly installation.

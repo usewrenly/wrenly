@@ -16,26 +16,52 @@ import {
 import { serveInstallation } from "./runtime/supervisor";
 const HELP = `Wrenly · guided local setup
 
-  wrenly install [--directory /absolute/path] [--web-port 3000] [--api-port 3002]
-                 [--database-port 65433] [--previews] [--preview-port 3003] [--laravel] [--databases]
-                 [--archive /exact/source.tgz] [--yes]
-  wrenly doctor | plan [same destination/port options] [--json]
-  wrenly resume | start | stop --directory /installed/path --yes
-  wrenly status --directory /installed/path [--json]
-  wrenly setup --directory /installed/path
+  USAGE
+    bunx @wrenly/cli [command] [options]
 
-No arguments in an interactive terminal opens the setup guide.
-Stop preserves data. This version does not upgrade or uninstall an instance.
-Optional major updates: https://www.usewrenly.org/#join
-Subscribe on the website; the CLI never collects your email.
+  COMMANDS
+    install      Prepare a verified release, database and local services
+    doctor       Check host prerequisites, ports and disk space
+    plan         Preview the exact installation actions without changes
+    status       Inspect the installation journal, database and runtime
+    start        Start the installation's PostgreSQL and local runtime
+    stop         Stop services while preserving all data and keys
+    resume       Continue an interrupted installation safely
+    setup        Print a one-time owner onboarding link in the terminal
+    help         Display this command reference
+
+  OPTIONS
+    --directory <path>       Absolute installation folder (default: ~/wrenly)
+    --web-port <port>        Browser port (default: 3000)
+    --api-port <port>        API port (default: 3002)
+    --database-port <port>   PostgreSQL port (default: 65433)
+    --previews               Prepare isolated local preview containers
+    --preview-port <port>    Preview gateway port (default: 3003)
+    --laravel                Build the Laravel 13 FrankenPHP runtime image
+    --databases              Prepare Development app databases (enables previews)
+    --archive <file>         Use a pre-downloaded verified release tarball
+    --json                   Output structured JSON (doctor, plan, status)
+    --yes                    Confirm non-interactive execution after reviewing plan
+
+  NOTES
+    Running without arguments in an interactive terminal opens the guided wizard.
+    Stop preserves data. This version does not upgrade or uninstall an instance.
+    Optional major updates: https://www.usewrenly.org/#join (browser only; no CLI email collection).
 `;
 function renderReport(report: Report, write: (text: string) => void): void {
   write("Wrenly · installation checks\n\n");
-  for (const check of report.checks)
+  for (const check of report.checks) {
+    const label = check.status.toUpperCase();
+    const gap = " ".repeat(Math.max(2, 13 - label.length));
+    const dots = ".".repeat(Math.max(3, 22 - check.name.length));
     write(
-      `${check.status.toUpperCase()}  ${check.name}: ${check.message}\n${check.remedy ? `  ${check.remedy}\n` : ""}`,
+      `${label}${gap}${check.name} ${dots} ${check.message}\n${check.remedy ? `  ↳ ${check.remedy}\n` : ""}`,
     );
-  if (report.plan) write("\n" + report.plan.join("\n") + "\n");
+  }
+  if (report.plan) {
+    write("\nINSTALLATION PLAN\n");
+    for (const item of report.plan) write(`  • ${item}\n`);
+  }
   write(
     `\n${report.ready ? "Prerequisites passed." : "Resolve the failed or unconfirmed checks before installing."}\n`,
   );
@@ -149,39 +175,39 @@ export async function runCli(
     return 1;
   }
 }
-async function wizard(): Promise<string[]> {
+async function wizard(write: (text: string) => void): Promise<string[]> {
   const { createInterface } = await import("node:readline/promises");
   const terminal = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   try {
-    process.stdout.write(
+    write(
       "Wrenly · your own instance\nCheck this machine, prepare a verified release, then create your owner account in the browser.\n\n",
     );
     const directory =
       (
         await terminal.question(
-          `1/5  Installation folder [${join(homedir(), "wrenly")}]: `,
+          `◆  1/5  Installation folder [${join(homedir(), "wrenly")}]: `,
         )
       ).trim() || join(homedir(), "wrenly");
     const web =
-      (await terminal.question("2/5  Browser port [3000]: ")).trim() || "3000";
+      (await terminal.question("│  2/5  Browser port [3000]: ")).trim() || "3000";
     const api =
-      (await terminal.question("     API port [3002]: ")).trim() || "3002";
+      (await terminal.question("│       API port [3002]: ")).trim() || "3002";
     const database =
-      (await terminal.question("     Wrenly database port [65433]: ")).trim() ||
+      (await terminal.question("│       Wrenly database port [65433]: ")).trim() ||
       "65433";
     const previews =
-      (await terminal.question("3/5  Prepare local previews? [y/N]: "))
+      (await terminal.question("│  3/5  Prepare local previews? [y/N]: "))
         .trim()
         .toLowerCase() === "y";
     const laravel =
-      (await terminal.question("4/5  Prepare the Laravel toolchain? [y/N]: "))
+      (await terminal.question("│  4/5  Prepare the Laravel toolchain? [y/N]: "))
         .trim()
         .toLowerCase() === "y";
     const databases =
-      (await terminal.question("5/5  Prepare Development app databases (includes previews)? [y/N]: "))
+      (await terminal.question("◆  5/5  Prepare Development app databases (includes previews)? [y/N]: "))
         .trim().toLowerCase() === "y";
     return [
       "install",
@@ -210,10 +236,6 @@ if (import.meta.main) {
       process.exitCode = 1;
     }
   } else {
-    const args =
-      Bun.argv.length === 2 && process.stdin.isTTY && process.stdout.isTTY
-        ? await wizard()
-        : Bun.argv.slice(2);
     const output = createTerminalWriter(
       (text) => {
         process.stdout.write(text);
@@ -225,6 +247,10 @@ if (import.meta.main) {
         ci: process.env.CI,
       }),
     );
+    const args =
+      Bun.argv.length === 2 && process.stdin.isTTY && process.stdout.isTTY
+        ? await wizard(output)
+        : Bun.argv.slice(2);
     process.exitCode = await runCli(args, output);
   }
 }
