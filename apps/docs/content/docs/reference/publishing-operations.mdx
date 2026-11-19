@@ -149,3 +149,84 @@ identity. It never creates an application or automatically retries publishing.
 
 Use the `bun run` wrapper: it loads the repository root `.env`. Running the underlying
 TypeScript file directly from `apps/api` does not load that root configuration.
+
+
+## Verify an interrupted Production database publication
+
+The experimental Production database path has a separate final route check. Coolify
+calling a container healthy does not prove that the expected app version is reachable.
+If the saved publication completed its runtime steps and only the final route check
+was interrupted, fix the routing problem first, then run on the API host:
+
+```bash
+bun run reconcile-production-route DEPLOYMENT_UUID --confirm-read-only-verification
+```
+
+Use the original root `.env`, instance data directory and trusted image settings.
+The command checks the original owner's current access, database/host identities,
+exact service composition, application image, broker and served version. It performs
+read-only remote checks: it does not republish, restart a container or rerun SQL.
+After successful verification, the **original** publication becomes successful.
+
+An earlier unknown effect, another running publication, changed access or mismatched
+infrastructure keeps the operation blocked. This command deliberately cannot settle
+an unknown service creation, credential handoff or migration. Do not use the stateless
+`reconcile-deployment` command to bypass those Production database checks.
+
+
+## Recover an interrupted Production publishing step
+
+A lost reply does not tell Wrenly whether the remote action finished. First restore
+access to the original deployment host and Coolify instance. Wait until the original
+request has settled, then run on the API host, from the repository root:
+
+```bash
+bun run reconcile-production-setup DEPLOYMENT_UUID --confirm-read-only-verification
+```
+
+Keep the original root `.env`, instance data directory, host keys and trusted image
+settings. The original owner's account/session and project access must still be
+valid. After updating Wrenly, rebuild and reinstall the fixed host helper using the
+[Production setup guide](/docs/guides/production-database-evaluation); an older helper
+cannot perform the new read-only checks. Recovery checks the exact saved
+database/schema, host and publishing placement.
+It does not load application database passwords or rerun migrations.
+
+| Interrupted step | Evidence required |
+| --- | --- |
+| HTTP or database socket volume | Exact owned volume and original creation timestamp |
+| Broker network | Exact owned, empty private network |
+| Broker startup | Unique owned broker, unchanged image/isolation, matching network and ready socket |
+| Coolify service creation | Unique service with matching project/environment/server and exact composition |
+| Service startup | Exact saved composition and independently verified running app and relay |
+| App settings handoff | Exact app plus its trusted guardian's protected readiness record |
+
+Every request above is an inspection. Wrenly never repeats a create/start call or
+resends settings to try to establish success. A missing, ambiguous, changed or
+unreadable resource keeps its unresolved action protected. Do not delete resources
+or use stateless reconciliation to bypass this blocker.
+
+Successful inspection records **one original action** and leaves the publication
+interrupted. If saving that receipt lost its reply, read the saved status before
+trying to continue; inspecting a later step is never started automatically.
+
+### Continue the original publication
+
+After its unknown action is verified, explicitly continue the remaining steps:
+
+```bash
+bun run continue-production-publication DEPLOYMENT_UUID --confirm-continue-original-publication
+```
+
+This command rechecks previously recorded resources first, then performs only steps
+that have never started. It does not push source again, upload another image, rerun
+SQL or overwrite old receipts. Any unresolved action refuses continuation. A changed
+resource or another lost reply preserves the interruption for inspection.
+
+If only the final public route check was interrupted, use
+`reconcile-production-route` from the preceding section instead. Success still
+requires the expected app revision through its actual public URL; a healthy container
+alone does not establish that result.
+
+These commands cover publishing recovery in the experimental Production path.
+They do not resolve an interrupted database backup/migration or a maintenance attempt.

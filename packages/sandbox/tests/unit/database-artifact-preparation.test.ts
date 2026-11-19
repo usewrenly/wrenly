@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   buildRuntimeArtifact,
   prepareDatabaseValidationArtifact,
+  prepareProductionDatabaseArtifact,
 } from "../../src/artifacts/runtime-artifact";
 import { readAppDatabaseManifest } from "../../src/databases/database-manifest";
 import {
@@ -53,6 +54,24 @@ test("database image preparation cannot replace stateless validation or accept c
       migrationDigest: "f".repeat(64),
     }),
   ).rejects.toThrow("database preparation");
+  await expect(
+    prepareProductionDatabaseArtifact({
+      ...input,
+      migrationDigest: "f".repeat(64),
+      bootstrap: new Uint8Array([1]),
+    }),
+  ).rejects.toThrow("database preparation");
+  for (const bootstrap of [
+    new Uint8Array(),
+    new Uint8Array(2 * 1024 * 1024 + 1),
+  ])
+    await expect(
+      prepareProductionDatabaseArtifact({
+        ...input,
+        migrationDigest: "f".repeat(64),
+        bootstrap,
+      }),
+    ).rejects.toThrow("bootstrap is invalid");
   expect(effects).toBe(0);
   expect(LARAVEL_BUILD_COMMAND.at(-1)).toContain("bun /wrenly/verify.ts");
   expect(LARAVEL_COMPILE_COMMAND.at(-1)).not.toContain("bun /wrenly/verify.ts");

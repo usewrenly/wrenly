@@ -1,3 +1,12 @@
+import { createDatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
+import { createOwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
+import { runOwnerRuntimeControl, readOwnerRuntimeControl } from "./modules/deployments/maintenance/owner-control";
+import { createOwnerRuntimeControlServices } from "./modules/deployments/maintenance/control-services";
+import { accessContext } from "./modules/auth/access/access-context";
+import { createMaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
+import { changeMaintenancePermission } from "./modules/deployments/maintenance/store";
+import { readMaintenanceOwnerState } from "./modules/deployments/maintenance/owner-state";
+import type { ProductionClusterModule } from "./modules/databases/production-targets/module";
 import { createPasswordRecoveryHandler } from "./modules/auth/password-recovery/password-recovery-http";
 import { completePasswordRecovery } from "./modules/auth/password-recovery/password-recovery-store";
 /**
@@ -63,7 +72,13 @@ import { createPreviewHttpHandlers } from './modules/previews/http/http'
 import { createApp } from './app'
 
 /** Connects the HTTP router to the existing server-only services. */
-export function createProductionApp(environment: ApiEnvironment): Hono {
+export function createProductionApp(
+  environment: ApiEnvironment,
+  services: { productionDatabases?: Omit<ProductionClusterModule, "stop"> } = {},
+): Hono {
+  // Startup owns workers and supplies their verified handlers only after prerequisites pass.
+  const productionDatabases = environment.WRENLY_APP_DATABASES_ENABLED === 'true'
+    ? services.productionDatabases : undefined;
   const providerConfiguration = createProviderConfigurationService({
     environment: { list: listEnvironmentProviders, resolve: resolveEnvironmentProvider },
     owner: actorId => assertProviderConfigurationOwner(db, actorId), catalog: () => getAvailableCatalog(db),
@@ -84,8 +99,8 @@ export function createProductionApp(environment: ApiEnvironment): Hono {
     events: (id, userId, after) => getOwnedBuildEvents(db, id, userId, after),
     cancel: (id, userId) => requestBuildCancellation(db, id, userId),
   })
-  const publishing = createDeploymentHttpHandlers({ list: (userId, offset) => listDeploymentHistory(db, userId, offset), enabled: environment.WRENLY_PUBLISHING_ENABLED === 'true', userId: getUserId,
-    admit: (projectId, userId, buildId, idempotencyKey) => admitDeployment(db, { projectId, userId, buildId, idempotencyKey, target: {
+  const publishing = createDeploymentHttpHandlers({ list: (userId, offset) => listDeploymentHistory(db, userId, offset, Boolean(productionDatabases)), enabled: environment.WRENLY_PUBLISHING_ENABLED === 'true', userId: getUserId,
+    admit: (projectId, userId, buildId, idempotencyKey) => admitDeployment(db, { projectId, userId, buildId, idempotencyKey, allowProductionDatabase: Boolean(productionDatabases) && environment.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true', target: {
       gitInstanceUrl: new URL(environment.WRENLY_GIT_BASE_URL!).origin, repositoryOwner: environment.WRENLY_GIT_ORG,
       coolifyInstanceUrl: new URL(environment.WRENLY_COOLIFY_API_URL!).origin, coolifyProjectUuid: environment.WRENLY_COOLIFY_PROJECT_UUID!,
       coolifyServerUuid: environment.WRENLY_COOLIFY_SERVER_UUID!, coolifyEnvironmentName: environment.WRENLY_COOLIFY_ENVIRONMENT,
@@ -131,9 +146,33 @@ export function createProductionApp(environment: ApiEnvironment): Hono {
       projectSettings: createProjectSettingsHandlers({webUrl:environment.WRENLY_WEB_URL,userId:getUserId,read:(userId,id)=>readProjectSettings(db,userId,id),save:(userId,id,input)=>saveProjectSettings(db,userId,id,input)}),
       deployProject: publishing.create,
       deployments: publishing,
+      runtimeMaintenanceControl: productionDatabases ? createOwnerRuntimeControlHandlers({
+        principal: async headers => {
+          const actorId = await getUserId(headers);
+          return actorId ? accessContext.getStore()?.principal ?? null : null;
+        },
+        read: (actor, projectId, deploymentId, requestId) => readOwnerRuntimeControl({ database: db, actor, projectId, deploymentId, requestId }),
+        save: (actor, projectId, deploymentId, action) => runOwnerRuntimeControl({ database: db, actor, projectId, deploymentId, action,
+          services: createOwnerRuntimeControlServices({ database: db, environment }) }),
+      }, environment.WRENLY_WEB_URL) : undefined,
+      runtimeMaintenance: productionDatabases ? createMaintenanceHttpHandlers({
+        principal: async headers => {
+          const actorId = await getUserId(headers);
+          return actorId ? accessContext.getStore()?.principal ?? null : null;
+        },
+        read: (actor, projectId, deploymentId, requestId) => readMaintenanceOwnerState({database: db, actor, projectId, deploymentId, requestId}),
+        save: async (actor, projectId, deploymentId, decision) => {
+          const result = await changeMaintenancePermission(db, actor, projectId, deploymentId, decision);
+          return { requestId: result.grant.requestId, grantRevision: result.grant.revision, state: result.grant.state, replayed: result.replayed };
+        },
+      }, environment.WRENLY_WEB_URL) : undefined,
       getModels,
-      projectDatabases: environment.WRENLY_APP_DATABASES_ENABLED === 'true' ? createProductionDatabaseHandlers(db, { directory: environment.WRENLY_DATA_DIR, webUrl: environment.WRENLY_WEB_URL, userId: getUserId }) : undefined,
+      productionDatabaseSetup: productionDatabases?.instanceSetup,
+      productionHostSetup: productionDatabases?.hostSetup,
+      productionProjectCreation: productionDatabases?.projectCreation,
+      projectDatabases: productionDatabases?.projectDatabases ?? (environment.WRENLY_APP_DATABASES_ENABLED === 'true' ? createProductionDatabaseHandlers(db, { directory: environment.WRENLY_DATA_DIR, webUrl: environment.WRENLY_WEB_URL, userId: getUserId }) : undefined),
       builds: buildHandlers,
+      conversationDatabases: environment.WRENLY_APP_DATABASES_ENABLED === "true" ? createDatabaseWorkflowHandlers(db,getUserId,environment.WRENLY_WEB_URL) : undefined,
       conversations: createConversationHttpHandlers({
         userId: getUserId,
         admit: (projectId, userId, key, body) => admitConversationTurn(projectId, userId, key, body, {

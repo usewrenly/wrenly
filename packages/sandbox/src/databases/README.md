@@ -106,3 +106,11 @@ Toolchain images built before the bridge/watchdog was added must be rebuilt from
 `images/laravel`. The module's HTTP/UI, application bindings, Production workflow and
 complete recovery/activation acceptance remain unfinished. Do not start the internal
 worker manually to treat these helpers as a released database service.
+
+Production data helpers reuse role-scoped Unix sockets. Query/migration helper labels
+accept either explicit environment; persistent local database lifecycle helpers still
+accept Development only. `captureProductionDatabaseBackup` runs pg_dump with no IP
+network, reads its migrator password from stdin and returns a bounded archive. Restoring
+is still restricted to a separately identified disposable Development resource. The API
+must seal the archive, compare restored schema/journal and confirm cleanup before calling
+it verified. These helpers alone do not activate Production resources or publishing.

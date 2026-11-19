@@ -1,0 +1,1 @@
+ALTER TABLE "app_database_operations" ADD COLUMN "execution_principal" jsonb;

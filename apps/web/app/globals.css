@@ -1174,7 +1174,7 @@ code, pre, .font-mono {
 @media(max-width:599px) { .workspace-logs { padding:0; } .workspace-log-tools input { flex-basis:100%; } }
 
 /* Empty model setup is a deliberate composer footer, not another input field. */
-.composer-model-notice { margin:0; padding:12px 16px; background:var(--color-surface-2); border-top:1px solid var(--color-border); font-size:12px; color:var(--color-text-2); line-height:1.6; }
+.composer-model-notice { margin:0; padding:12px 16px; background:transparent; border-top:0; font-size:12px; color:var(--color-text-2); line-height:1.6; }
 .provider-marquee[data-animated="false"] .provider-marquee-group { justify-content:flex-start; min-width:0; }
 .models-choice-row .models-choice-footer .models-choice-check { margin-left:auto; flex-shrink:0; }
 

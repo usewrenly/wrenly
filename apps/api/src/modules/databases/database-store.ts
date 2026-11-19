@@ -1,3 +1,9 @@
+import { productionRuntimeMaintenanceAttempts } from "@wrenly/db";
+import { accessContext } from "../auth/access/access-context";
+import {
+  ProductionOperationPrincipal,
+  parseProductionResourceBinding,
+} from "@wrenly/db/production-resource-binding";
 import {
   prepareDatabaseMigrationReview,
   readFrozenMigrationSource,
@@ -82,9 +88,7 @@ export type DatabaseResourceDto = Pick<
   | "createdAt"
   | "updatedAt"
 >;
-function resourceDto(
-  row: DatabaseResourceDto,
-): DatabaseResourceDto {
+function resourceDto(row: DatabaseResourceDto): DatabaseResourceDto {
   const {
     id,
     projectId,
@@ -138,15 +142,25 @@ export async function readDatabaseResources(
   try {
     const access = await readProjectCapabilities(database, projectId, actorId);
     if (!access) throw new ProjectAccessError(404, "Project not found.");
-    const [authority] = await database.select({ revision: projects.accessRevision })
-      .from(projects).where(eq(projects.id, projectId)).limit(1);
+    const [authority] = await database
+      .select({ revision: projects.accessRevision })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
     if (!authority) throw new ProjectAccessError(404, "Project not found.");
     const resources = await database
-      .select({ id: appDatabases.id, projectId: appDatabases.projectId,
-        environment: appDatabases.environment, provider: appDatabases.provider,
-        status: appDatabases.status, revision: appDatabases.revision,
-        schemaDigest: appDatabases.schemaDigest, errorCode: appDatabases.errorCode,
-        createdAt: appDatabases.createdAt, updatedAt: appDatabases.updatedAt })
+      .select({
+        id: appDatabases.id,
+        projectId: appDatabases.projectId,
+        environment: appDatabases.environment,
+        provider: appDatabases.provider,
+        status: appDatabases.status,
+        revision: appDatabases.revision,
+        schemaDigest: appDatabases.schemaDigest,
+        errorCode: appDatabases.errorCode,
+        createdAt: appDatabases.createdAt,
+        updatedAt: appDatabases.updatedAt,
+      })
       .from(appDatabases)
       .where(eq(appDatabases.projectId, projectId));
     const operations = await database
@@ -164,11 +178,19 @@ export async function readDatabaseResources(
       .orderBy(desc(appDatabaseOperations.createdAt))
       .limit(DATABASE_STATUS_LIMITS.operations);
     const current = await readProjectCapabilities(database, projectId, actorId);
-    const [currentAuthority] = await database.select({ revision: projects.accessRevision })
-      .from(projects).where(eq(projects.id, projectId)).limit(1);
-    if (!current || current.role !== access.role || current.manage !== access.manage ||
-        current.contribute !== access.contribute || current.publish !== access.publish ||
-        currentAuthority?.revision !== authority.revision)
+    const [currentAuthority] = await database
+      .select({ revision: projects.accessRevision })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+    if (
+      !current ||
+      current.role !== access.role ||
+      current.manage !== access.manage ||
+      current.contribute !== access.contribute ||
+      current.publish !== access.publish ||
+      currentAuthority?.revision !== authority.revision
+    )
       throw new ProjectAccessError(
         403,
         "Project access changed. Reload before viewing database status.",
@@ -302,6 +324,7 @@ export async function admitDatabaseAction(
   actorId: string,
   body: unknown,
   dataDirectory: string,
+  coordination?: { beforeAdmission: (transaction: Transaction) => Promise<void> },
 ): Promise<{ operationId: string; resourceId: string; replayed: boolean }> {
   const parsed = DatabaseAction.safeParse(body);
   if (!parsed.success)
@@ -331,8 +354,9 @@ export async function admitDatabaseAction(
     .digest("hex");
   try {
     return await database.transaction(async (transaction) => {
-      await lockDatabaseQueues(transaction);
+      await lockDatabaseQueues(transaction, { wait: Boolean(coordination) });
       await requireProjectCapability(transaction, projectId, actorId, "manage");
+      await coordination?.beforeAdmission(transaction);
       const [replay] = await transaction
         .select()
         .from(appDatabaseOperations)
@@ -559,6 +583,7 @@ export async function admitDatabaseAction(
 /** Claims a new operation only; crashed/expired operations never become queued again. */
 export async function claimDatabaseAction(
   database: typeof db,
+  provider: "local" | "postgres-cluster" = "local",
 ): Promise<DatabaseClaim | null> {
   try {
     // Idle polling must not compete with an owner's next action for every global
@@ -566,7 +591,18 @@ export async function claimDatabaseAction(
     const [pending] = await database
       .select({ id: appDatabaseOperations.id })
       .from(appDatabaseOperations)
-      .where(eq(appDatabaseOperations.status, "queued"))
+      .where(
+        and(
+          eq(appDatabaseOperations.status, "queued"),
+          inArray(
+            appDatabaseOperations.databaseId,
+            database
+              .select({ id: appDatabases.id })
+              .from(appDatabases)
+              .where(eq(appDatabases.provider, provider)),
+          ),
+        ),
+      )
       .limit(1);
     if (!pending) return null;
     return await database.transaction(async (transaction) => {
@@ -580,18 +616,56 @@ export async function claimDatabaseAction(
       const [operation] = await transaction
         .select()
         .from(appDatabaseOperations)
-        .where(eq(appDatabaseOperations.status, "queued"))
+        .where(
+          and(
+            eq(appDatabaseOperations.status, "queued"),
+            inArray(
+              appDatabaseOperations.databaseId,
+              transaction
+                .select({ id: appDatabases.id })
+                .from(appDatabases)
+                .where(eq(appDatabases.provider, provider)),
+            ),
+          ),
+        )
         .orderBy(asc(appDatabaseOperations.createdAt))
         .limit(1)
         .for("update");
       if (!operation) return null;
       try {
-        await requireProjectCapability(
-          transaction,
-          operation.projectId,
-          operation.actorId,
-          "manage",
-        );
+        const authorize = async (): Promise<void> => {
+          await requireProjectCapability(
+            transaction,
+            operation.projectId,
+            operation.actorId,
+            "manage",
+          );
+          if (provider === "postgres-cluster") {
+            const [project] = await transaction
+              .select({ revision: projects.accessRevision })
+              .from(projects)
+              .where(eq(projects.id, operation.projectId));
+            if (
+              project?.revision !== operation.executionPrincipal?.accessRevision
+            )
+              throw new ProjectAccessError(
+                403,
+                "Production operation project access changed.",
+              );
+          }
+        };
+        if (provider === "postgres-cluster") {
+          const parsed = ProductionOperationPrincipal.safeParse(
+            operation.executionPrincipal,
+          );
+          const principal = parsed.success ? parsed.data : null;
+          if (!principal || principal.userId !== operation.actorId)
+            throw new ProjectAccessError(
+              403,
+              "Production operation session is unavailable.",
+            );
+          await accessContext.run({ principal }, authorize);
+        } else await authorize();
       } catch (error) {
         if (
           !(error instanceof ProjectAccessError) &&
@@ -685,6 +759,11 @@ export async function loadDatabaseExecution(
       row.operation.actorId,
     );
     if (!access?.manage) throw new Error("Database owner authority changed.");
+    if (
+      row.resource.provider !== "local" ||
+      row.resource.environment !== "development"
+    )
+      throw new Error("This execution requires the local Development adapter.");
     const key = await loadDatabaseKey(
       join(dataDirectory, "database-keys"),
       true,
@@ -771,10 +850,21 @@ export async function interruptExpiredDatabaseActions(
             ),
           ),
         )
-        .returning({ id: appDatabaseOperations.databaseId, kind: appDatabaseOperations.kind });
+        .returning({
+          id: appDatabaseOperations.databaseId,
+          kind: appDatabaseOperations.kind,
+        });
       // Disposable validation never touched the real database. Its interrupted
       // operation still blocks work, without falsely changing the resource state.
-      const persistent = expired.filter(row => !["validate-application", "recover-validation", "recover-rehearsal"].includes(row.kind));
+      const persistent = expired.filter(
+        (row) =>
+          ![
+            "validate-application",
+            "recover-validation",
+            "recover-rehearsal",
+            "recover-production-operation",
+          ].includes(row.kind),
+      );
       if (persistent.length)
         await transaction
           .update(appDatabases)
@@ -805,9 +895,10 @@ export async function verifyDatabaseSchema(database: typeof db): Promise<void> {
     await database.select().from(appDatabaseOperations).limit(1);
     await database.select().from(appDatabaseMigrations).limit(1);
     await database.select().from(appDatabaseBackups).limit(1);
+    await database.select().from(productionRuntimeMaintenanceAttempts).limit(0);
   } catch {
     throw new Error(
-      "Application database persistence is unavailable. Run bun run db:migrate from packages/db (through 0025_app-database-migration-review) before startup.",
+      "Application database persistence is unavailable. Run bun run db:migrate from packages/db (through 0048_production_maintenance_attempts) before startup.",
     );
   }
 }
@@ -845,26 +936,49 @@ export async function assertDatabaseCleanupLease(
 export async function recordDatabaseCleanupEffect(
   database: typeof db,
   claim: DatabaseClaim,
-  effect: { kind: "terminate-sessions" | "close-reader-socket" | "cleanup-read-runtime"; id: string },
+  effect: {
+    kind: "terminate-sessions" | "close-reader-socket" | "cleanup-read-runtime";
+    id: string;
+  },
 ): Promise<void> {
   try {
     let recoveredReadId: string | undefined;
     if (effect.kind === "cleanup-read-runtime") {
-      const [operation] = await database.select({ kind: appDatabaseOperations.kind, effect: appDatabaseOperations.effect })
-        .from(appDatabaseOperations).where(heldClaim(claim));
-      if (operation?.kind === "recover-read" && operation.effect?.kind === "inspect-read-operation") {
-        const [target] = await database.select({ id: appDatabaseOperations.id }).from(appDatabaseOperations)
-          .where(and(eq(appDatabaseOperations.id, operation.effect.id), eq(appDatabaseOperations.kind, "read"),
-            eq(appDatabaseOperations.databaseId, claim.resourceId), eq(appDatabaseOperations.projectId, claim.projectId),
-            eq(appDatabaseOperations.status, "interrupted")));
+      const [operation] = await database
+        .select({
+          kind: appDatabaseOperations.kind,
+          effect: appDatabaseOperations.effect,
+        })
+        .from(appDatabaseOperations)
+        .where(heldClaim(claim));
+      if (
+        operation?.kind === "recover-read" &&
+        operation.effect?.kind === "inspect-read-operation"
+      ) {
+        const [target] = await database
+          .select({ id: appDatabaseOperations.id })
+          .from(appDatabaseOperations)
+          .where(
+            and(
+              eq(appDatabaseOperations.id, operation.effect.id),
+              eq(appDatabaseOperations.kind, "read"),
+              eq(appDatabaseOperations.databaseId, claim.resourceId),
+              eq(appDatabaseOperations.projectId, claim.projectId),
+              eq(appDatabaseOperations.status, "interrupted"),
+            ),
+          );
         recoveredReadId = target?.id;
       }
     }
-    if (
-      !((effect.kind === "cleanup-read-runtime" && recoveredReadId !== undefined && effect.id === `wrenly-database-read-${recoveredReadId}`) ||
-        (effect.kind === "terminate-sessions" && effect.id === `wrenly-database-administrator-${claim.id}`) ||
-        (effect.kind === "close-reader-socket" && effect.id === `wrenly-database-socket-${claim.id}`))
-    )
+    if (!(
+      (effect.kind === "cleanup-read-runtime" &&
+        recoveredReadId !== undefined &&
+        effect.id === `wrenly-database-read-${recoveredReadId}`) ||
+      (effect.kind === "terminate-sessions" &&
+        effect.id === `wrenly-database-administrator-${claim.id}`) ||
+      (effect.kind === "close-reader-socket" &&
+        effect.id === `wrenly-database-socket-${claim.id}`)
+    ))
       throw new Error("Invalid cleanup identity");
     const rows = await database
       .update(appDatabaseOperations)
@@ -990,8 +1104,18 @@ export async function acknowledgeDatabaseEffect(
         operation.cleanupEffect
       )
         throw new Error("Effect is not held");
-      if (runtimeIdentity && ["validate-application", "recover-validation", "recover-rehearsal"].includes(operation.kind))
-        throw new Error("Disposable validation cannot replace the real database identity");
+      if (
+        runtimeIdentity &&
+        [
+          "validate-application",
+          "recover-validation",
+          "recover-rehearsal",
+            "recover-production-operation",
+        ].includes(operation.kind)
+      )
+        throw new Error(
+          "Disposable validation cannot replace the real database identity",
+        );
       if (runtimeIdentity)
         await transaction
           .update(appDatabases)
@@ -1070,8 +1194,27 @@ export async function finishDatabaseAction(
           resource.revision !== operation.expectedRevision)
       )
         throw new Error("Resource changed");
-      if (outcome.success && !resource.runtimeIdentity)
-        throw new Error("Missing verified runtime identity");
+      if (outcome.success) {
+        if (
+          resource.provider === "postgres-cluster" &&
+          resource.environment === "production"
+        ) {
+          parseProductionResourceBinding(
+            resource.id,
+            resource.providerIdentity,
+          );
+          if (
+            !resource.schemaDigest ||
+            !/^[a-f0-9]{64}$/.test(resource.schemaDigest)
+          )
+            throw new Error("Missing verified Production schema identity");
+        } else if (
+          resource.provider !== "local" ||
+          resource.environment !== "development" ||
+          !resource.runtimeIdentity
+        )
+          throw new Error("Missing verified runtime identity");
+      }
       if (
         outcome.success &&
         operation.kind === "create" &&
@@ -1102,8 +1245,17 @@ export async function finishDatabaseAction(
             "A restored, verified backup is required before reporting success",
           );
       }
-      if (["validate-application", "recover-validation", "recover-rehearsal"].includes(operation.kind))
-        throw new Error("Disposable validation requires its separate completion protocol");
+      if (
+        [
+          "validate-application",
+          "recover-validation",
+          "recover-rehearsal",
+            "recover-production-operation",
+        ].includes(operation.kind)
+      )
+        throw new Error(
+          "Disposable validation requires its separate completion protocol",
+        );
       let migrationSchemaDigest: string | undefined;
       if (operation.kind === "migrate") {
         const [review] = await transaction
@@ -1197,8 +1349,19 @@ export async function interruptDatabaseAction(
             eq(appDatabaseOperations.status, "running"),
           ),
         )
-        .returning({ id: appDatabaseOperations.databaseId, kind: appDatabaseOperations.kind });
-      if (rows.length && !["validate-application", "recover-validation", "recover-rehearsal"].includes(rows[0]?.kind ?? ""))
+        .returning({
+          id: appDatabaseOperations.databaseId,
+          kind: appDatabaseOperations.kind,
+        });
+      if (
+        rows.length &&
+        ![
+          "validate-application",
+          "recover-validation",
+          "recover-rehearsal",
+            "recover-production-operation",
+        ].includes(rows[0]?.kind ?? "")
+      )
         await transaction
           .update(appDatabases)
           .set({
@@ -1349,7 +1512,11 @@ export async function loadDatabaseMigrationReview(
   return {
     review: row.review,
     backup: row.backup,
-    files: readFrozenMigrationSource(row.build.files, row.review.digest, row.build.stack).files,
+    files: readFrozenMigrationSource(
+      row.build.files,
+      row.review.digest,
+      row.build.stack,
+    ).files,
     framework: row.build.stack,
   };
 }

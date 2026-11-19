@@ -3,6 +3,11 @@
  * Called by the API worker after a claim is committed.
  * Uses a kernel lock, lease and per-mutation intent to publish one frozen revision; uncertain remote outcomes remain reserved for explicit reconciliation.
  */
+import { ProductionPublishingBinding } from "@wrenly/db/production-publishing-contract";
+import {
+  assertProductionRuntimeEnvironment,
+  type ProductionDeploymentServices,
+} from "../database-runtime/publishing";
 import { validateLaravelSource } from "../../../../../../packages/sandbox/src/source-policy/laravel-runtime";
 
 import type { db } from "@wrenly/db";
@@ -49,6 +54,7 @@ const HEARTBEAT_MS = 5000;
 const EXECUTION_TIMEOUT_MS = 15 * 60_000;
 const POLL_MS = 2000;
 export interface DeploymentArtifactServices {
+  production?: ProductionDeploymentServices;
   build: typeof buildRuntimeArtifact;
   publish: typeof publishRuntimeArtifact;
   pushSource: typeof pushPrivateSnapshot;
@@ -60,6 +66,11 @@ const services: DeploymentArtifactServices = {
   pushSource: pushPrivateSnapshot,
   ready: verifyDeploymentReadiness,
 };
+
+/** Supplies the same artifact pipeline to stateless and Production publishing; no work starts here. */
+export function createDeploymentArtifactServices(production?: ProductionDeploymentServices): DeploymentArtifactServices {
+  return production ? { ...services, production } : { ...services };
+}
 
 /** Executes once; each uncertain acknowledgement remains fenced for explicit reconciliation. */
 export async function executeDeployment(
@@ -110,6 +121,18 @@ export async function executeDeployment(
     )
       throw new Error("Unsupported or changed deployment snapshot.");
     if (deployment.stack === "laravel") validateLaravelSource(deployment.files);
+    const productionBinding = deployment.productionDatabaseBinding
+      ? ProductionPublishingBinding.parse(deployment.productionDatabaseBinding)
+      : null;
+    if (
+      productionBinding &&
+      (!adapters.production ||
+        productionBinding.deploymentId !== deployment.id ||
+        productionBinding.sourceSha256 !== deployment.sourceSha256)
+    )
+      throw new Error(
+        "Production publishing configuration or saved source binding is unavailable.",
+      );
     if (
       resources.gitInstanceUrl !==
         new URL(environment.WRENLY_GIT_BASE_URL!).origin ||
@@ -140,6 +163,17 @@ export async function executeDeployment(
         token: environment.WRENLY_COOLIFY_API_KEY!,
         authentication: "Bearer",
       });
+    if (productionBinding) {
+      const environmentSettings = await prepareDeploymentRuntimeEnvironment(
+        database,
+        claim,
+        environment.WRENLY_DEPLOY_ENCRYPTION_KEY!,
+      );
+      assertProductionRuntimeEnvironment(
+        deployment.stack as "nextjs" | "laravel",
+        environmentSettings,
+      );
+    }
     stage = "source_identity";
     const identity = await git.request(
       "GET",
@@ -210,13 +244,20 @@ export async function executeDeployment(
       claim,
       "build_artifact",
     );
-    const artifact: RuntimeArtifact = await adapters.build({
+    const preparation = {
       deploymentId: deployment.id,
-      stack: deployment.stack,
+      stack: deployment.stack as "nextjs" | "laravel",
       files: deployment.files,
       signal,
       beforeEffect: fence,
-    });
+    };
+    const artifact: RuntimeArtifact =
+      productionBinding && adapters.production
+        ? await adapters.production.prepare({
+            ...preparation,
+            migrationDigest: productionBinding.migrationDigest,
+          })
+        : await adapters.build(preparation);
     await completeDeploymentMutation(database, claim, {
       ...artifactIntent,
       ...artifact,
@@ -241,6 +282,33 @@ export async function executeDeployment(
       ...pushIntent,
       ...uploaded,
     });
+    if (productionBinding && adapters.production) {
+      stage = "runtime_environment";
+      stage = "deployment_readiness";
+      const url = await adapters.production.run({
+        database,
+        claim,
+        directory: environment.WRENLY_DATA_DIR,
+        deploymentEncryptionKey: environment.WRENLY_DEPLOY_ENCRYPTION_KEY!,
+        client: coolify,
+        artifact,
+        uploaded,
+        stack: preparation.stack,
+        placement: {
+          projectUuid: resources.coolifyProjectUuid,
+          serverUuid: resources.coolifyServerUuid,
+          environmentName: resources.coolifyEnvironmentName,
+        },
+        assertHeld: fence,
+        signal,
+      });
+      await finishDeployment(database, claim, { status: "success", url });
+      logger.info("Deployment execution finished", {
+        deploymentId: deployment.id,
+        outcome: "success",
+      });
+      return;
+    }
     stage = "application_configuration";
     const image = `${uploaded.repository}@${uploaded.digest}`;
     const name = `wrenly-${deployment.projectId}`;
@@ -328,7 +396,10 @@ export async function executeDeployment(
       if (status === "failed")
         throw new Error("Remote image deployment failed.");
       if (status === "success") {
-        if (!verifying) { await markDeploymentVerifying(database, claim); verifying = true; }
+        if (!verifying) {
+          await markDeploymentVerifying(database, claim);
+          verifying = true;
+        }
         const app = await readImageApplication(
           coolify,
           applicationId,

@@ -19,7 +19,14 @@
     "./database-validation-cleanup": "./src/databases/database-validation-cleanup.ts",
     "./runtime-artifact": "./src/artifacts/runtime-artifact.ts",
     "./runtime-artifact-cleanup": "./src/artifacts/runtime-artifact-cleanup.ts",
-    "./database-preview-runtime": "./src/previews/database-runtime.ts"
+    "./database-preview-runtime": "./src/previews/database-runtime.ts",
+    "./production-database-network": "./src/databases/production-network.ts",
+    "./production-application-bootstrap": "./src/deployment-runtime/application.ts",
+    "./production-database-socket-policy": "./src/databases/production-socket-policy.ts",
+    "./database-application-environment": "./src/databases/application-runtime/environment.ts",
+    "./production-deployment-toolchain": "./src/deployment-runtime/toolchain.ts",
+    "./private-image-registry": "./src/artifacts/artifact-registry.ts",
+    "./database-operation-cleanup": "./src/databases/database-operation-cleanup.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",
@@ -35,6 +42,7 @@
     "@repo/typescript-config": "*",
     "@types/dockerode": "^3.3.31",
     "eslint": "10.9.1",
-    "typescript": "*"
+    "typescript": "*",
+    "drizzle-orm": "^0.45.3"
   }
 }

@@ -9,7 +9,8 @@ export class DatabaseActionInputError extends Error {
   }
 }
 /** Reads untrusted JSON under byte/time/cancellation bounds; caller still validates the action schema. */
-export async function readDatabaseActionInput(request: Request): Promise<unknown> {
+export async function readDatabaseActionInput(request: Request, maximumBytes = DATABASE_ACTION_BODY_BYTES): Promise<unknown> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > 32 * 1024) throw new DatabaseActionInputError(413);
   if (request.headers.get("content-type")?.split(";")[0]?.trim() !== "application/json")
     throw new DatabaseActionInputError(415);
   const reader = request.body?.getReader();
@@ -27,7 +28,7 @@ export async function readDatabaseActionInput(request: Request): Promise<unknown
       request.signal.throwIfAborted();
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > DATABASE_ACTION_BODY_BYTES) throw new DatabaseActionInputError(413);
+      if (size > maximumBytes) throw new DatabaseActionInputError(413);
       chunks.push(part.value);
     }
     if (expired) throw new DatabaseActionInputError(408);

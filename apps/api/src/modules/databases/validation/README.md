@@ -40,12 +40,10 @@ claim and explicit resource/revision/deadline, then reads the submitting user an
 from that job's saved records. There is no actor, source, image or credential override.
 The helper returns an interrupted outcome when preparation cannot be confirmed; the
 build caller must stop repair retries in that case. Replaying its operation/request
-cannot start preparation again. Ordinary worker startup does not call this helper yet:
-the product must first expose and connect an explicit resource choice. The handoff now
-requires that choice in the saved job's `databaseV1` and compares it with the claim and
-requested resource before preparing anything. Trusted internal admission can freeze
-this snapshot. Ordinary build/conversation admission can now freeze an explicit choice
-under a trusted activation permission. Production keeps that permission disabled.
+cannot start preparation again. With Development databases enabled, ordinary build and
+conversation admission save the explicit resource choice in the job's `databaseV1`.
+The handoff compares that choice with the claim and requested resource before preparing
+anything. The default remains off; the Production database environment is unavailable.
 
 `validation-executor.ts` runs the saved attempt while holding the resource's process
 lock. It checks the parent build before generated work, records effects before they
@@ -66,7 +64,7 @@ replayed recovery returns its saved acknowledgement rather than running again.
 selection. It names the manifest and standard environment keys, never resource IDs,
 rows or connection values. Existing stateless prompts receive no database guidance.
 
-`build-validator.ts` is the explicit adapter factory for the remaining worker wiring.
+`build-validator.ts` is the adapter installed by the database-enabled build worker.
 It keeps unselected builds on the existing stateless validator, treats an invalid
 manifest as a repairable source error and throws `BuildExecutionInterruptedError` for
 uncertain execution. The build executor preserves this error instead of starting another
@@ -85,9 +83,10 @@ an empty disposable database, creates/reads/updates/deletes a row, serves an HTT
 and removes its temporary resources. A separate Docker cleanup test verifies that
 foreign labels and the persistent source volume cannot be removed.
 
-Ordinary build selection, preview runtime
-bindings, viewer activation and Production publishing remain separate integration
-gates. These tests do not make the database feature available in the product.
+Development build selection, preview bindings and the viewer are connected behind
+the explicit Experimental setting. Production resources and database-backed publishing
+remain separate, unfinished gates. A passing isolated adapter test does not by itself
+prove the complete application workflow.
 
 The binding module's `readValidatedDatabaseRevision` connects successful evidence to
 the later compatibility read. It compares both the frozen validation files and current
