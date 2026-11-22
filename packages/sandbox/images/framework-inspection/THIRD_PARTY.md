@@ -7,7 +7,7 @@ The official tools remain upstream code, with their original licenses:
 - Next DevTools MCP 0.4.0: https://github.com/vercel/next-devtools-mcp (MIT).
 - MCP TypeScript SDK: its notice accompanies the bundled worker in the Laravel image;
   Next's image retains its node_modules licenses.
-- Chromium 156.0.8078.79-r0: distributed by Alpine Linux; Chromium's BSD-style license
+- Chromium 158.0.8127.36-r0: distributed by Alpine Linux; Chromium's BSD-style license
   and third-party components have their own notices. See https://www.chromium.org/chromium-projects/
   and the installed Alpine package license records. It runs only inside the restricted
   inspection image, never as a browser installed on the API host.

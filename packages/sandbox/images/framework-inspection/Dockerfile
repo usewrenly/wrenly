@@ -21,7 +21,7 @@ USER 1000:1000
 ENTRYPOINT ["bun","--no-env-file","/wrenly/worker.mjs"]
 FROM oven/bun:alpine@sha256:4cf82f5686b196504fe119db3fcd9185b191f82ece82c40680e597228ec6070a AS alpine-bun
 FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS nextjs
-RUN apk add --no-cache chromium=156.0.8078.79-r0
+RUN apk add --no-cache chromium=158.0.8127.36-r0
 COPY --from=alpine-bun /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=tools /src/node_modules /wrenly/tools/node_modules
 COPY --from=tools /worker.mjs /wrenly/worker.mjs
