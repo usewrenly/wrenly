@@ -83,15 +83,20 @@ real model call, publish an app or validate the framework MCP process/sandbox bo
 those have their own acceptance tests. Never use an instance database for fixtures.
 
 
-## Keeping a selected database with a turn
+## Building an app with saved records
 
-Suppose you select the booking project's Development database and ask Wrenly to add a
-reservations page. Migration 0035 lets the turn remember that exact resource/revision.
-If Auto proposes a build, the server passes the saved choice into atomic build
-admission; the model cannot replace it. A changed database revision blocks the build
-rather than selecting another resource. Plan still only discusses the work.
+“Build a notes app that remembers notes” can return a database proposal in Auto. The
+owner approves it in the conversation. `database-workflow/` then follows existing saved
+resource operations and admits one build after the exact resource is ready. Migration
+0049 stores that next-step state; no browser connection owns execution.
 
-Old turns have no database selection and remain stateless. A small flag in model context
-says that Development was selected; it includes no credentials, rows or connection
-address. New choices require explicit server activation, which production has not
-enabled yet. Reading a saved turn or replaying its receipt starts no new work.
+A second approval presents the generated migration files before verified backup,
+disposable rehearsal and persistent application. Plan cannot save executable proposals.
+Stop prevents later phases; sign-out, suspension and project/resource changes prevent
+stale approval from authorizing more work. Unknown execution outcomes remain blocked.
+The workflow reuses database workers rather than implementing another SQL executor.
+
+`packages/db` exports the shared card contract without exporting the control client.
+Browser reads receive bounded status/review data, never the approving session or saved
+credentials. `database-workflow/DESIGN.md` explains the transaction boundary. Production
+publishing remains a separate explicitly configured and approved operation.

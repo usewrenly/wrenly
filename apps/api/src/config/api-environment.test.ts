@@ -102,8 +102,20 @@ test('Development databases require explicit opt-in and verified preview configu
   expect(parseApiEnvironment({ ...BASE, WRENLY_AUTH_SECRET: 'a'.repeat(64), WRENLY_PREVIEW_ENABLED: 'true', WRENLY_APP_DATABASES_ENABLED: 'true' }).WRENLY_APP_DATABASES_ENABLED).toBe('true')
 })
 
-test('official framework inspection is optional and accepts only an explicit boolean setting',()=>{
-  expect(parseApiEnvironment(BASE).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('false');
-  expect(parseApiEnvironment({...BASE,WRENLY_FRAMEWORK_INSPECTION_ENABLED:'true'}).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('true');
-  expect(()=>parseApiEnvironment({...BASE,WRENLY_FRAMEWORK_INSPECTION_ENABLED:'yes'})).toThrow('WRENLY_FRAMEWORK_INSPECTION_ENABLED');
+test('official framework inspection is optional and accepts only an explicit boolean setting', () => {
+  expect(parseApiEnvironment(BASE).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('false')
+  expect(parseApiEnvironment({ ...BASE, WRENLY_FRAMEWORK_INSPECTION_ENABLED: 'true' }).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('true')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_FRAMEWORK_INSPECTION_ENABLED: 'yes' })).toThrow('WRENLY_FRAMEWORK_INSPECTION_ENABLED')
+})
+
+test('Production activation requires complete explicit installation pins and existing feature prerequisites',()=>{
+  expect(parseApiEnvironment(BASE).WRENLY_PRODUCTION_DATABASES_ENABLED).toBe('false');
+  expect(()=>parseApiEnvironment({...BASE,WRENLY_PRODUCTION_DATABASES_ENABLED:'true'})).toThrow('WRENLY_APP_DATABASES_ENABLED');
+  const enabled={...BASE,WRENLY_AUTH_SECRET:'a'.repeat(64),WRENLY_PREVIEW_ENABLED:'true',WRENLY_APP_DATABASES_ENABLED:'true',WRENLY_PUBLISHING_ENABLED:'true',WRENLY_PRODUCTION_DATABASES_ENABLED:'true',WRENLY_DEPLOY_ENCRYPTION_KEY:'ab'.repeat(32),WRENLY_REGISTRY_URL:'https://registry.example',WRENLY_REGISTRY_USERNAME:'fixture',WRENLY_REGISTRY_PASSWORD:'fixture-password',WRENLY_GIT_BASE_URL:'https://git.example',WRENLY_GIT_TOKEN:'fixture-token',WRENLY_COOLIFY_API_URL:'https://coolify.example/api/v1',WRENLY_COOLIFY_API_KEY:'fixture-key',WRENLY_COOLIFY_PROJECT_UUID:'project',WRENLY_COOLIFY_SERVER_UUID:'server',WRENLY_PRODUCTION_BROKER_IMAGE_ID:'sha256:'+'a'.repeat(64),WRENLY_PRODUCTION_INGRESS_IMAGE_ID:'sha256:'+'b'.repeat(64),WRENLY_PRODUCTION_INGRESS_IMAGE:'registry.example/wrenly/ingress@sha256:'+'c'.repeat(64)};
+  expect(parseApiEnvironment(enabled).WRENLY_PRODUCTION_DATABASES_ENABLED).toBe('true');
+  expect(() => parseApiEnvironment({...enabled,WRENLY_PRODUCTION_INGRESS_IMAGE:'elsewhere.example/wrenly/ingress@sha256:'+'c'.repeat(64)})).toThrow('configured private registry');
+  for(const name of ['WRENLY_PRODUCTION_BROKER_IMAGE_ID','WRENLY_PRODUCTION_INGRESS_IMAGE_ID','WRENLY_PRODUCTION_INGRESS_IMAGE']) {
+    expect(()=>parseApiEnvironment({...enabled,[name]:undefined})).toThrow(name);
+    expect(()=>parseApiEnvironment({...enabled,[name]:'private-invalid-value'})).toThrow(name);
+  }
 });

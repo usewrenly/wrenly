@@ -1,4 +1,7 @@
 "use client";
+import { ProductionHostSetup } from "@/components/settings/production-databases/production-host-setup";
+import { ProductionServerSetup } from "@/components/settings/production-databases/production-server-setup";
+import { authClient } from "@/lib/auth/auth-client";
 import { DocumentationLink } from "@/components/documentation-link";
 // Configuration is not health.
 import Link from "next/link";
@@ -12,6 +15,7 @@ import {
 import { useSetupSummary } from "@/lib/onboarding/setup-summary";
 export default function ConnectionsPage(): React.JSX.Element {
   const summary = useSetupSummary();
+  const { data: session } = authClient.useSession();
   return (
     <section className="connections-page">
       <header>
@@ -87,6 +91,7 @@ export default function ConnectionsPage(): React.JSX.Element {
         <h2>Apps and model providers</h2><p>Connect the AI models used for conversations and builds in Settings. Project access and publishing permissions stay separate.</p>
         <Link href="/settings/models">Manage models <ArrowUpRightIcon size={14} aria-hidden="true" /></Link>
       </div></article>
+      {summary.data?.role === "owner" && session?.user.id ? <><ProductionServerSetup actorId={session.user.id} /><ProductionHostSetup actorId={session.user.id} /></> : null}
       <h2 className="connections-roadmap">On the roadmap</h2>
       <div className="connection-roadmap-grid">
         {[

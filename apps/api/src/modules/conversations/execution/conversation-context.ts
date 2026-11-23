@@ -22,6 +22,7 @@ const MAX_DIAGNOSTIC_CHARS = 12_000;
 const MAX_FILE_MANIFEST_CHARS = 12_000;
 export interface ConversationContext {
   skillsV1?: SkillGuidance;
+  databaseWorkflowAvailable?: boolean;
   developmentDatabaseSelected?: true;
   project: { name: string; stack: string };
   messages: Array<{ role: "user" | "assistant"; content: string }>;

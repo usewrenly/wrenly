@@ -28,6 +28,7 @@ export async function listDeploymentHistory(
   database: typeof db,
   actorId: string,
   offset: number,
+  maintenanceEnabled = false,
 ): Promise<{
   deployments: Array<{
     id: string;
@@ -38,6 +39,7 @@ export async function listDeploymentHistory(
     status: string;
     createdAt: Date;
     url: string | null;
+    canManageRuntime: boolean;
   }>;
   nextOffset: number | null;
 }> {
@@ -53,6 +55,8 @@ export async function listDeploymentHistory(
         status: deployments.status,
         createdAt: deployments.createdAt,
         url: deployments.url,
+        ownerId: projects.userId,
+        databaseBinding: deployments.productionDatabaseBinding,
       })
       .from(deployments)
       .innerJoin(projects, eq(projects.id, deployments.projectId))
@@ -63,7 +67,15 @@ export async function listDeploymentHistory(
     return {
       deployments: rows
         .slice(0, DEPLOYMENT_HISTORY_PAGE_SIZE)
-        .map((row) => ({ ...row, url: publicDeploymentUrl(row.url) })),
+        .map(({ ownerId, databaseBinding, ...row }) => ({
+          ...row,
+          url: publicDeploymentUrl(row.url),
+          canManageRuntime:
+            maintenanceEnabled &&
+            ownerId === actorId &&
+            Boolean(databaseBinding) &&
+            row.status === "success",
+        })),
       nextOffset:
         rows.length > DEPLOYMENT_HISTORY_PAGE_SIZE &&
         offset + DEPLOYMENT_HISTORY_PAGE_SIZE <= 10000

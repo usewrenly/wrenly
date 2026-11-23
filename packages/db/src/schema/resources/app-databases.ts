@@ -1,3 +1,4 @@
+import type { ProductionOperationPrincipal } from "../../application-databases/production-cluster/resource-contract";
 // Control metadata for separately hosted application databases; never generated tables or app rows.
 // generated tables/data live in a different PostgreSQL resource, never this cluster.
 import type { AppDatabaseRuntimeIdentity } from "../../application-databases/runtime-contract";
@@ -91,6 +92,9 @@ export const appDatabaseOperations = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    executionPrincipal: jsonb(
+      "execution_principal",
+    ).$type<ProductionOperationPrincipal>(),
     actorId: text("actor_id")
       .notNull()
       .references(() => user.id, { onDelete: "restrict" }),

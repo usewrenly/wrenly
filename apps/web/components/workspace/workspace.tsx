@@ -485,6 +485,7 @@ export function Workspace({
         className="workspace-conversation-scroll min-h-0 flex-1 overflow-y-auto"
       >
         <ConversationTimeline
+          projectId={projectId}
           viewerName={viewerSession?.user?.name}
           viewerId={viewerSession?.user?.id}
           messages={conversation.messages}

@@ -114,3 +114,11 @@ shutdown, documented versions/limits and genuine sandbox/runtime acceptance.
 Use Conventional Commits and focused PRs explaining what, why and verification. Follow
 CONTRIBUTING.md and SECURITY.md; report suspected vulnerabilities privately. Never publish,
 deploy, change live storage or send messages as a side effect of a code review.
+
+Conversational Development databases use migration 0049. Model proposals carry only
+purpose and app instructions. Owner approval, exact resource/source revisions and current
+sessions authorize each saved continuation. Reuse existing database admission/workers;
+never add another SQL executor. Setup approval does not authorize later table changes.
+A separate reviewed card authorizes verified backup, rehearsal and application. Keep
+Stop/revocation fences inside operation-admission transactions, preserve request IDs on
+replay, and leave unknown execution outcomes blocked. Production publishing is separate.

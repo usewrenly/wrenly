@@ -1,6 +1,8 @@
 // Trusted toolchain only. Configuration arrives over stdin, never Docker Env/Cmd or a host file.
 import { writeFile } from "node:fs/promises";
-const MAX_INPUT_BYTES = 8192;
+// Includes a bounded CA chain for verified Production upstreams; Development keeps its two-field payload.
+const MAX_INPUT_BYTES = 48 * 1024;
+const MAX_CA_BYTES = 32 * 1024;
 async function main(): Promise<void> {
   const reader = Bun.stdin.stream().getReader();
   const chunks: Uint8Array[] = [];
@@ -19,13 +21,35 @@ async function main(): Promise<void> {
       !input ||
       typeof input !== "object" ||
       Array.isArray(input) ||
-      Object.keys(input).length !== 2 ||
+      Object.keys(input).some(
+        (key) =>
+          !["configuration", "authentication", "certificateAuthority"].includes(
+            key,
+          ),
+      ) ||
       !("configuration" in input) ||
       typeof input.configuration !== "string" ||
       !("authentication" in input) ||
       typeof input.authentication !== "string"
     )
       throw new Error("Invalid configuration");
+    if ("certificateAuthority" in input) {
+      if (
+        typeof input.certificateAuthority !== "string" ||
+        !input.certificateAuthority.length ||
+        Buffer.byteLength(input.certificateAuthority) > MAX_CA_BYTES ||
+        !/^-----BEGIN CERTIFICATE-----[\s\S]+-----END CERTIFICATE-----\s*$/.test(
+          input.certificateAuthority,
+        ) ||
+        input.certificateAuthority.includes("PRIVATE KEY")
+      )
+        throw new Error("Invalid certificate authority");
+      await writeFile(
+        "/run/wrenly-db-config/upstream-ca.pem",
+        input.certificateAuthority,
+        { mode: 0o600, flag: "wx" },
+      );
+    }
     await writeFile(
       "/run/wrenly-db-config/pgbouncer.ini",
       input.configuration,

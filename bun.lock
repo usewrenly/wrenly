@@ -22,6 +22,7 @@
         "@wrenly/inference": "*",
         "@wrenly/sandbox": "*",
         "better-auth": "^1.7.7",
+        "dockerode": "^4.0.2",
         "drizzle-orm": "^0.45.3",
         "hono": "^4.13.13",
         "sharp": "0.35.5",
@@ -32,8 +33,26 @@
         "@babel/preset-typescript": "8.0.1",
         "@repo/eslint-config": "*",
         "@repo/typescript-config": "*",
+        "@types/dockerode": "^3.3.31",
         "@types/node": "^20",
         "eslint": "10.9.1",
+      },
+    },
+    "apps/cli": {
+      "name": "@wrenly/cli",
+      "version": "0.1.0",
+      "bin": {
+        "wrenly": "dist/wrenly.js",
+      },
+      "devDependencies": {
+        "@babel/preset-typescript": "8.0.1",
+        "@repo/eslint-config": "*",
+        "@repo/typescript-config": "*",
+        "@types/bun": "^1.4.3",
+        "@types/node": "^20",
+        "eslint": "10.9.1",
+        "typescript": "7.0.2",
+        "zod": "^4.6.7",
       },
     },
     "apps/docs": {
@@ -199,6 +218,7 @@
         "@repo/eslint-config": "workspace:*",
         "@repo/typescript-config": "*",
         "@types/dockerode": "^3.3.31",
+        "drizzle-orm": "^0.45.3",
         "eslint": "10.9.1",
         "typescript": "*",
       },
@@ -774,6 +794,8 @@
     "@ungap/structured-clone": ["@ungap/structured-clone@1.4.0", "", {}, "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ=="],
 
     "@wrenly/api": ["@wrenly/api@workspace:apps/api"],
+
+    "@wrenly/cli": ["@wrenly/cli@workspace:apps/cli"],
 
     "@wrenly/db": ["@wrenly/db@workspace:packages/db"],
 
@@ -1929,6 +1951,8 @@
 
     "@wrenly/api/@types/node": ["@types/node@20.19.43", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA=="],
 
+    "@wrenly/cli/@types/node": ["@types/node@20.19.43", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA=="],
+
     "@wrenly/db/@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
 
     "@wrenly/deploy/@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
@@ -2158,6 +2182,8 @@
     "@types/ssh2/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
 
     "@wrenly/api/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+
+    "@wrenly/cli/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@wrenly/db/@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
 

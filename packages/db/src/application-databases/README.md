@@ -3,7 +3,9 @@
 A generated booking app stores reservations in its own PostgreSQL resource. These
 helpers operate on a connection supplied by a trusted isolated worker. They never
 import Wrenly's configured control connection or choose an operator database themselves.
-The full generated-app database product module remains disabled.
+Development databases are Experimental and enabled explicitly by the API. Production
+databases and database-backed publishing remain unavailable. Importing these helpers
+does not enable either environment.
 
 ## Finding the code
 

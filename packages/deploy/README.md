@@ -16,8 +16,10 @@ Gitea and Coolify API calls. The sandbox package builds the app inside Docker.
 
 ```text
 src/
+  databases/                Common internal database-provider contract
   providers/gitea/           Creates and checks private source repositories
-  providers/coolify/         Configures the running app and checks deployment status
+  providers/coolify/         Configures apps and checks deployment status
+    databases/              Private PostgreSQL provider contract (not activated)
   source-snapshots/          Uses Git to commit and push generated source
   http/                     Sends limited, authenticated provider requests
   secrets/                  Encrypts secrets and checks runtime settings
@@ -72,3 +74,44 @@ WRENLY_TEST_DEPLOY_HTTP=true bun test packages/deploy/tests/integration
 
 Local integration checks need Git, GNU timeout and local sockets. They use temporary
 repositories and fake credentials; they do not verify your real publishing services.
+
+## Private Production database provider work
+
+`providers/coolify/databases/` creates a private, stopped PostgreSQL 17 record
+from a previously saved creation intent. An **intent** is the API's durable record
+of the exact operation it is about to attempt. A response containing a UUID is
+not proof that the database is running, secured with TLS or ready for app data.
+
+The adapter uses a deterministic resource name and operation marker. Read-only
+recovery checks the pinned project, the bounded complete database collection and
+the exact remote details. It rejects collisions, public ports, changed images and
+server/destination substitution. Recovery never creates or starts a database, and
+a missing record never causes an automatic retry. Provider replies can contain
+passwords and connection URLs; these functions return only allowlisted identity facts.
+
+This adapter is not connected to API startup yet. Durable provider-effect recording,
+private routing, verified TLS, SQL roles and live Coolify contract acceptance remain
+required before Production setup can be enabled. Local HTTP fixtures test an uncertain
+create followed by read-only recovery; they do not establish live provider acceptance.
+
+Provider reference: [Coolify PostgreSQL creation API](https://coolify.io/docs/api/endpoints/databases/create-database-postgresql).
+
+## Adding another database infrastructure provider
+
+An adapter translates a common request into one service's API calls. Implement
+`DatabaseProvider` from `src/databases/provider.ts`, then explicitly configure it
+on the server. Its placement fields belong to that adapter; the common worker
+does not need to understand a vendor's project, region or destination identifiers.
+Coolify's translation is in `providers/coolify/databases/provider.ts`.
+
+The saved request includes `providerId`. Resolution requires exactly that configured
+adapter; there is no default-provider fallback, automatic package discovery or
+resource migration. Credentials remain server-only, and the API still owns intent
+recording, project/account authorization, kernel locks and uncertain-effect recovery.
+Adding an adapter must include real service contract acceptance before activation.
+The controlled second adapter in the worker tests proves the interface can be
+substituted; it is not advertised support for another deployment service.
+
+This is an internal TypeScript interface. Framework tools continue using MCP.
+A separate public integration API or MCP tool for provisioning would need its own
+authorization design; implementing this interface grants neither automatically.

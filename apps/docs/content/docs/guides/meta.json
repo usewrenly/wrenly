@@ -3,6 +3,7 @@
   "pages": [
     "---Get started---",
     "installation",
+    "guided-installer",
     "instance-setup",
     "model-provider-setup",
     "---Your workspace---",
@@ -14,6 +15,7 @@
     "private-publishing",
     "publishing-setup",
     "app-databases",
+    "production-database-evaluation",
     "---Accounts and teams---",
     "invitations",
     "account-settings"
