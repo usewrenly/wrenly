@@ -517,7 +517,7 @@ code, pre, .font-mono {
 .workspace-user-label { color: var(--color-text-2); margin-bottom: 10px; line-height: 1.6; }
 .workspace-user-brief p { font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .workspace-user-avatar { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex-shrink: 0; border: 1px solid var(--color-border); border-radius: 50%; background: var(--color-surface); color: var(--color-text-2); font-size: 10px; }
-.composer-controls { display: flex; align-items: flex-end; gap: 10px; padding: 0 12px 12px; }
+.composer-controls { display: flex; align-items: center; gap: 10px; padding: 0 12px 12px; }
 .composer-choices { display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto) minmax(0, 1fr); gap: 6px; min-width: 0; flex: 1; }
 .composer-choices .choice-trigger { min-width: 0; width: 100%; }
 .composer-choices .choice-trigger > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1060,8 +1060,10 @@ code, pre, .font-mono {
 .preview-media-host input { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--color-primary); }
 .preview-media-content > button { justify-self: start; min-height: 40px; background: var(--color-primary); color: var(--color-on-primary); }
 
-.composer-right-options { display: flex; align-items: center; min-width: 0; margin-left: auto; }
-.composer-send { margin-left: auto; }
+.composer-controls:has(.composer-right-options) { display: grid; grid-template-columns: minmax(auto, 1fr) minmax(0, auto) minmax(auto, 1fr); align-items: center; gap: 10px; }
+.composer-controls:has(.composer-right-options) > .composer-options-trigger { justify-self: start; }
+.composer-right-options { display: flex; align-items: center; justify-content: center; justify-self: center; min-width: 0; }
+.composer-send { margin-left: auto; justify-self: end; }
 .composer-right-options + .composer-send { margin-left: 0; }
 .composer-guidance { margin: 0; padding: 10px 16px 12px; font-size: 11px; line-height: 1.6; color: var(--color-text-2); background: linear-gradient(to bottom, transparent, var(--color-surface-2)); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .composer-options-popup { width: min(420px, calc(100vw - 32px)); max-height: min(650px, var(--available-height)); overflow-y: auto; padding: 18px; }

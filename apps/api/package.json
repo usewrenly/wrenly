@@ -31,6 +31,7 @@
     "sharp": "0.35.5",
     "yaml": "^2.9.1",
     "zod": "^4.6.7",
+    "@wrenly/audio": "*",
     "dockerode": "^4.0.2"
   },
   "devDependencies": {

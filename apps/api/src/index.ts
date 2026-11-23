@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import type { WhisperTranscriptionRuntime } from "@wrenly/sandbox/transcription-runtime";
+import type { TranscriptionAdapter } from "./modules/transcription/contracts";
 /**
  * Bun API startup and shutdown boundary.
  * Validates configuration and persistence before opening listeners and starting workers.
@@ -55,7 +58,15 @@ try {
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
-  let app = createProductionApp(environment)
+  let dictation: WhisperTranscriptionRuntime | undefined
+  const transcription: TranscriptionAdapter = {
+    available: () => dictation?.available() ?? false,
+    transcribe: async input => {
+      if (!dictation) throw new Error('Dictation is disabled.')
+      return dictation.transcribe(input)
+    },
+  }
+  let app = createProductionApp(environment, { transcription })
   let acceptingRequests = false
   // Bind the control port before claiming any work: a second API must not interrupt queued previews on startup failure.
   const server = Bun.serve({ hostname: environment.WRENLY_API_HOST, port: environment.WRENLY_API_PORT,
@@ -63,7 +74,7 @@ try {
       // Reserve the port before claims, but expose no routes until every required host service passed startup.
       if (!acceptingRequests) return Response.json({ error: 'Wrenly is starting. Try again shortly.' }, { status: 503, headers: { 'Retry-After': '1', 'Cache-Control': 'no-store' } })
       const path = new URL(request.url).pathname
-      if ((request.method === 'POST' && path === '/api/generate') || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
+      if ((request.method === 'POST' && (path === '/api/generate' || path === '/api/transcription')) || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
       return app.fetch(request)
     } })
   let conversationWorker: Awaited<ReturnType<typeof startProductionConversationWorker>> | undefined
@@ -115,11 +126,15 @@ try {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
       publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
+    if (environment.WRENLY_DICTATION_ENABLED === 'true') {
+      const { createWhisperTranscriptionRuntime } = await import('@wrenly/sandbox/transcription-runtime')
+      dictation = await createWhisperTranscriptionRuntime({ modelPath: environment.WRENLY_DICTATION_MODEL_PATH!, instanceScope: createHash('sha256').update(environment.WRENLY_DATA_DIR).digest('hex') })
+    }
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true', frameworkInspection: environment.WRENLY_FRAMEWORK_INSPECTION_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
-    app = createProductionApp(environment, { productionDatabases: productionCluster })
+    app = createProductionApp(environment, { productionDatabases: productionCluster, transcription })
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -130,7 +145,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {

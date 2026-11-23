@@ -1,3 +1,4 @@
+import type { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
 import type { DatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
 import type { OwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
 import type { MaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
@@ -56,6 +57,7 @@ export interface ApiHandlers {
   profilePictures?: ProfilePictureHandlers
   sharing?: SharingHandlers
   projectSettings?: ProjectSettingsHandlers
+  transcription?: ReturnType<typeof createTranscriptionHttpHandlers>
   providerConfiguration?: ProviderConfigurationHandlers
   catalog?: CatalogHandlers
   invitations?: InvitationHandlers
@@ -183,6 +185,10 @@ export function createApp(
   if (handlers.projectArchive) {
     app.get('/api/projects/:id/archive', c => handlers.projectArchive!.get(c.req.raw, c.req.param('id')))
     app.patch('/api/projects/:id/archive', c => handlers.projectArchive!.save(c.req.raw, c.req.param('id')))
+  }
+  if (handlers.transcription) {
+    app.get('/api/transcription', c => handlers.transcription!.capability(c.req.raw))
+    app.post('/api/transcription', c => handlers.transcription!.transcribe(c.req.raw))
   }
   if (handlers.drafts) {
     app.get('/api/drafts', c => handlers.drafts!.list(c.req.raw))

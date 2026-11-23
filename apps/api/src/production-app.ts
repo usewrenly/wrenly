@@ -1,3 +1,5 @@
+import { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
+import type { TranscriptionAdapter } from "./modules/transcription/contracts";
 import { createDatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
 import { createOwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
 import { runOwnerRuntimeControl, readOwnerRuntimeControl } from "./modules/deployments/maintenance/owner-control";
@@ -71,11 +73,22 @@ import { createBuildHttpHandlers } from './modules/builds/http/http'
 import { createPreviewHttpHandlers } from './modules/previews/http/http'
 import { createApp } from './app'
 
+const DISABLED_TRANSCRIPTION: TranscriptionAdapter = {
+  available: () => false,
+  transcribe: async () => {
+    throw new Error('Dictation is disabled.')
+  },
+}
+
 /** Connects the HTTP router to the existing server-only services. */
 export function createProductionApp(
   environment: ApiEnvironment,
-  services: { productionDatabases?: Omit<ProductionClusterModule, "stop"> } = {},
+  services: {
+    productionDatabases?: Omit<ProductionClusterModule, 'stop'>
+    transcription?: TranscriptionAdapter
+  } = {},
 ): Hono {
+  const transcription = services.transcription ?? DISABLED_TRANSCRIPTION
   // Startup owns workers and supplies their verified handlers only after prerequisites pass.
   const productionDatabases = environment.WRENLY_APP_DATABASES_ENABLED === 'true'
     ? services.productionDatabases : undefined;
@@ -112,6 +125,7 @@ export function createProductionApp(
   })
   return createApp(
     {
+      transcription: createTranscriptionHttpHandlers({ webUrl: environment.WRENLY_WEB_URL, userId: getUserId, adapter: transcription }),
       providerConfiguration: createProviderConfigurationHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, service: providerConfiguration }),
       catalog: createCatalogHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, catalog: () => getAvailableCatalog(db), refresh: actorId => refreshProviderCatalog(db, actorId) }),
       profilePictures: createProfilePictureHandlers({webUrl: environment.WRENLY_WEB_URL, session: getUserId, metadata: actor => getProfilePicture(db, actor), image: (actor, target, revision) => readProfilePicture(db, actor, target, revision), decode: decodeProfilePicture, save: (actor, input, bytes) => saveProfilePicture(db, actor, input, bytes)}),

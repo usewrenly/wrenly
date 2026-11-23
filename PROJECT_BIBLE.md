@@ -17,6 +17,11 @@ steps, with different evidence and permissions.
 
 ## Current scope
 
+Optional voice dictation runs locally through a pinned Whisper.cpp Docker runtime.
+A person records up to 60 seconds, reviews the transcript and inserts it into a draft;
+Send remains explicit. Audio is temporary, not a saved attachment or cloud service.
+See the public voice-dictation guide for the one-time model/runtime setup.
+
 Optional official framework inspection adds isolated Laravel Boost package facts and
 Next.js 16 DevTools error state to stateless repair attempts. It is off by default,
 uses a fixed offline browser visit for Next.js, and never grants live database or

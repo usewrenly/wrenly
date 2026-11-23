@@ -17,6 +17,7 @@
       "dependencies": {
         "@better-auth/drizzle-adapter": "^1.7.7",
         "@modelcontextprotocol/sdk": "^1.32.0",
+        "@wrenly/audio": "*",
         "@wrenly/db": "*",
         "@wrenly/deploy": "*",
         "@wrenly/inference": "*",
@@ -89,6 +90,7 @@
         "@repo/ui": "*",
         "@tailwindcss/postcss": "^4.3.3",
         "@tanstack/react-query": "^5.104.1",
+        "@wrenly/audio": "*",
         "@wrenly/db": "*",
         "better-auth": "^1.7.7",
         "class-variance-authority": "^0.7.1",
@@ -153,6 +155,15 @@
       "name": "@wrenly/vue-agent",
       "version": "0.0.1",
     },
+    "packages/audio": {
+      "name": "@wrenly/audio",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@repo/typescript-config": "*",
+        "@types/node": "*",
+        "typescript": "*",
+      },
+    },
     "packages/db": {
       "name": "@wrenly/db",
       "version": "0.0.1",
@@ -210,6 +221,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.32.0",
+        "@wrenly/audio": "*",
         "@wrenly/db": "workspace:*",
         "@wrenly/inference": "workspace:*",
         "dockerode": "^4.0.2",
@@ -794,6 +806,8 @@
     "@ungap/structured-clone": ["@ungap/structured-clone@1.4.0", "", {}, "sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ=="],
 
     "@wrenly/api": ["@wrenly/api@workspace:apps/api"],
+
+    "@wrenly/audio": ["@wrenly/audio@workspace:packages/audio"],
 
     "@wrenly/cli": ["@wrenly/cli@workspace:apps/cli"],
 
@@ -1951,6 +1965,8 @@
 
     "@wrenly/api/@types/node": ["@types/node@20.19.43", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA=="],
 
+    "@wrenly/audio/@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
+
     "@wrenly/cli/@types/node": ["@types/node@20.19.43", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA=="],
 
     "@wrenly/db/@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
@@ -2182,6 +2198,8 @@
     "@types/ssh2/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
 
     "@wrenly/api/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
+
+    "@wrenly/audio/@types/node/undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
 
     "@wrenly/cli/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 

@@ -102,6 +102,13 @@ test('Development databases require explicit opt-in and verified preview configu
   expect(parseApiEnvironment({ ...BASE, WRENLY_AUTH_SECRET: 'a'.repeat(64), WRENLY_PREVIEW_ENABLED: 'true', WRENLY_APP_DATABASES_ENABLED: 'true' }).WRENLY_APP_DATABASES_ENABLED).toBe('true')
 })
 
+test('local dictation is optional and enabling it requires an absolute model artifact path', () => {
+  expect(parseApiEnvironment(BASE).WRENLY_DICTATION_ENABLED).toBe('false')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_DICTATION_ENABLED: 'true' })).toThrow('WRENLY_DICTATION_MODEL_PATH')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_DICTATION_MODEL_PATH: 'relative/model.bin' })).toThrow('WRENLY_DICTATION_MODEL_PATH')
+  expect(parseApiEnvironment({ ...BASE, WRENLY_DICTATION_ENABLED: 'true', WRENLY_DICTATION_MODEL_PATH: '/models/ggml-base.bin' }).WRENLY_DICTATION_MODEL_PATH).toBe('/models/ggml-base.bin')
+})
+
 test('official framework inspection is optional and accepts only an explicit boolean setting', () => {
   expect(parseApiEnvironment(BASE).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('false')
   expect(parseApiEnvironment({ ...BASE, WRENLY_FRAMEWORK_INSPECTION_ENABLED: 'true' }).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('true')
