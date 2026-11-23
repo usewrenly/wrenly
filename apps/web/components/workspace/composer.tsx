@@ -363,9 +363,6 @@ export function Composer({
 
         {/* Send */}
         <div className="composer-send">
-          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
-            ⏎ to send
-          </span>
           {dictation.available && (
             <button
               type="button"
@@ -377,6 +374,9 @@ export function Composer({
               <MicIcon size={17} aria-hidden="true" />
             </button>
           )}
+          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
+            ⏎ to send
+          </span>
           <button
             type="button"
             onClick={() => void submit()}
