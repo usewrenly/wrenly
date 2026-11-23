@@ -361,12 +361,22 @@ export function Composer({
         </Popover.Root>
         {!compact && <div className="composer-right-options">{mode === "plan" && <span className="composer-plan-indicator">Plan</span>}{choices}</div>}
 
-        {dictation.available && <button type="button" aria-label="Dictate a prompt" disabled={Boolean(blocked || readOnly || dictation.busy)} onClick={dictation.begin} className="rounded-lg p-2 text-[var(--color-text-3)] hover:bg-[var(--color-surface-2)] disabled:opacity-40"><MicIcon size={17} /></button>}
         {/* Send */}
         <div className="composer-send">
           <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
             ⏎ to send
           </span>
+          {dictation.available && (
+            <button
+              type="button"
+              aria-label="Dictate a prompt"
+              disabled={Boolean(blocked || readOnly || dictation.busy)}
+              onClick={dictation.begin}
+              className="flex size-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-text-3)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-1)] disabled:opacity-40"
+            >
+              <MicIcon size={17} aria-hidden="true" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void submit()}
