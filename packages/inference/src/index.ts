@@ -32,3 +32,30 @@ export {
   type FileOperation,
   type EditErrorCode,
 } from "./contracts/edit-contract";
+
+export {
+  ATTACHMENT_LIMITS,
+  AttachmentPolicyError,
+  validateAttachmentBatch,
+  decodeAttachmentText,
+  detectAttachmentImage,
+  type AttachmentMediaType,
+} from "./attachments/policy";
+export {
+  parseAttachmentSnapshot,
+  type AttachmentSnapshot,
+  type AttachmentReference,
+} from "./attachments/references";
+export {
+  buildAttachmentMessage,
+  type ModelAttachment,
+  type AttachmentMessagePart,
+} from "./attachments/model-content";
+export {
+  parseAttachmentWireContent,
+  encodeAttachmentWireContent,
+  ATTACHMENT_WIRE_SCHEMA,
+  MAX_ATTACHMENT_TOOL_REQUEST_BYTES,
+  type AttachmentWireContent,
+} from "./attachments/wire-content";
+export { attachmentPromptContent } from "./attachments/wire-content";

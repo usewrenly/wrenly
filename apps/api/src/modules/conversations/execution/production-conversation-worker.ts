@@ -1,3 +1,4 @@
+import { attachmentExecutionContent, validateAttachmentExecution, attachmentAdmissionValidator } from "../../attachments/production-services";
 import { saveDatabaseProposal } from "../database-workflow/store";
 import { reconcileDatabaseWorkflows } from "../database-workflow/worker";
 import { conversationDatabaseWorkflows } from "@wrenly/db";
@@ -58,6 +59,7 @@ export async function verifyConversationSchema(
         id: conversationTurns.id,
         actorId: conversationTurns.actorId,
         databaseV1: conversationTurns.databaseV1,
+        attachmentsV1: conversationTurns.attachmentsV1,
       })
       .from(conversationTurns)
       .limit(1);
@@ -92,7 +94,7 @@ export async function verifyConversationSchema(
       .limit(1);
   } catch {
     throw new Error(
-      "Conversation persistence requires migrations through 0049. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
+      "Conversation persistence requires migrations through 0050. Check PostgreSQL and run bun run db:migrate from packages/db before starting the API.",
     );
   }
 }
@@ -130,8 +132,11 @@ export async function startProductionConversationWorker(
               "The selected provider is no longer configured. Select another provider and submit a new message.",
             );
           }
+          const directory = databaseWorkflow?.directory ?? resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly");
+          const attachments = await attachmentExecutionContent(directory, claim.input.attachmentsV1);
+          await validateAttachmentExecution(database, claim.input.provider, claim.input.model, attachments);
           return inferConversationDecision(
-            { context, model: claim.input.model, mode: claim.input.mode },
+            { context, model: claim.input.model, mode: claim.input.mode, attachments },
             provider,
             signal,
             createInferenceFetch({
@@ -156,6 +161,7 @@ export async function startProductionConversationWorker(
           } else if (decision.type === "propose_build")
             await admitConversationBuildAction(database, claim, decision, {
               resolveProvider: getProvider,
+              validateAttachments: attachmentAdmissionValidator(databaseWorkflow?.directory ?? resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly")),
               resolveSelection: (provider, model, transaction) =>
                 resolveInferenceSelection(transaction, provider, model),
               defaultModel: claim.input.model,
@@ -183,6 +189,7 @@ export async function startProductionConversationWorker(
             directory: databaseWorkflow.directory,
             build: {
               resolveProvider: getProvider,
+              validateAttachments: attachmentAdmissionValidator(databaseWorkflow.directory),
               resolveSelection: (provider, model, transaction) =>
                 resolveInferenceSelection(transaction, provider, model),
               defaultModel: "",
@@ -209,7 +216,7 @@ export async function startProductionConversationWorker(
     };
   } catch {
     throw new Error(
-      "Conversation worker could not start. Check PostgreSQL and apply the checked-in migrations through 0049.",
+      "Conversation worker could not start. Check PostgreSQL and apply the checked-in migrations through 0050.",
     );
   }
 }

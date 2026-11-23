@@ -1,3 +1,4 @@
+import { parseAttachmentIds, parsePromptAttachment, type PromptAttachment } from "../attachments/contracts";
 // Validates saved conversation data before it becomes browser state.
 import { BuildDatabaseSelection } from "@wrenly/db/app-database-build-contract";
 import { isSkillUsage, type SkillUsed } from "../skills/contracts";
@@ -9,6 +10,7 @@ const MAX_MESSAGE_CHARACTERS = 16_000
 export type ConversationMode = 'auto' | 'ask' | 'build' | 'plan'
 export type TurnStatus = 'queued' | 'running' | 'waiting_build' | 'completed' | 'failed' | 'interrupted' | 'cancelled'
 export interface ConversationRequest {
+  attachmentIds?: string[]
   database?: BuildDatabaseSelection
   message: string
   mode: ConversationMode
@@ -33,6 +35,7 @@ export interface ConversationMessage {
   createdAt: string
 }
 export interface ConversationTurn {
+  attachments?: PromptAttachment[]
   database?: BuildDatabaseSelection
   skillsUsed?: SkillUsed[]
   actorId?: string
@@ -62,10 +65,15 @@ function object(value: unknown): value is Record<string, unknown> {
 function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string'
 }
+function validAttachments(value: unknown): boolean {
+  try { return Array.isArray(value) && value.length <= 4 && value.every(file => Boolean(parsePromptAttachment(file))); }
+  catch { return false; }
+}
 function isTurn(value: unknown): value is ConversationTurn {
   return object(value)
     && (value.database === undefined || BuildDatabaseSelection.safeParse(value.database).success)
     && (value.skillsUsed === undefined || isSkillUsage(value.skillsUsed))
+    && (value.attachments === undefined || validAttachments(value.attachments))
     && (value.actorId === undefined || typeof value.actorId === 'string')
     && typeof value.id === 'string'
     && TURN_STATUSES.has(String(value.status))
@@ -112,6 +120,6 @@ export function parseConversationRequest(value: unknown): ConversationRequest {
     (value.database !== undefined && !BuildDatabaseSelection.safeParse(value.database).success) ||
     (value.model !== undefined && typeof value.model !== 'string') || (value.provider !== undefined && typeof value.provider !== 'string'))
     throw new Error('The saved message could not be restored. Review it before sending again.')
-  return { ...(value.database !== undefined ? { database: BuildDatabaseSelection.parse(value.database) } : {}), message: value.message, mode: value.mode as ConversationMode, baseBuildId: value.baseBuildId,
+  return { ...(value.attachmentIds !== undefined ? { attachmentIds: parseAttachmentIds(value.attachmentIds) } : {}), ...(value.database !== undefined ? { database: BuildDatabaseSelection.parse(value.database) } : {}), message: value.message, mode: value.mode as ConversationMode, baseBuildId: value.baseBuildId,
     ...(typeof value.model === 'string' ? { model: value.model } : {}), ...(typeof value.provider === 'string' ? { provider: value.provider } : {}) }
 }

@@ -1,4 +1,9 @@
 import {
+  encodeAttachmentWireContent,
+  parseAttachmentWireContent,
+  type AttachmentWireContent,
+} from "../attachments/wire-content";
+import {
   parseFrameworkInspectionReport,
   frameworkSourceHash,
   type FrameworkInspectionReport,
@@ -14,6 +19,7 @@ import {
 // Complete source is never truncated. The API separately checks operation existence
 // and merges against its saved revision; these helpers grant no execution authority.
 export interface EditInput {
+  attachments_v1?: AttachmentWireContent;
   framework_inspection_v1?: FrameworkInspectionReport;
   skills_v1?: SkillGuidance;
   version: 1;
@@ -108,6 +114,7 @@ export function parseEditInput(value: unknown): EditInput {
           "previousErrors",
           "attempt",
           "skills_v1",
+          "attachments_v1",
           "framework_inspection_v1",
         ].includes(key),
     )
@@ -155,7 +162,11 @@ export function parseEditInput(value: unknown): EditInput {
       "invalid_edit_input",
       "Complete revision exceeds the editing context budget. No files were truncated.",
     );
+  const attachmentFiles = parseAttachmentWireContent(value.attachments_v1);
   return {
+    ...(value.attachments_v1 === undefined
+      ? {}
+      : { attachments_v1: encodeAttachmentWireContent(attachmentFiles) }),
     ...(inspection ? { framework_inspection_v1: inspection } : {}),
     ...(value.skills_v1 === undefined
       ? {}

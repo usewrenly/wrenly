@@ -9,6 +9,8 @@ export const providerConnections = pgTable('provider_connections', {
   endpoint: text('endpoint').notNull(), catalogProviderId: text('catalog_provider_id'),
   envSourceId: text('env_source_id').unique(), credential: jsonb('credential').$type<unknown>(),
   enabled: boolean('enabled').notNull().default(true),
+  imageModelIds: jsonb('image_model_ids').$type<string[]>().notNull().default([]),
+  imageInputRevision: uuid('image_input_revision').notNull().defaultRandom(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })

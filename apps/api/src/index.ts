@@ -58,6 +58,11 @@ try {
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
+  const { promptAttachments, providerConnections } = await import('@wrenly/db/schema');
+  try {
+    await db.select({ id: promptAttachments.id, readyAt: promptAttachments.readyAt }).from(promptAttachments).limit(0);
+    await db.select({ imageModelIds: providerConnections.imageModelIds, imageInputRevision: providerConnections.imageInputRevision }).from(providerConnections).limit(0);
+  } catch { throw new Error('Attachments require migrations through 0050. Run bun run db:migrate before starting Wrenly.'); }
   let dictation: WhisperTranscriptionRuntime | undefined
   const transcription: TranscriptionAdapter = {
     available: () => dictation?.available() ?? false,
@@ -77,6 +82,7 @@ try {
       if ((request.method === 'POST' && (path === '/api/generate' || path === '/api/transcription')) || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
       return app.fetch(request)
     } })
+  let attachmentCleanup: { stop(): Promise<void> } | undefined;
   let conversationWorker: Awaited<ReturnType<typeof startProductionConversationWorker>> | undefined
   let publishing: DeploymentWorkerLifecycle | undefined
   let databaseModule: PreviewLifecycle | undefined
@@ -126,6 +132,11 @@ try {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
       publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
+    const { startAttachmentCleanup } = await import('./modules/attachments/cleanup-worker');
+    const { expireAttachmentUploads, attachmentCleanupCandidates } = await import('./modules/attachments/attachment-store');
+    const { attachmentObjects } = await import('./modules/attachments/production-services');
+    const objects = attachmentObjects(environment.WRENLY_DATA_DIR);
+    attachmentCleanup = startAttachmentCleanup({ expire: () => expireAttachmentUploads(db), candidates: cursor => attachmentCleanupCandidates(db, cursor), remove: id => objects.remove(id) });
     if (environment.WRENLY_DICTATION_ENABLED === 'true') {
       const { createWhisperTranscriptionRuntime } = await import('@wrenly/sandbox/transcription-runtime')
       dictation = await createWhisperTranscriptionRuntime({ modelPath: environment.WRENLY_DICTATION_MODEL_PATH!, instanceScope: createHash('sha256').update(environment.WRENLY_DATA_DIR).digest('hex') })
@@ -134,7 +145,7 @@ try {
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
     app = createProductionApp(environment, { productionDatabases: productionCluster, transcription })
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -145,7 +156,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {

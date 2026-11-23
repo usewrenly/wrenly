@@ -41,10 +41,14 @@ export function createBuildWorkerDependencies(
       isBuildCancellationRequested(database, claim),
     reconcile: () => reconcileExpiredBuild(database, adapters.cleanup),
     execute: async (claim, signal) => {
-      if (claim.input.databaseV1 !== undefined && adapters.databaseValidation === false)
+      if (
+        claim.input.databaseV1 !== undefined &&
+        adapters.databaseValidation === false
+      )
         throw new BuildExecutionInterruptedError();
       return executeClaimedBuild(claim, signal, {
         generate: adapters.generate,
+        resolveAttachments: adapters.resolveAttachments,
         validate: adapters.validate,
         streamsValidationLogs: adapters.streamsValidationLogs,
         progress: (owned, progress) =>

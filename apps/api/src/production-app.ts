@@ -1,3 +1,8 @@
+import { createAttachmentHttpHandlers } from "./modules/attachments/attachment-http";
+import { attachmentObjects } from "./modules/attachments/production-services";
+import { decodeAttachmentImage } from "./modules/attachments/images/decoder";
+import { saveAttachmentUpload, completeAttachmentUpload, findAttachmentUpload, readAttachmentReference, removeAttachmentUpload } from "./modules/attachments/attachment-store";
+import { attachmentAdmissionValidator } from "./modules/attachments/production-services";
 import { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
 import type { TranscriptionAdapter } from "./modules/transcription/contracts";
 import { createDatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
@@ -92,6 +97,13 @@ export function createProductionApp(
   // Startup owns workers and supplies their verified handlers only after prerequisites pass.
   const productionDatabases = environment.WRENLY_APP_DATABASES_ENABLED === 'true'
     ? services.productionDatabases : undefined;
+  const attachments = createAttachmentHttpHandlers({
+    webUrl: environment.WRENLY_WEB_URL, userId: getUserId,
+    objects: attachmentObjects(environment.WRENLY_DATA_DIR), decodeImage: decodeAttachmentImage,
+    save: (actor, input) => saveAttachmentUpload(db, actor, input), complete: (actor, id) => completeAttachmentUpload(db, actor, id),
+    read: (actor, id) => readAttachmentReference(db, actor, id), findUpload: (actor, requestId) => findAttachmentUpload(db, actor, requestId),
+    remove: (actor, id) => removeAttachmentUpload(db, actor, id),
+  });
   const providerConfiguration = createProviderConfigurationService({
     environment: { list: listEnvironmentProviders, resolve: resolveEnvironmentProvider },
     owner: actorId => assertProviderConfigurationOwner(db, actorId), catalog: () => getAvailableCatalog(db),
@@ -106,6 +118,7 @@ export function createProductionApp(
   const buildHandlers = createBuildHttpHandlers({
     userId: getUserId,
     admit: (body, userId, key) => admitBuild(body, userId, key, {
+      validateAttachments: attachmentAdmissionValidator(environment.WRENLY_DATA_DIR),
       db, allowDatabaseSelection: environment.WRENLY_APP_DATABASES_ENABLED === 'true', resolveProvider: getProvider, resolveSelection: (provider, model, transaction) => resolveInferenceSelection(transaction, provider, model), defaultModel: process.env.WRENLY_MODEL_NAME ?? DEFAULT_MODEL_NAME,
     }),
     snapshot: (id, userId) => getOwnedBuild(db, id, userId),
@@ -128,6 +141,7 @@ export function createProductionApp(
       transcription: createTranscriptionHttpHandlers({ webUrl: environment.WRENLY_WEB_URL, userId: getUserId, adapter: transcription }),
       providerConfiguration: createProviderConfigurationHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, service: providerConfiguration }),
       catalog: createCatalogHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, catalog: () => getAvailableCatalog(db), refresh: actorId => refreshProviderCatalog(db, actorId) }),
+      attachments,
       profilePictures: createProfilePictureHandlers({webUrl: environment.WRENLY_WEB_URL, session: getUserId, metadata: actor => getProfilePicture(db, actor), image: (actor, target, revision) => readProfilePicture(db, actor, target, revision), decode: decodeProfilePicture, save: (actor, input, bytes) => saveProfilePicture(db, actor, input, bytes)}),
       memberAccess:createMemberAccessHandlers({webUrl:environment.WRENLY_WEB_URL,session:getUserId,change:(actor,headers,input)=>changeMemberAccess(db,actor,headers,input,invitationConfig),status:(actor,id)=>getMemberAccessAction(db,actor,id)}),
       invitations: createInvitationHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId,
@@ -190,6 +204,7 @@ export function createProductionApp(
       conversations: createConversationHttpHandlers({
         userId: getUserId,
         admit: (projectId, userId, key, body) => admitConversationTurn(projectId, userId, key, body, {
+          validateAttachments: attachmentAdmissionValidator(environment.WRENLY_DATA_DIR),
           db, allowDatabaseSelection: environment.WRENLY_APP_DATABASES_ENABLED === 'true', resolveProvider: getProvider, resolveSelection: (provider, model, transaction) => resolveInferenceSelection(transaction, provider, model), defaultModel: process.env.WRENLY_MODEL_NAME ?? DEFAULT_MODEL_NAME,
         }),
         history: (projectId, userId, after, limit) => getConversationHistory(db, projectId, userId, after, limit),

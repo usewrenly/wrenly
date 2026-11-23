@@ -224,6 +224,7 @@ export function ConversationTimeline({
                   viewerName={viewerName}
                   viewerId={viewerId}
                   content={message.content}
+                  attachments={turn?.attachments}
                   timestamp={message.createdAt}
                   onRevise={
                     !disabled &&

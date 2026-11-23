@@ -3,6 +3,8 @@
  * Authenticates and bounds requests, then delegates to saved-work services.
  * Closing a progress stream closes observation only; cancellation requires its separate authorized action.
  */
+import { AttachmentPolicyError } from "@wrenly/inference";
+import { AttachmentStoreError } from "../../attachments/attachment-error";
 import { SkillError } from "../../skills/skill-contract";
 import { AccessDeniedError } from "../../auth/access/access-policy";
 import { z } from "zod";
@@ -122,6 +124,16 @@ export function createBuildHttpHandlers(
           return Response.json(
             { error: error.message },
             { status: error.status },
+          );
+        if (error instanceof AttachmentStoreError)
+          return Response.json(
+            { error: error.message },
+            { status: error.status },
+          );
+        if (error instanceof AttachmentPolicyError)
+          return Response.json(
+            { error: error.message },
+            { status: 400 },
           );
         return unavailable(error);
       }

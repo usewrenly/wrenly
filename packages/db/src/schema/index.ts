@@ -20,6 +20,7 @@ export * from './configuration/provider-connections'
 export * from './configuration/skills'
 export * from './resources/app-database-validations'
 export * from './resources/preview-databases'
+export * from './resources/prompt-attachments'
 
 export * from "./resources/production-database-setups"
 

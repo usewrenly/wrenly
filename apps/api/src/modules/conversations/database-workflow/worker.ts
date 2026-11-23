@@ -52,7 +52,10 @@ export interface WorkflowServices {
   directory: string;
   build: Pick<
     AdmissionDependencies,
-    "resolveProvider" | "defaultModel" | "resolveSelection"
+    | "resolveProvider"
+    | "defaultModel"
+    | "resolveSelection"
+    | "validateAttachments"
   >;
 }
 type Patch = Partial<typeof workflows.$inferInsert>;
@@ -156,6 +159,9 @@ async function startSavedBuild(
         db: database,
         transaction: tx,
         frozenSkills: turn.skillsV1,
+        ...(turn.attachmentsV1?.files.length
+          ? { frozenAttachments: turn.attachmentsV1 }
+          : {}),
         databaseSelection: {
           version: 1,
           environment: "development",

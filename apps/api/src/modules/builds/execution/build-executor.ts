@@ -1,4 +1,9 @@
 import {
+  parseAttachmentSnapshot,
+  type AttachmentSnapshot,
+  type AttachmentWireContent,
+} from "@wrenly/inference";
+import {
   parseFrameworkInspectionReport,
   frameworkSourceHash,
   type FrameworkInspectionReport,
@@ -33,6 +38,10 @@ const FilesSchema = z
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 
 export interface BuildExecutorDependencies {
+  resolveAttachments?: (
+    snapshot: AttachmentSnapshot,
+    signal: AbortSignal,
+  ) => Promise<AttachmentWireContent>;
   generate: (
     stack: string,
     input: AgentInput,
@@ -76,6 +85,14 @@ export async function executeClaimedBuild(
 ): Promise<BuildOutcome> {
   const input = claim.input;
   const databaseGuidance = databaseBuildGuidance(input.stack, input.databaseV1);
+  const attachmentSnapshot = parseAttachmentSnapshot(input.attachmentsV1);
+  if (attachmentSnapshot.files.length && !dependencies.resolveAttachments)
+    throw new Error(
+      "Saved reference files are unavailable. No attachment was dropped.",
+    );
+  const attachments = attachmentSnapshot.files.length
+    ? await dependencies.resolveAttachments!(attachmentSnapshot, signal)
+    : undefined;
   const previousErrors = [...input.previousErrors];
   let source = input.previousFiles;
   let inspection: FrameworkInspectionReport | undefined;
@@ -119,6 +136,7 @@ export async function executeClaimedBuild(
           {
             buildId: claim.buildId,
             skills_v1: input.skillsV1,
+            ...(attachments ? { attachments_v1: attachments } : {}),
             ...(editing ? { previousFiles: source } : {}),
             prompt: [
               context

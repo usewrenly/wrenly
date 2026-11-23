@@ -1,3 +1,5 @@
+import { parseAttachmentSnapshot, type AttachmentSnapshot } from "@wrenly/inference";
+import { bindRequestAttachments } from "../../attachments/attachment-store";
 /**
  * Accepting and remembering a build request.
  * Checks the current actor/project, resolves the chosen model/source/skills and commits one queued operation before any model or Docker call.
@@ -67,6 +69,8 @@ export interface AdmissionDependencies {
   defaultModel: string;
   /** When linking a conversation action, admission must share its outer transaction. */
   frozenSkills?: SkillGuidance;
+  frozenAttachments?: AttachmentSnapshot;
+  validateAttachments?: (transaction: BuildAdmissionTransaction, provider: string, model: string, snapshot: AttachmentSnapshot) => Promise<void>;
   /** A server-frozen choice used by atomic conversation handoff and controlled acceptance. */
   databaseSelection?: BuildDatabaseSelection;
   /** Browser selections remain rejected until the host composition enables the complete database workflow. */
@@ -86,6 +90,7 @@ export function buildRequestIdentity(input: RequestInput): string {
     input.retryBuildId ?? null,
     input.deploy,
     ...(input.database !== undefined ? [input.database] : []),
+    ...(input.attachmentIds !== undefined ? [{ attachmentsV1: input.attachmentIds }] : []),
   ]);
 }
 
@@ -411,12 +416,15 @@ export async function admitBuild(
             }
           : dependencies,
       );
+      const buildId = crypto.randomUUID();
       if (input.retryBuildId) {
         const [original] = await transaction
           .select({ input: buildJobs.input })
           .from(buildJobs)
           .where(eq(buildJobs.buildId, input.retryBuildId));
         resolved.skillsV1 = parseSkillGuidance(original?.input.skillsV1);
+        if (dependencies.frozenAttachments !== undefined) throw new BuildAdmissionError(400, "Retry uses saved attachment references.");
+        resolved.attachmentsV1 = parseAttachmentSnapshot(original?.input.attachmentsV1);
         if (dependencies.databaseSelection !== undefined)
           throw new BuildAdmissionError(400, "Retry uses the saved database choice. Submit a new request to change it.");
         try {
@@ -440,7 +448,17 @@ export async function admitBuild(
           throw error;
         }
       }
-      const buildId = crypto.randomUUID();
+      if (!input.retryBuildId) {
+        if (input.attachmentIds !== undefined && dependencies.frozenAttachments !== undefined) throw new BuildAdmissionError(400, "A saved attachment selection cannot be replaced by this request.");
+        if (input.attachmentIds?.length && !dependencies.validateAttachments) throw new BuildAdmissionError(409, "Attachments are not enabled on this instance yet.");
+        resolved.attachmentsV1 = dependencies.frozenAttachments !== undefined
+          ? parseAttachmentSnapshot(dependencies.frozenAttachments)
+          : await bindRequestAttachments(transaction, userId, project.id, buildId, input.attachmentIds ?? []);
+      }
+      if (resolved.attachmentsV1?.files.length) {
+        if (!dependencies.validateAttachments) throw new BuildAdmissionError(409, "Attachments are not enabled on this instance yet.");
+        await dependencies.validateAttachments(transaction, resolved.provider, resolved.model, resolved.attachmentsV1);
+      }
       await transaction.insert(builds).values({
         id: buildId,
         projectId: project.id,

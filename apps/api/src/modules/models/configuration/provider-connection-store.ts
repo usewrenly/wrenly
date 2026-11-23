@@ -40,6 +40,8 @@ const Update = z
     label: z.string().trim().min(1).max(100).optional(),
     token: z.string().trim().max(8192).optional(),
     enabled: z.boolean().optional(),
+    imageModelIds: z.array(z.string().trim().min(1).max(512)).max(100).refine(ids => new Set(ids).size === ids.length).optional(),
+    expectedImageInputRevision: z.string().uuid().optional(),
   })
   .strict();
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -132,6 +134,8 @@ const Metadata = {
   kind: providerConnections.kind,
   endpoint: providerConnections.endpoint,
   enabled: providerConnections.enabled,
+  imageModelIds: providerConnections.imageModelIds,
+  imageInputRevision: providerConnections.imageInputRevision,
   catalogProviderId: providerConnections.catalogProviderId,
   envSourceId: providerConnections.envSourceId,
 };
@@ -145,6 +149,8 @@ export interface ProviderConnectionMetadata {
   enabled: boolean;
   catalogProviderId: string | null;
   tokenConfigured: boolean;
+  imageModelIds?: string[];
+  imageInputRevision?: string;
   envSourceId?: string | null;
 }
 /** Owner-only safe projection; saved tokens and their encrypted envelopes are never returned to the browser. */
@@ -301,7 +307,7 @@ export function updateProviderConnection(
     if (!parsed.success)
       throw new ProviderConnectionError(
         400,
-        "Only label, token and enabled state can be changed; use a new connection for another endpoint or protocol.",
+        "Only label, token, enabled state and reviewed image models can be changed; use a new connection for another endpoint or protocol.",
       );
     const input = parsed.data;
     await database.transaction(async (tx) => {
@@ -316,6 +322,11 @@ export function updateProviderConnection(
           409,
           "Provider connection not found.",
         );
+      if (input.imageModelIds !== undefined && input.expectedImageInputRevision !== row.imageInputRevision) {
+        throw new ProviderConnectionError(409, "Image input settings changed. Refresh the connection before saving.");
+      }
+      if (input.expectedImageInputRevision !== undefined && input.imageModelIds === undefined)
+        throw new ProviderConnectionError(400, "Provide the reviewed image model list.");
       const replacement = input.token
         ? encryptProviderToken(
             input.token,
@@ -327,6 +338,7 @@ export function updateProviderConnection(
         .update(providerConnections)
         .set({
           ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.imageModelIds !== undefined ? { imageModelIds: input.imageModelIds, imageInputRevision: crypto.randomUUID() } : {}),
           ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
           ...(replacement ? { credential: replacement } : {}),
           updatedAt: new Date(),
@@ -337,7 +349,7 @@ export function updateProviderConnection(
         .values({
           actorId,
           connectionId: row.id,
-          action: replacement
+          action: input.imageModelIds !== undefined ? "image_inputs_reviewed" : replacement
             ? "token_replaced"
             : input.enabled !== undefined
               ? input.enabled

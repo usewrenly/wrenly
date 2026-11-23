@@ -1,3 +1,4 @@
+import { attachmentPromptContent, type AttachmentWireContent } from "@wrenly/inference"
 import { skillGuidanceMessage, SKILL_AUTHORITY, type SkillGuidance } from "@wrenly/inference"
 // Turns a build request into Next.js source using the selected model connection.
 // The MCP server calls these functions; returned files still require Docker validation.
@@ -17,6 +18,7 @@ export type FileTree = Array<{
 }>
 
 export type AgentInput = {
+  attachments_v1?: AttachmentWireContent
   skills_v1?: SkillGuidance
   prompt: string
   previousErrors: string[]  // empty on attempt 1, filled on retries
@@ -189,7 +191,7 @@ export async function generateApp(value: unknown): Promise<AgentOutput> {
       messages: [
         { role: 'system', content: SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY },
         ...(guidance ? [{ role: 'user' as const, content: guidance }] : []),
-        { role: 'user', content: buildUserMessage(input) },
+        { role: 'user', content: attachmentPromptContent(buildUserMessage(input), input.attachments_v1) },
       ],
     })
     const choice = response.choices[0]
@@ -209,7 +211,7 @@ export async function editApp(value: unknown): Promise<EditOutput> {
   try {
     const response = await client.chat.completions.create({
       model: MODEL, temperature: 0.1, response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: EDIT_SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY }, { role: 'user', content: JSON.stringify(input) }],
+      messages: [{ role: 'system', content: EDIT_SYSTEM_PROMPT + '\n' + SKILL_AUTHORITY }, { role: 'user', content: attachmentPromptContent(JSON.stringify({ ...input, attachments_v1: undefined }), input.attachments_v1) }],
     }, { maxRetries: 0 })
     return parseEditCompletion(response.choices[0])
   } catch (error) {

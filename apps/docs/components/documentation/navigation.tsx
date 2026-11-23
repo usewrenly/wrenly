@@ -25,6 +25,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
     pages: [
       ["/docs/guides/model-provider-setup", "sparkles"],
       ["/docs/guides/skills", "book"],
+      ["/docs/guides/prompt-attachments", "layers"],
       ["/docs/guides/voice-dictation", "sparkles"],
     ],
   },

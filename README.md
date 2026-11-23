@@ -33,6 +33,8 @@ isolated preview before publishing.
   configured in the dashboard.
 - **A place for your team.** Authenticated accounts, private invitations, project
   sharing and Viewer/Editor roles. Projects start private.
+- **References alongside your prompt.** Attach screenshots or short text documents;
+  image input requires a compatible, configured model.
 - **Source you can keep.** Saved revisions, follow-up edits and source ZIP downloads.
 - **Infrastructure you control.** Docker-isolated execution; private publishing starts
   with Gitea, a private image registry and Coolify. Other integrations are planned.

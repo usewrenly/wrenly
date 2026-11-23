@@ -330,6 +330,13 @@
       "when": 1794819862547,
       "tag": "0049_conversation_database_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795453391417,
+      "tag": "0050_prompt_attachments",
+      "breakpoints": true
     }
   ]
 }

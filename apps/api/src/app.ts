@@ -1,3 +1,4 @@
+import type { AttachmentHttpHandlers } from "./modules/attachments/attachment-http";
 import type { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
 import type { DatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
 import type { OwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
@@ -42,6 +43,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  attachments?: AttachmentHttpHandlers;
   runtimeMaintenanceControl?: OwnerRuntimeControlHandlers
   runtimeMaintenance?: MaintenanceHttpHandlers
   productionProjectCreation?: ProjectProductionCreationHandlers
@@ -123,6 +125,13 @@ export function createApp(
       timestamp: new Date().toISOString(),
     }),
   )
+  if (handlers.attachments) {
+    const attachments = handlers.attachments;
+    app.post('/api/attachments', c => attachments.upload(c.req.raw));
+    app.get('/api/attachments/uploads/:requestId', c => attachments.uploadStatus(c.req.raw, c.req.param('requestId')));
+    app.get('/api/attachments/:id', c => attachments.read(c.req.raw, c.req.param('id')));
+    app.delete('/api/attachments/:id', c => attachments.remove(c.req.raw, c.req.param('id')));
+  }
   if (handlers.profilePictures) {
     const pictures = handlers.profilePictures
     app.get('/api/account/profile-picture', c => pictures.metadata(c.req.raw))

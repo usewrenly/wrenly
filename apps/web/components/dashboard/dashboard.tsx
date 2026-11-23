@@ -96,6 +96,7 @@ export function Dashboard(): React.JSX.Element {
     model?: string,
     provider?: string,
     mode: ConversationMode = "auto",
+    attachmentIds?: string[],
   ): Promise<boolean | void> => {
     if (submittingRef.current || createdProject) return false;
     submittingRef.current = true;
@@ -135,6 +136,7 @@ export function Dashboard(): React.JSX.Element {
         JSON.stringify({
           kind: "conversation",
           message: prompt,
+          ...(attachmentIds?.length ? { attachmentIds } : {}),
           mode,
           baseBuildId: null,
           model,
