@@ -8,6 +8,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
       ["/docs", "book"],
       ["/docs/why-wrenly", "layers"],
       ["/docs/guides/installation", "terminal"],
+      ["/docs/guides/guided-installer", "terminal"],
       ["/docs/guides/instance-setup", "shield"],
     ],
   },
@@ -25,6 +26,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
       ["/docs/guides/model-provider-setup", "sparkles"],
       ["/docs/guides/skills", "book"],
       ["/docs/guides/prompt-attachments", "layers"],
+      ["/docs/guides/voice-dictation", "sparkles"],
     ],
   },
   {
@@ -38,9 +40,11 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
     title: "Run & publish",
     pages: [
       ["/docs/guides/local-previews", "layers"],
+      ["/docs/guides/framework-inspection", "sparkles"],
       ["/docs/guides/private-publishing", "rocket"],
       ["/docs/guides/publishing-setup", "terminal"],
       ["/docs/guides/app-databases", "database"],
+      ["/docs/guides/production-database-evaluation", "database"],
       ["/docs/troubleshooting/build-failures", "info"],
     ],
   },

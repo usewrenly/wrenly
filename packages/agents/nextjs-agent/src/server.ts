@@ -1,4 +1,5 @@
 import { ATTACHMENT_WIRE_SCHEMA } from "@wrenly/inference"
+import { FRAMEWORK_INSPECTION_SCHEMA } from "@wrenly/inference/framework-tooling"
 import { SKILL_GUIDANCE_SCHEMA } from "@wrenly/inference"
 // Offers generation and revision-editing tools over MCP input/output pipes.
 // The API owns this process; closing parent input must stop outstanding model work.
@@ -39,7 +40,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: 'object', additionalProperties: false,
         required: ['version', 'prompt', 'files', 'previousErrors', 'attempt'],
         properties: {
-          attachments_v1: ATTACHMENT_WIRE_SCHEMA, skills_v1: SKILL_GUIDANCE_SCHEMA, version: { type: 'integer', const: 1 }, prompt: { type: 'string', minLength: 1, maxLength: 16000 },
+          attachments_v1: ATTACHMENT_WIRE_SCHEMA,
+          framework_inspection_v1: FRAMEWORK_INSPECTION_SCHEMA,
+          skills_v1: SKILL_GUIDANCE_SCHEMA, version: { type: 'integer', const: 1 }, prompt: { type: 'string', minLength: 1, maxLength: 16000 },
           files: { type: 'array', minItems: 1, maxItems: 1000, items: { type: 'object', required: ['path', 'content'], properties: { path: { type: 'string' }, content: { type: 'string' } } } },
           previousErrors: { type: 'array', maxItems: 3, items: { type: 'string' } },
           attempt: { type: 'integer', minimum: 1, maximum: 3 },
@@ -55,7 +58,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: 'object',
         required: ['prompt', 'previousErrors', 'attempt'],
         properties: {
-          attachments_v1: ATTACHMENT_WIRE_SCHEMA, skills_v1: SKILL_GUIDANCE_SCHEMA,
+          attachments_v1: ATTACHMENT_WIRE_SCHEMA,
+          framework_inspection_v1: FRAMEWORK_INSPECTION_SCHEMA,
+          skills_v1: SKILL_GUIDANCE_SCHEMA,
           prompt: {
             type: 'string',
             description: 'What the user wants to build',

@@ -21,6 +21,13 @@ export const ConversationRequestSchema = z
 
 const ContentSchema = z.string().trim().min(1).max(MAX_MESSAGE_CHARS);
 export const ConversationDecisionSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("propose_database"),
+      content: ContentSchema,
+      prompt: z.string().trim().min(1).max(10_000),
+    })
+    .strict(),
   z.object({ type: z.literal("answer"), content: ContentSchema }).strict(),
   z.object({ type: z.literal("clarify"), content: ContentSchema }).strict(),
   z
@@ -42,7 +49,10 @@ export function validateConversationDecision(
   mode: ConversationMode,
 ): ConversationDecision {
   const decision = ConversationDecisionSchema.parse(value);
-  if ((mode === "ask" || mode === "plan") && decision.type === "propose_build")
+  if (
+    (mode === "ask" || mode === "plan") &&
+    (decision.type === "propose_build" || decision.type === "propose_database")
+  )
     throw new Error(
       `${mode === "plan" ? "Plan" : "Ask"} mode cannot start a build.`,
     );

@@ -1,3 +1,8 @@
+import {
+  inspectProductionResourceState,
+  type ProductionRecoveryTarget,
+} from "./production-targets/data/recovery";
+import { parseProductionResourceBinding } from "@wrenly/db/production-resource-binding";
 import { inspectManagedDatabaseState } from "@wrenly/sandbox";
 // Owner-confirmed recovery preserves unknown effects; inspection never repeats an operation.
 import { createHash } from "node:crypto";
@@ -25,6 +30,7 @@ async function recoverDatabaseAction(
   actorId: string,
   body: unknown,
   kind: "recover-before-effect" | "recover-runtime-state",
+  production?: ProductionRecoveryTarget,
 ): Promise<{ operationId: string; resourceId: string; replayed: boolean }> {
   const parsed = DatabaseRecovery.safeParse(body);
   if (!parsed.success)
@@ -117,19 +123,40 @@ async function recoverDatabaseAction(
       if (
         !savedResource ||
         savedResource.revision !== input.expectedRevision ||
-        savedResource.environment !== "development" ||
-        savedResource.provider !== "local" ||
-        !savedResource.runtimeIdentity ||
+        !(
+          (savedResource.environment === "development" &&
+            savedResource.provider === "local" &&
+            savedResource.runtimeIdentity) ||
+          (savedResource.environment === "production" &&
+            savedResource.provider === "postgres-cluster" &&
+            production)
+        ) ||
         !["start", "stop"].includes(original.kind)
       )
         throw new AppDatabaseError(
           409,
           "Only saved local stop/start operations can use runtime inspection recovery.",
         );
-      inspectedState = await inspectManagedDatabaseState(
-        { resourceId: savedResource.id, projectId, environment: "development" },
-        savedResource.runtimeIdentity,
-      );
+      inspectedState =
+        savedResource.environment === "production" && production
+          ? await inspectProductionResourceState(
+              database,
+              projectId,
+              actorId,
+              savedResource.id,
+              savedResource.revision,
+              production,
+            )
+          : savedResource.runtimeIdentity
+            ? await inspectManagedDatabaseState(
+                {
+                  resourceId: savedResource.id,
+                  projectId,
+                  environment: "development",
+                },
+                savedResource.runtimeIdentity,
+              )
+            : undefined;
       if (inspectedState !== (original.kind === "stop" ? "stopped" : "ready"))
         throw new AppDatabaseError(
           409,
@@ -193,9 +220,18 @@ async function recoverDatabaseAction(
           !["create", "start", "stop", "backup", "migrate", "read"].includes(
             operation.kind,
           ) ||
-          (operation.kind === "create"
-            ? resource.runtimeIdentity !== null
-            : resource.runtimeIdentity === null)
+          (resource.provider === "postgres-cluster" &&
+          resource.environment === "production"
+            ? operation.kind === "create" ||
+              !parseProductionResourceBinding(
+                resource.id,
+                resource.providerIdentity,
+              )
+            : resource.provider !== "local" ||
+              resource.environment !== "development" ||
+              (operation.kind === "create"
+                ? resource.runtimeIdentity !== null
+                : resource.runtimeIdentity === null))
         )
           throw new AppDatabaseError(
             409,
@@ -208,13 +244,25 @@ async function recoverDatabaseAction(
           ...(operation.effect ? [operation.effect] : []),
         ];
         if (
-          !resource.runtimeIdentity ||
+          !(
+            resource.runtimeIdentity ||
+            (resource.environment === "production" &&
+              resource.provider === "postgres-cluster" &&
+              production &&
+              parseProductionResourceBinding(
+                resource.id,
+                resource.providerIdentity,
+              ))
+          ) ||
           !["start", "stop"].includes(operation.kind) ||
           inspectedState !== expectedState ||
           effects.some(
             (effect) =>
               effect.kind !== operation.kind ||
-              effect.id !== resource.runtimeIdentity?.containerId,
+              effect.id !==
+                (resource.environment === "production"
+                  ? `production-availability-${operation.id}`
+                  : resource.runtimeIdentity?.containerId),
           )
         )
           throw new AppDatabaseError(
@@ -304,6 +352,7 @@ export async function recoverInspectedDatabaseAction(
   projectId: string,
   actorId: string,
   body: unknown,
+  production?: ProductionRecoveryTarget,
 ): Promise<{ operationId: string; resourceId: string; replayed: boolean }> {
   return recoverDatabaseAction(
     database,
@@ -311,5 +360,6 @@ export async function recoverInspectedDatabaseAction(
     actorId,
     body,
     "recover-runtime-state",
+    production,
   );
 }

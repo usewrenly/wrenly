@@ -8,6 +8,10 @@
  * EDGE CASES: Lost acknowledgements replay; unrelated effects and changed history stay blocked.
  * ERROR STATES: Unknown cleanup or original schema changes preserve recovery-required state.
  */
+import {
+  inspectProductionResourceState,
+  type ProductionRecoveryTarget,
+} from "./production-targets/data/recovery";
 import { logger } from "../../lib/logger";
 import { createHash } from "node:crypto";
 import { and, eq, inArray, isNull } from "drizzle-orm";
@@ -79,6 +83,8 @@ export async function recoverDatabaseRehearsal(
     start: setManagedDatabaseRunning,
     cleanupInspector: cleanupManagedDatabaseInspector,
   },
+  production?: ProductionRecoveryTarget,
+  inspectProduction: typeof inspectProductionResourceState = inspectProductionResourceState,
 ): Promise<DatabaseActionAcknowledgement> {
   const parsed = DatabaseRecovery.safeParse(value);
   if (!parsed.success)
@@ -197,6 +203,7 @@ export async function recoverDatabaseRehearsal(
   let stage = "admission";
   let accessRevision = "";
   let priorRecoveries: Operation[] = [];
+  let originalResource!: typeof appDatabases.$inferSelect;
   const assertHeld = async (): Promise<void> => {
     lock.assertHeld();
     if (Date.now() >= deadline)
@@ -253,8 +260,7 @@ export async function recoverDatabaseRehearsal(
         .limit(MAX_RECOVERY_ATTEMPTS + 1);
       if (
         !resource ||
-        resource.environment !== "development" ||
-        resource.provider !== "local" ||
+        (resource.environment === "production" && !production) ||
         resource.status !== "recovery_required" ||
         resource.revision !== input.expectedRevision ||
         !target ||
@@ -273,6 +279,7 @@ export async function recoverDatabaseRehearsal(
           409,
           "Database recovery changed or unrelated work remains. Reload before reviewing cleanup.",
         );
+      originalResource = resource;
       priorRecoveries = pending.filter((row) => row.id !== target.id);
       const [project] = await tx
         .select({ revision: projects.accessRevision })
@@ -339,6 +346,7 @@ export async function recoverDatabaseRehearsal(
     const scope = {
       resourceId: claim.resourceId,
       projectId,
+      // Rehearsal helpers live only in the local Development namespace, even for a Production rehearsal.
       environment: "development" as const,
     };
     stage = "prior inspector cleanup";
@@ -401,51 +409,6 @@ export async function recoverDatabaseRehearsal(
     );
     // The trusted inspector hashes schema and native migration journals; no app code or migration runs.
     await assertHeld();
-    const execution = await loadDatabaseExecution(database, claim, directory);
-    if (!execution.resource.runtimeIdentity)
-      throw new AppDatabaseError(409, "Database identity missing.");
-    stage = "preserved runtime readiness";
-    const runtimeIdentity = execution.resource.runtimeIdentity;
-    const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
-    if ((await runtime.inspect(scope, runtimeIdentity)) === "stopped") {
-      await runtime.start(
-        scope,
-        runtimeIdentity,
-        true,
-        {
-          assertHeld,
-          beforeEffect: async (effect) => {
-            if (
-              effect.kind !== "start" ||
-              effect.id !== runtimeIdentity.containerId
-            )
-              throw new AppDatabaseError(
-                409,
-                "Preserved runtime start identity changed.",
-              );
-            await recordRecoveryEffect("start-preserved-database", effect.id);
-          },
-          acknowledgeEffect: async (effect) => {
-            if (
-              effect.kind !== "start" ||
-              effect.id !== runtimeIdentity.containerId
-            )
-              throw new AppDatabaseError(
-                409,
-                "Preserved runtime start receipt changed.",
-              );
-            await assertHeld();
-            await acknowledgeDatabaseCleanupEffect(database, claim, effect.id);
-          },
-        },
-        signal,
-      );
-    }
-    if ((await runtime.inspect(scope, runtimeIdentity)) !== "ready")
-      throw new AppDatabaseError(
-        409,
-        "The preserved database is not ready for inspection.",
-      );
     const inspectorId = `wrenly-database-administrator-${claim.id}`;
     const saveInspection = async (): Promise<void> => {
       await assertHeld();
@@ -466,33 +429,108 @@ export async function recoverDatabaseRehearsal(
         throw new AppDatabaseError(409, "Inspection intent unavailable.");
     };
     stage = "original schema inspection";
-    const schema = await inspectSchema({
-      scope: {
-        resourceId: claim.resourceId,
+    let schema: string;
+    if (originalResource.environment === "production") {
+      await saveInspection();
+      const state = await inspectProduction(
+        database,
         projectId,
-        environment: "development",
-      },
-      database: execution.resource.runtimeIdentity,
-      operationId: claim.id,
-      credentials: execution.credentials,
-      administratorBundle: await getDatabaseWorkerBundle("administrator"),
-      signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-      fence: {
-        assertHeld,
-        beforeEffect: async (effect) => {
-          if (effect.kind !== "inspect-schema" || effect.id !== inspectorId)
-            throw new AppDatabaseError(
-              409,
-              "Unexpected source inspection effect.",
+        actorId,
+        claim.resourceId,
+        input.expectedRevision,
+        production!,
+      );
+      await assertHeld();
+      if (state !== "ready" || !originalResource.schemaDigest)
+        throw new AppDatabaseError(
+          409,
+          "The original Production database is not ready for read-only inspection.",
+        );
+      // The Production inspector independently compares actual schema and native journals to this saved digest.
+      schema = originalResource.schemaDigest;
+      await acknowledgeDatabaseCleanupEffect(database, claim, inspectorId);
+    } else {
+      const execution = await loadDatabaseExecution(database, claim, directory);
+      if (!execution.resource.runtimeIdentity)
+        throw new AppDatabaseError(409, "Database identity missing.");
+      stage = "preserved runtime readiness";
+      const runtimeIdentity = execution.resource.runtimeIdentity;
+      const signal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+      if ((await runtime.inspect(scope, runtimeIdentity)) === "stopped") {
+        await runtime.start(
+          scope,
+          runtimeIdentity,
+          true,
+          {
+            assertHeld,
+            beforeEffect: async (effect) => {
+              if (
+                effect.kind !== "start" ||
+                effect.id !== runtimeIdentity.containerId
+              )
+                throw new AppDatabaseError(
+                  409,
+                  "Preserved runtime start identity changed.",
+                );
+              await recordRecoveryEffect("start-preserved-database", effect.id);
+            },
+            acknowledgeEffect: async (effect) => {
+              if (
+                effect.kind !== "start" ||
+                effect.id !== runtimeIdentity.containerId
+              )
+                throw new AppDatabaseError(
+                  409,
+                  "Preserved runtime start receipt changed.",
+                );
+              await assertHeld();
+              await acknowledgeDatabaseCleanupEffect(
+                database,
+                claim,
+                effect.id,
+              );
+            },
+          },
+          signal,
+        );
+      }
+      if ((await runtime.inspect(scope, runtimeIdentity)) !== "ready")
+        throw new AppDatabaseError(
+          409,
+          "The preserved database is not ready for inspection.",
+        );
+      schema = await inspectSchema({
+        scope: {
+          resourceId: claim.resourceId,
+          projectId,
+          environment: "development",
+        },
+        database: execution.resource.runtimeIdentity,
+        operationId: claim.id,
+        credentials: execution.credentials,
+        administratorBundle: await getDatabaseWorkerBundle("administrator"),
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        fence: {
+          assertHeld,
+          beforeEffect: async (effect) => {
+            if (effect.kind !== "inspect-schema" || effect.id !== inspectorId)
+              throw new AppDatabaseError(
+                409,
+                "Unexpected source inspection effect.",
+              );
+            await saveInspection();
+          },
+          acknowledgeEffect: async () => {
+            await assertHeld();
+            await acknowledgeDatabaseCleanupEffect(
+              database,
+              claim,
+              inspectorId,
             );
-          await saveInspection();
+          },
         },
-        acknowledgeEffect: async () => {
-          await assertHeld();
-          await acknowledgeDatabaseCleanupEffect(database, claim, inspectorId);
-        },
-      },
-    });
+      });
+    }
     stage = "schema comparison";
     if (schema !== original.review.beforeSchemaDigest)
       throw new AppDatabaseError(
@@ -510,6 +548,17 @@ export async function recoverDatabaseRehearsal(
         .from(appDatabases)
         .where(eq(appDatabases.id, claim.resourceId))
         .for("update");
+      if (
+        resource &&
+        (resource.environment !== originalResource.environment ||
+          resource.provider !== originalResource.provider ||
+          JSON.stringify(resource.providerIdentity) !==
+            JSON.stringify(originalResource.providerIdentity))
+      )
+        throw new AppDatabaseError(
+          409,
+          "Original database binding changed during recovery.",
+        );
       const [recovery] = await tx
         .select()
         .from(appDatabaseOperations)

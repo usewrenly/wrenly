@@ -46,7 +46,7 @@ export async function verifyBuildWorkerSchema(
 /** Starts the production worker explicitly; caller must preflight schema and await stop during shutdown. */
 export async function startProductionBuildWorker(
   database: typeof db,
-  options: { databaseValidation?: boolean } = {},
+  options: { databaseValidation?: boolean; frameworkInspection?: boolean } = {},
 ): Promise<BuildWorkerLifecycle> {
   await verifyBuildWorkerSchema(database);
   const shutdown = new AbortController();
@@ -67,6 +67,7 @@ export async function startProductionBuildWorker(
     try {
       return await runSandbox({
         files,
+        frameworkInspection: options.frameworkInspection === true,
         projectId: claim.projectId,
         stack: claim.input.stack,
         buildId: claim.buildId,

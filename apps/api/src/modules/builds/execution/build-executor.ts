@@ -3,6 +3,11 @@ import {
   type AttachmentSnapshot,
   type AttachmentWireContent,
 } from "@wrenly/inference";
+import {
+  parseFrameworkInspectionReport,
+  frameworkSourceHash,
+  type FrameworkInspectionReport,
+} from "@wrenly/inference/framework-tooling";
 /**
  * One saved build’s generation and validation attempts.
  * Calls the framework MCP tool, saves generated source, validates it in Docker and feeds errors into bounded repair attempts.
@@ -90,6 +95,7 @@ export async function executeClaimedBuild(
     : undefined;
   const previousErrors = [...input.previousErrors];
   let source = input.previousFiles;
+  let inspection: FrameworkInspectionReport | undefined;
   let lastError = "Build did not complete.";
   const diagnostics = async (
     attempt: number,
@@ -144,6 +150,7 @@ export async function executeClaimedBuild(
               .join("\n\n"),
             model: input.model,
             provider: input.provider,
+            ...(inspection ? { framework_inspection_v1: inspection } : {}),
             previousErrors: [...previousErrors],
             attempt,
           },
@@ -217,6 +224,17 @@ export async function executeClaimedBuild(
       );
       if (result.success) return { status: "success" };
       abortIfRequested(signal);
+      inspection = result.frameworkInspection
+        ? parseFrameworkInspectionReport(result.frameworkInspection)
+        : undefined;
+      if (
+        inspection &&
+        (inspection.sourceHash !== frameworkSourceHash(files) ||
+          inspection.framework !== input.stack)
+      )
+        throw new Error(
+          "Framework inspection does not match this build attempt.",
+        );
       source = files;
       lastError = [result.error, result.output]
         .filter(Boolean)

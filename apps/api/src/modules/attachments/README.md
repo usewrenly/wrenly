@@ -44,7 +44,7 @@ verifies saved bytes and current model capability before committing work. Both f
 MCP servers receive versioned inline content; execution checks image support again.
 The shared Home/workspace composer shows upload state and preserves explicit retries.
 The cleanup worker expires abandoned uploads and repeatedly removes their tracked objects.
-Startup requires migrations through 0038. No external storage account is needed.
+Startup requires migrations through 0050. No external storage account is needed.
 
 ## Verification
 

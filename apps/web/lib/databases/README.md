@@ -31,3 +31,11 @@ browser rejects a different identity and renders source as text, never generated
 Recovery actions use their separate HTTP boundary while retaining the same persisted
 request and receipt rules. The selected saved build must be supplied by the workspace;
 review never substitutes the latest revision when none was selected.
+
+Production creation has its own small contract in `production-creation.ts`. For example,
+creating a booking app's Production database saves one request before the server creates
+roles and the database. The browser follows those saved stages; it never receives a
+PostgreSQL password. A lost response keeps the original request in session storage.
+Reopening checks that exact request, and an explicit retry sends the same identity.
+Responses must name the selected project and report an ordered sequence of completed
+stages. SQL setup completion still needs the separate connection/readiness check.

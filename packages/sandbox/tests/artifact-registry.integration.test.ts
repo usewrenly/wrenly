@@ -4,7 +4,7 @@ import Docker from 'dockerode'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { publishRuntimeArtifact } from '../src/artifacts/artifact-registry'
+import { publishRuntimeArtifact, publishTrustedDeploymentIngress } from '../src/artifacts/artifact-registry'
 import { ARTIFACT_WORKSPACE_LABEL, ARTIFACT_WORKSPACE_VERSION } from '../src/artifacts/artifact-policy'
 const integration = process.env.WRENLY_TEST_ARTIFACT_REGISTRY === 'true' ? describe : describe.skip
 integration('private immutable artifact registry', () => {
@@ -12,7 +12,7 @@ integration('private immutable artifact registry', () => {
     const docker = new Docker({ socketPath: '/var/run/docker.sock' })
     const directory = await mkdtemp(join(tmpdir(), 'wrenly-registry-fixture-'))
     let registry: Docker.Container | undefined; let source: Docker.Container | undefined; let imageId: string | undefined
-    let tagged: string | undefined; let legacyImageId: string | undefined
+    let ingressTag: string | undefined; let tagged: string | undefined; let legacyImageId: string | undefined
     try {
       await writeFile(join(directory, 'htpasswd'), `fixture:${await Bun.password.hash('fixture-password', { algorithm: 'bcrypt', cost: 4 })}\n`, { mode: 0o644 })
       registry = await docker.createContainer({ Image: 'registry:3', Env: ['REGISTRY_AUTH=htpasswd', 'REGISTRY_AUTH_HTPASSWD_REALM=Wrenly Test', 'REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd'],
@@ -35,6 +35,15 @@ integration('private immutable artifact registry', () => {
         signal: new AbortController().signal, beforeEffect: async () => {} })
       tagged = artifact.repository + ':artifact'
       expect(artifact.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
+      const ingress = await docker.getImage('wrenly/deployment-ingress:1').inspect()
+      // Set cleanup identity before upload so even a lost verification reply leaves no fixture tag.
+      ingressTag = `${new URL(origin).host}/wrenly/deployment-ingress-${ingress.Id.replace('sha256:', '')}:artifact`
+      const trusted = await publishTrustedDeploymentIngress({imageId: ingress.Id, origin, namespace: 'wrenly', username: 'fixture', password: 'fixture-password', signal: new AbortController().signal, beforeEffect: async () => {}})
+      ingressTag = trusted.repository + ':artifact'
+      expect(trusted.digest).toMatch(/^sha256:[a-f0-9]{64}$/)
+      const privateRelay = await fetch(`${origin}/v2/wrenly/deployment-ingress-${ingress.Id.replace('sha256:', '')}/manifests/${trusted.digest}`)
+      expect(privateRelay.status).toBe(401); void privateRelay.body?.cancel()
+      await expect(publishTrustedDeploymentIngress({imageId: imageId!, origin, namespace: 'wrenly', username: 'fixture', password: 'fixture-password', signal: new AbortController().signal, beforeEffect: async () => {throw new Error('Untrusted source must not mutate')}})).rejects.toThrow('Trusted relay image changed')
       const publicRegistry = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response('{}') })
       let effects = 0
       try {
@@ -47,6 +56,7 @@ integration('private immutable artifact registry', () => {
       await expect(publishRuntimeArtifact({ deploymentId: crypto.randomUUID(), imageId: imageId!, origin, namespace: 'wrenly', username: 'fixture', password: 'fixture-password', signal: new AbortController().signal, beforeEffect: async () => {} })).rejects.toThrow('could not be confirmed')
     } finally {
       await registry?.remove({ force: true, v: true }); await source?.remove({ force: true, v: true })
+      if (ingressTag) await docker.getImage(ingressTag).remove({ force: true })
       if (tagged) await docker.getImage(tagged).remove({ force: true })
       if (imageId) await docker.getImage(imageId).remove({ force: true }).catch(() => {})
       if (legacyImageId) await docker.getImage(legacyImageId).remove({ force: true }).catch(() => {})

@@ -4,6 +4,11 @@ import {
   type AttachmentWireContent,
 } from "../attachments/wire-content";
 import {
+  parseFrameworkInspectionReport,
+  frameworkSourceHash,
+  type FrameworkInspectionReport,
+} from "../framework-tooling/report";
+import {
   parseSkillGuidance,
   type SkillGuidance,
 } from "../guidance/skill-guidance";
@@ -15,6 +20,7 @@ import {
 // and merges against its saved revision; these helpers grant no execution authority.
 export interface EditInput {
   attachments_v1?: AttachmentWireContent;
+  framework_inspection_v1?: FrameworkInspectionReport;
   skills_v1?: SkillGuidance;
   version: 1;
   prompt: string;
@@ -109,6 +115,7 @@ export function parseEditInput(value: unknown): EditInput {
           "attempt",
           "skills_v1",
           "attachments_v1",
+          "framework_inspection_v1",
         ].includes(key),
     )
   )
@@ -136,9 +143,19 @@ export function parseEditInput(value: unknown): EditInput {
       "invalid_edit_input",
       "edit_app_v1 requires unambiguous source paths.",
     );
+  const inspection =
+    value.framework_inspection_v1 === undefined
+      ? undefined
+      : parseFrameworkInspectionReport(value.framework_inspection_v1);
+  if (inspection && inspection.sourceHash !== frameworkSourceHash(files))
+    throw new EditContractError(
+      "invalid_edit_input",
+      "Framework inspection belongs to another source revision.",
+    );
   if (
     Buffer.byteLength(JSON.stringify(files)) +
-      Buffer.byteLength(JSON.stringify(parseSkillGuidance(value.skills_v1))) >
+      Buffer.byteLength(JSON.stringify(parseSkillGuidance(value.skills_v1))) +
+      Buffer.byteLength(JSON.stringify(inspection ?? null)) >
     MAX_CONTEXT_BYTES
   )
     throw new EditContractError(
@@ -150,6 +167,7 @@ export function parseEditInput(value: unknown): EditInput {
     ...(value.attachments_v1 === undefined
       ? {}
       : { attachments_v1: encodeAttachmentWireContent(attachmentFiles) }),
+    ...(inspection ? { framework_inspection_v1: inspection } : {}),
     ...(value.skills_v1 === undefined
       ? {}
       : { skills_v1: parseSkillGuidance(value.skills_v1) }),

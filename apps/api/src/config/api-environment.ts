@@ -7,10 +7,13 @@
 // ERROR STATES: Invalid config prevents startup.
 
 import { z } from 'zod'
-import { resolve } from 'node:path'
+import { resolve, isAbsolute } from 'node:path'
 const OptionalPublishingString = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional())
 
 const ApiEnvironmentSchema = z.object({
+  WRENLY_DICTATION_ENABLED: z.enum(['true', 'false']).default('false'),
+  WRENLY_DICTATION_MODEL_PATH: z.preprocess(value => value === '' ? undefined : value, z.string().refine(isAbsolute, 'Use an absolute model file path.').optional()),
+  WRENLY_FRAMEWORK_INSPECTION_ENABLED: z.enum(['true','false']).default('false'),
   WRENLY_DATA_DIR: z.string().min(1).default('.local/wrenly').transform(value => resolve(value)),
   WRENLY_DATABASE_URL: z.url().regex(/^postgres(?:ql)?:\/\//),
   WRENLY_AUTH_SECRET: z.string().min(1),
@@ -32,6 +35,10 @@ const ApiEnvironmentSchema = z.object({
   WRENLY_COOLIFY_SERVER_UUID: OptionalPublishingString,
   WRENLY_COOLIFY_ENVIRONMENT: z.string().min(1).default('production'),
   WRENLY_APP_DATABASES_ENABLED: z.enum(['true', 'false']).default('false'),
+  WRENLY_PRODUCTION_DATABASES_ENABLED: z.enum(['true', 'false']).default('false'),
+  WRENLY_PRODUCTION_BROKER_IMAGE_ID: OptionalPublishingString,
+  WRENLY_PRODUCTION_INGRESS_IMAGE_ID: OptionalPublishingString,
+  WRENLY_PRODUCTION_INGRESS_IMAGE: OptionalPublishingString,
   WRENLY_PREVIEW_ENABLED: z.enum(['true', 'false']).default('false'),
   WRENLY_PREVIEW_BASE_URL: z.url().default('http://wrenly-preview.localhost:3003'),
   WRENLY_PREVIEW_GATEWAY_PORT: z.coerce.number().int().min(1).max(65535).default(3003),
@@ -62,6 +69,18 @@ export function parseApiEnvironment(
     throw new Error(
       `Invalid API configuration: ${issues}. Update the repository-root .env or the service environment.`,
     )
+  }
+  if (parsed.data.WRENLY_DICTATION_ENABLED === 'true' && !parsed.data.WRENLY_DICTATION_MODEL_PATH)
+    throw new Error('WRENLY_DICTATION_ENABLED requires WRENLY_DICTATION_MODEL_PATH. Follow the voice-dictation setup guide.');
+  if (parsed.data.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true') {
+    if (parsed.data.WRENLY_APP_DATABASES_ENABLED !== 'true' || parsed.data.WRENLY_PUBLISHING_ENABLED !== 'true')
+      throw new Error('WRENLY_PRODUCTION_DATABASES_ENABLED requires WRENLY_APP_DATABASES_ENABLED=true and WRENLY_PUBLISHING_ENABLED=true.');
+    for (const name of ['WRENLY_PRODUCTION_BROKER_IMAGE_ID', 'WRENLY_PRODUCTION_INGRESS_IMAGE_ID'] as const) {
+      if (!/^sha256:[a-f0-9]{64}$/.test(parsed.data[name] ?? ''))
+        throw new Error(`${name} must be the exact verified trusted image ID (sha256 plus 64 lowercase hexadecimal digits).`);
+    }
+    if (!/^[a-z0-9.:-]+\/[a-z0-9/_-]+@sha256:[a-f0-9]{64}$/.test(parsed.data.WRENLY_PRODUCTION_INGRESS_IMAGE ?? ''))
+      throw new Error('WRENLY_PRODUCTION_INGRESS_IMAGE must be a private registry image pinned by its sha256 digest.');
   }
   if (parsed.data.WRENLY_APP_DATABASES_ENABLED === 'true' && parsed.data.WRENLY_PREVIEW_ENABLED !== 'true')
     throw new Error('WRENLY_APP_DATABASES_ENABLED requires WRENLY_PREVIEW_ENABLED=true and verified local database toolchains.');
@@ -98,6 +117,12 @@ export function parseApiEnvironment(
       if (url.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname))
         throw new Error(`${name} requires HTTPS except for a loopback development service.`)
     }
+  }
+  if (parsed.data.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true') {
+    const registry = new URL(parsed.data.WRENLY_REGISTRY_URL!);
+    const prefix = `${registry.host}/${parsed.data.WRENLY_REGISTRY_NAMESPACE}/`;
+    if (!parsed.data.WRENLY_PRODUCTION_INGRESS_IMAGE!.startsWith(prefix))
+      throw new Error('WRENLY_PRODUCTION_INGRESS_IMAGE must use the configured private registry and namespace.');
   }
   return parsed.data
 }

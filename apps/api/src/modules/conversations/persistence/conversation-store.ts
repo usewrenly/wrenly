@@ -659,7 +659,7 @@ export async function completeConversationAnswer(
     await database.transaction(async (transaction) => {
       const turn = await lockConversationClaim(transaction, claim);
       const decision = validateConversationDecision(value, turn.mode);
-      if (decision.type === "propose_build")
+      if (decision.type === "propose_build" || decision.type === "propose_database")
         throw new ConversationStoreError(
           409,
           "Build proposals require action admission, not answer completion.",

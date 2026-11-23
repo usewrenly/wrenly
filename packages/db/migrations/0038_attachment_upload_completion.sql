@@ -1,1 +1,0 @@
-ALTER TABLE "prompt_attachments" ADD COLUMN "ready_at" timestamp with time zone;

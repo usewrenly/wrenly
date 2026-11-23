@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import type { WhisperTranscriptionRuntime } from "@wrenly/sandbox/transcription-runtime";
+import type { TranscriptionAdapter } from "./modules/transcription/contracts";
 /**
  * Bun API startup and shutdown boundary.
  * Validates configuration and persistence before opening listeners and starting workers.
@@ -10,6 +13,7 @@ import type { DeploymentWorkerLifecycle } from './modules/deployments/execution/
 import type { PreviewLifecycle } from './modules/previews/execution/production-preview-worker'
 import { parseApiEnvironment } from './config/api-environment'
 import { logger } from './lib/logger'
+import type { ProductionDatabaseActivation } from './modules/databases/activation/production-activation'
 
 const API_IDLE_TIMEOUT_SECONDS = 60
 try {
@@ -19,6 +23,12 @@ try {
   const { startProductionBuildWorker, verifyBuildWorkerSchema } = await import('./modules/builds/execution/production-build-worker')
   const { verifyConversationSchema, startProductionConversationWorker } = await import('./modules/conversations/execution/production-conversation-worker')
   const { verifySkillsSchema } = await import("./modules/skills/skill-store")
+  const { verifyProductionProvisionSchema } = await import('./modules/databases/production-targets/provisioning/store')
+  await verifyProductionProvisionSchema(db)
+  const { verifyInstanceProductionConnectionSchema } = await import('./modules/databases/production-targets/instance/store')
+  await verifyInstanceProductionConnectionSchema(db)
+  const { verifyRuntimeHostConnectionSchema } = await import('./modules/databases/production-targets/deployment-hosts/store')
+  await verifyRuntimeHostConnectionSchema(db)
   await verifySkillsSchema(db)
   await verifyBuildWorkerSchema(db)
   await verifyConversationSchema(db)
@@ -52,8 +62,16 @@ try {
   try {
     await db.select({ id: promptAttachments.id, readyAt: promptAttachments.readyAt }).from(promptAttachments).limit(0);
     await db.select({ imageModelIds: providerConnections.imageModelIds, imageInputRevision: providerConnections.imageInputRevision }).from(providerConnections).limit(0);
-  } catch { throw new Error('Attachments require migrations through 0038. Run bun run db:migrate before starting Wrenly.'); }
-  const app = createProductionApp(environment)
+  } catch { throw new Error('Attachments require migrations through 0050. Run bun run db:migrate before starting Wrenly.'); }
+  let dictation: WhisperTranscriptionRuntime | undefined
+  const transcription: TranscriptionAdapter = {
+    available: () => dictation?.available() ?? false,
+    transcribe: async input => {
+      if (!dictation) throw new Error('Dictation is disabled.')
+      return dictation.transcribe(input)
+    },
+  }
+  let app = createProductionApp(environment, { transcription })
   let acceptingRequests = false
   // Bind the control port before claiming any work: a second API must not interrupt queued previews on startup failure.
   const server = Bun.serve({ hostname: environment.WRENLY_API_HOST, port: environment.WRENLY_API_PORT,
@@ -61,13 +79,14 @@ try {
       // Reserve the port before claims, but expose no routes until every required host service passed startup.
       if (!acceptingRequests) return Response.json({ error: 'Wrenly is starting. Try again shortly.' }, { status: 503, headers: { 'Retry-After': '1', 'Cache-Control': 'no-store' } })
       const path = new URL(request.url).pathname
-      if ((request.method === 'POST' && path === '/api/generate') || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
+      if ((request.method === 'POST' && (path === '/api/generate' || path === '/api/transcription')) || (request.method === 'GET' && /^\/api\/(builds|conversation-turns)\/[^/]+\/events$/.test(path))) server.timeout(request, 0)
       return app.fetch(request)
     } })
   let attachmentCleanup: { stop(): Promise<void> } | undefined;
   let conversationWorker: Awaited<ReturnType<typeof startProductionConversationWorker>> | undefined
   let publishing: DeploymentWorkerLifecycle | undefined
   let databaseModule: PreviewLifecycle | undefined
+  let productionCluster: ProductionDatabaseActivation | undefined
   let previews: PreviewLifecycle | undefined
   let gateway: ReturnType<typeof Bun.serve> | undefined
   let worker: Awaited<ReturnType<typeof startProductionBuildWorker>> | undefined
@@ -100,19 +119,33 @@ try {
         databaseModule = await startProductionDatabaseModule(db, environment, ingressBundle)
       }
     }
+    if (environment.WRENLY_PRODUCTION_DATABASES_ENABLED === 'true') {
+      const { startProductionDatabaseActivation } = await import('./modules/databases/activation/production-activation')
+      const { getUserId } = await import('./modules/auth/access/session')
+      const { accessContext } = await import('./modules/auth/access/access-context')
+      productionCluster = await startProductionDatabaseActivation({database:db,environment,principal:async headers=>{
+        const userId=await getUserId(headers)
+        return userId ? accessContext.getStore()?.principal ?? null : null
+      }})
+    }
     if (environment.WRENLY_PUBLISHING_ENABLED === 'true') {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
-      publishing = await startProductionDeploymentWorker(db, environment)
+      publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
     const { startAttachmentCleanup } = await import('./modules/attachments/cleanup-worker');
     const { expireAttachmentUploads, attachmentCleanupCandidates } = await import('./modules/attachments/attachment-store');
     const { attachmentObjects } = await import('./modules/attachments/production-services');
     const objects = attachmentObjects(environment.WRENLY_DATA_DIR);
     attachmentCleanup = startAttachmentCleanup({ expire: () => expireAttachmentUploads(db), candidates: cursor => attachmentCleanupCandidates(db, cursor), remove: id => objects.remove(id) });
-    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
-    conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS)
+    if (environment.WRENLY_DICTATION_ENABLED === 'true') {
+      const { createWhisperTranscriptionRuntime } = await import('@wrenly/sandbox/transcription-runtime')
+      dictation = await createWhisperTranscriptionRuntime({ modelPath: environment.WRENLY_DICTATION_MODEL_PATH!, instanceScope: createHash('sha256').update(environment.WRENLY_DATA_DIR).digest('hex') })
+    }
+    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true', frameworkInspection: environment.WRENLY_FRAMEWORK_INSPECTION_ENABLED === 'true' })
+    conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
+    app = createProductionApp(environment, { productionDatabases: productionCluster, transcription })
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), attachmentCleanup?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -123,7 +156,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), conversationWorker?.stop(), publishing?.stop(), attachmentCleanup?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {
@@ -135,7 +168,7 @@ try {
   process.once('SIGTERM', () => { void shutdown() })
   if (setupStatus === 'setup-required') logger.info('Owner setup required. Run bun run setup from apps/api to open protected browser setup.')
   if (setupStatus === 'recovery-required') logger.info('Existing accounts detected; protected owner recovery is required before instance administration.')
-  logger.info('Wrenly API listening', { url: server.url.toString(), runtime: 'bun', localPreviews: Boolean(previews), publishing: Boolean(publishing), developmentDatabases: Boolean(databaseModule) })
+  logger.info('Wrenly API listening', { url: server.url.toString(), runtime: 'bun', localPreviews: Boolean(previews), publishing: Boolean(publishing), developmentDatabases: Boolean(databaseModule), productionDatabases: Boolean(productionCluster) })
 } catch (error) {
   logger.error('API startup failed', { errorName: error instanceof Error ? error.name : 'UnknownError',
     message: error instanceof Error && !('query' in error) ? error.message : 'Startup persistence is unavailable. Check PostgreSQL and migrations.' })

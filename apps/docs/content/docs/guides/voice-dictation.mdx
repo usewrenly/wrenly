@@ -1,0 +1,82 @@
+---
+title: Voice dictation
+description: Speak a short prompt, review the words, then choose when to send.
+---
+
+Dictation turns your speech into an editable draft. For example, say “Add a contact
+form”, stop recording, check the words and insert them into your prompt. Wrenly
+never sends that prompt automatically.
+
+Speech recognition runs on your own Wrenly server using Whisper.cpp. It does not
+use your chat model or require a speech service account. Audio is discarded after
+the request; inserted text follows the same saving rules as a typed prompt.
+
+## Before you start
+
+You need Linux (or WSL2), Docker, and enough spare capacity for one additional
+container with a 1 GiB memory limit and two CPU cores. The multilingual base model
+needs about 148 MB of disk space. Download and build require internet access once;
+recordings work offline afterward.
+
+The browser needs microphone permission and a secure address: HTTPS or localhost.
+A plain HTTP address on another computer usually cannot access the microphone.
+
+## Enable it once
+
+Run these commands from the repository root on the machine running the API:
+
+```bash
+mkdir -p .local/speech
+chmod 700 .local/speech
+curl --fail --location \
+  'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin' \
+  --output .local/speech/ggml-base.bin
+printf '%s  %s\n' \
+  '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe' \
+  '.local/speech/ggml-base.bin' | sha256sum --check
+chmod 644 .local/speech/ggml-base.bin
+docker build -t wrenly/transcription-runtime:1 \
+  -f packages/sandbox/images/transcription/Dockerfile .
+realpath .local/speech/ggml-base.bin
+```
+
+The model contains public weights, not recordings. Its read permission lets the
+container's unprivileged user read it; the parent folder remains private.
+
+Continue only if the checksum says **OK**. Copy the absolute path printed by the
+last command into your repository root `.env`:
+
+```dotenv
+WRENLY_DICTATION_ENABLED=true
+WRENLY_DICTATION_MODEL_PATH=/absolute/path/to/wrenly/.local/speech/ggml-base.bin
+```
+
+Replace the example path with your actual output. Restart the API. It checks the
+model and runtime before enabling dictation. A missing or changed file produces a
+startup error rather than silently sending audio elsewhere. The microphone button
+then appears on Home and in the project composer.
+
+## Record a prompt
+
+1. Click the microphone. Read the local processing explanation and choose **Start recording**.
+2. Allow the browser microphone request. Speak clearly, then click **Stop**.
+3. Review and edit the transcript. Choose **Insert into prompt** to append it to your current draft.
+4. Check the complete prompt and click **Send** yourself.
+
+Cancel discards the recording or pending result. Recordings stop at 60 seconds.
+One transcription runs at a time; another request can be retried after it finishes.
+Accents, background noise and language affect accuracy, so always review names,
+commands and numbers. Silence is rejected before recognition.
+
+## If something goes wrong
+
+- **No microphone button:** confirm the API has dictation enabled and restarted successfully.
+- **Microphone unavailable:** use HTTPS or localhost and check the browser's site permissions.
+- **Busy:** wait for the current transcription to finish, then try again.
+- **No useful words:** record again in a quieter place. Recognition can mistake noise for speech.
+- **Timed out:** try a shorter recording and check available server CPU and memory.
+- **Cleanup needs review:** stop using dictation and inspect the exact recording container named by your local runtime before restarting. Do not remove unrelated containers.
+
+To disable dictation, set `WRENLY_DICTATION_ENABLED=false` and restart the API.
+Typed chat continues to work. This feature records individual prompts; it is not
+an ongoing voice call or background listener.

@@ -2,6 +2,11 @@
 // Identifiers/credentials are resource-bound before effects; this never opens the control client.
 import { sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import {
+  validateProductionProjectCredentials,
+  type ProductionClusterIdentity,
+} from "./production-cluster/contract";
+import { verifyProductionClusterAuthority } from "./production-cluster/provisioning";
 import type { AppDatabaseSessionTarget } from "./runtime-contract";
 
 const RESOURCE_ID =
@@ -136,17 +141,57 @@ export async function enforceAppDatabaseRolePolicy(
   input: unknown,
 ): Promise<void> {
   const credentials = validateAppDatabaseCredentials(resourceId, input);
+  await enforceRolePolicy(
+    database,
+    credentials.database,
+    credentials.administrator.user,
+    credentials,
+  );
+}
+
+/** Reapplies project-only grants after reviewed Production migrations; management authority stays server-side. */
+export async function enforceProductionDatabaseRolePolicy(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  input: unknown,
+): Promise<void> {
+  const credentials = validateProductionProjectCredentials(resourceId, input);
+  await verifyProductionClusterAuthority(database, identity);
+  const rows = await database.execute(
+    sql`select current_user as administrator`,
+  );
+  const administrator = rows[0]?.administrator;
+  if (rows.length !== 1 || typeof administrator !== "string")
+    throw new Error("Production management authority unavailable");
+  await enforceRolePolicy(
+    database,
+    credentials.database,
+    administrator,
+    credentials,
+    identity,
+  );
+}
+
+async function enforceRolePolicy(
+  database: PostgresJsDatabase,
+  databaseName: string,
+  administrator: string,
+  credentials: Pick<AppDatabaseCredentials, "migrator" | "runtime" | "reader">,
+  identity?: ProductionClusterIdentity,
+): Promise<void> {
   await database.transaction(async (tx) => {
+    if (identity) await verifyProductionClusterAuthority(tx, identity);
     await tx.execute(
       sql`select pg_catalog.set_config('search_path','pg_catalog',true)`,
     );
     await tx.execute(
-      sql`select pg_catalog.set_config('wrenly.database_policy',${JSON.stringify({ administrator: credentials.administrator.user, migrator: credentials.migrator.user, runtime: credentials.runtime.user, reader: credentials.reader.user })},true)`,
+      sql`select pg_catalog.set_config('wrenly.database_policy',${JSON.stringify({ database: databaseName, administrator, migrator: credentials.migrator.user, runtime: credentials.runtime.user, reader: credentials.reader.user })},true)`,
     );
     await tx.execute(sql`do $$
       declare p jsonb := pg_catalog.current_setting('wrenly.database_policy')::jsonb; m text := p->>'migrator'; r text := p->>'runtime'; v text := p->>'reader'; journal text; sequence_name text;
       begin
-        if current_database() <> 'app' or current_user <> p->>'administrator' then raise exception 'Invalid resource administrator'; end if;
+        if current_database() <> p->>'database' or current_user <> p->>'administrator' then raise exception 'Invalid resource administrator'; end if;
         if not exists(select 1 from pg_catalog.pg_namespace n join pg_catalog.pg_roles x on x.oid=n.nspowner where n.nspname='public' and x.rolname=m) then raise exception 'Application schema ownership changed'; end if;
         if (select count(*) from pg_catalog.pg_roles where rolname in (m,r,v) and rolcanlogin and not rolsuper and not rolcreatedb and not rolcreaterole and not rolreplication and not rolbypassrls and not rolinherit and rolconnlimit=8) <> 3 then raise exception 'Application role flags changed'; end if;
         if exists(select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid=f.pronamespace where n.nspname='public' and f.prosecdef) or exists(select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relkind in ('v','f')) then raise exception 'Owner-executed database objects are not supported'; end if;
@@ -185,10 +230,53 @@ export async function terminateAppDatabaseSessions(
   if (target !== "reader" && target !== "migrator" && target !== "runtime")
     throw new Error("Invalid resource session target");
   const credentials = validateAppDatabaseCredentials(resourceId, input);
-  const role = credentials[target].user;
+  await terminateRoleSessions(
+    database,
+    credentials.database,
+    credentials.administrator.user,
+    credentials[target].user,
+  );
+}
+
+/** Stops only one project's selected role after its isolated migration or preview client is closed. */
+export async function terminateProductionDatabaseSessions(
+  database: PostgresJsDatabase,
+  identity: ProductionClusterIdentity,
+  resourceId: string,
+  input: unknown,
+  target: AppDatabaseSessionTarget,
+): Promise<void> {
+  if (target !== "reader" && target !== "migrator" && target !== "runtime")
+    throw new Error("Invalid resource session target");
+  const credentials = validateProductionProjectCredentials(resourceId, input);
+  await verifyProductionClusterAuthority(database, identity);
+  const rows = await database.execute(
+    sql`select current_user as administrator`,
+  );
+  const administrator = rows[0]?.administrator;
+  if (rows.length !== 1 || typeof administrator !== "string")
+    throw new Error("Production management authority unavailable");
+  await terminateRoleSessions(
+    database,
+    credentials.database,
+    administrator,
+    credentials[target].user,
+    identity,
+  );
+}
+
+async function terminateRoleSessions(
+  database: PostgresJsDatabase,
+  databaseName: string,
+  administrator: string,
+  role: string,
+  identity?: ProductionClusterIdentity,
+): Promise<void> {
   await database.transaction(async (tx) => {
-    const authority = await tx.execute(sql`select current_database() = 'app'
-      and current_user = ${credentials.administrator.user}
+    if (identity) await verifyProductionClusterAuthority(tx, identity);
+    const authority =
+      await tx.execute(sql`select current_database() = ${databaseName}
+      and current_user = ${administrator}
       and exists(select 1 from pg_catalog.pg_roles where rolname=current_user and rolsuper)
       and exists(select 1 from pg_catalog.pg_roles where rolname=${role}
         and not rolsuper and not rolcreatedb and not rolcreaterole
@@ -197,7 +285,7 @@ export async function terminateAppDatabaseSessions(
       throw new Error("Resource session authority changed");
     const terminated =
       await tx.execute(sql`select pg_catalog.pg_terminate_backend(pid, 1000) as stopped
-      from pg_catalog.pg_stat_activity where datname='app' and usename=${role}
+      from pg_catalog.pg_stat_activity where datname=${databaseName} and usename=${role}
         and pid <> pg_catalog.pg_backend_pid()`);
     if (terminated.some((row) => row.stopped !== true))
       throw new Error("Resource sessions did not terminate");
@@ -205,7 +293,7 @@ export async function terminateAppDatabaseSessions(
     await tx.execute(sql`select pg_catalog.pg_stat_clear_snapshot()`);
     const remaining =
       await tx.execute(sql`select exists(select 1 from pg_catalog.pg_stat_activity
-      where datname='app' and usename=${role} and pid <> pg_catalog.pg_backend_pid()) as active`);
+      where datname=${databaseName} and usename=${role} and pid <> pg_catalog.pg_backend_pid()) as active`);
     if (remaining[0]?.active !== false)
       throw new Error("Resource sessions remain active");
   });

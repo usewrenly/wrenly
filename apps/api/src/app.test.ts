@@ -244,3 +244,33 @@ test('project settings registers both methods without a dynamic Hono overload an
   expect(get).toHaveBeenCalledTimes(1)
   expect(save).toHaveBeenCalledTimes(1)
 })
+
+test('Production setup routes stay absent until explicitly composed', async () => {
+  const { app } = fixture()
+  for (const path of ['/api/instance/production-database', '/api/instance/deployment-host'])
+    expect((await app.request(path)).status).toBe(404)
+})
+
+test('Production setup routing preserves request identity and separates read, submit and acknowledgement', async () => {
+  const { handlers } = fixture()
+  const requestId = crypto.randomUUID()
+  for (const [property, path] of [
+    ['productionDatabaseSetup', '/api/instance/production-database'],
+    ['productionHostSetup', '/api/instance/deployment-host'],
+  ] as const) {
+    const calls: string[] = []
+    handlers[property] = {
+      submit: async (request) => { calls.push('submit'); return Response.json({ cookie: request.headers.get('cookie') }, { status: 202 }) },
+      status: async (_request, id) => { calls.push(id ?? 'latest'); return Response.json({ id: id ?? null }) },
+      acknowledge: async () => { calls.push('acknowledge'); return Response.json({ closed: true }) },
+    }
+    const app = createApp(handlers, { web: 'http://localhost:3000', api: 'http://localhost:3002' })
+    expect((await app.request(path)).status).toBe(200)
+    expect(await (await app.request(`${path}/requests/${requestId}`)).json()).toEqual({ id: requestId })
+    const submitted = await app.request(path, { method: 'POST', headers: { cookie: 'fixture=session', origin: 'http://localhost:3000' } })
+    expect(submitted.status).toBe(202)
+    expect(await submitted.json()).toEqual({ cookie: 'fixture=session' })
+    expect((await app.request(`${path}/acknowledge`, { method: 'POST', headers: { origin: 'http://localhost:3000' } })).status).toBe(200)
+    expect(calls).toEqual(['latest', requestId, 'submit', 'acknowledge'])
+  }
+})

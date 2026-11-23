@@ -1,0 +1,14 @@
+**
+!packages/
+!packages/inference/
+!packages/inference/package.json
+!packages/inference/src/
+!packages/inference/src/framework-tooling/
+!packages/inference/src/framework-tooling/**
+!packages/sandbox/
+!packages/sandbox/src/
+!packages/sandbox/src/framework-tooling/
+!packages/sandbox/src/framework-tooling/worker.ts
+!packages/sandbox/images/
+!packages/sandbox/images/framework-inspection/
+!packages/sandbox/images/framework-inspection/**

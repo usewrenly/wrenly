@@ -3,6 +3,7 @@ import {
   encodeAttachmentWireContent,
   MAX_ATTACHMENT_TOOL_REQUEST_BYTES,
 } from "@wrenly/inference";
+import { FRAMEWORK_INSPECTION_SCHEMA } from "@wrenly/inference/framework-tooling";
 import { parseSkillGuidance } from "@wrenly/inference";
 // COMPONENT: Bounded MCP generation call
 // PURPOSE: Apply one deadline to initialization/tool execution and reap the server on abort.
@@ -162,11 +163,29 @@ export async function generateWithMcp(
       timeout: timeoutMs,
     });
     controller.signal.throwIfAborted();
-    if (editing || guidance.skills.length || attachments.length) {
+    if (
+      editing ||
+      guidance.skills.length ||
+      attachments.length ||
+      Boolean(input.framework_inspection_v1)
+    ) {
       const tools = await client.listTools(
         {},
         { signal: controller.signal, timeout: timeoutMs },
       );
+      if (
+        input.framework_inspection_v1 &&
+        !tools.tools.some(
+          (tool) =>
+            tool.name === "edit_app_v1" &&
+            tool.inputSchema.properties &&
+            JSON.stringify(tool.inputSchema.properties.framework_inspection_v1) ===
+              JSON.stringify(FRAMEWORK_INSPECTION_SCHEMA),
+        )
+      )
+        throw new Error(
+          "Framework MCP server does not support official inspection context.",
+        );
       if (
         guidance.skills.length &&
         !tools.tools.some(
@@ -212,6 +231,9 @@ export async function generateWithMcp(
           ? { attachments_v1: encodeAttachmentWireContent(attachments) }
           : {}),
         ...(guidance.skills.length ? { skills_v1: guidance } : {}),
+        ...(input.framework_inspection_v1
+          ? { framework_inspection_v1: input.framework_inspection_v1 }
+          : {}),
         prompt: input.prompt,
         previousErrors: input.previousErrors,
         attempt: input.attempt,
