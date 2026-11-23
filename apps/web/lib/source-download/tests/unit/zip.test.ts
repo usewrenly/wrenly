@@ -74,10 +74,14 @@ test("unsafe paths, extraction collisions and bounds fail without truncating sou
       })),
     ),
   ).toThrow();
+  const chunk = "x".repeat(32 * 1024 * 1024);
   expect(() =>
-    createSourceZip([
-      { path: "large.txt", content: "x".repeat(MAX_SOURCE_BYTES + 1) },
-    ]),
+    createSourceZip(
+      Array.from({ length: Math.floor(MAX_SOURCE_BYTES / chunk.length) + 1 }, (_, index) => ({
+        path: `large-${index}.txt`,
+        content: chunk,
+      })),
+    ),
   ).toThrow("byte limit");
 });
 

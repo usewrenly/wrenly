@@ -1,6 +1,7 @@
 "use client";
 // Checks never start inference; catalog/manual IDs remain distinct from served models.
 import { useState } from "react";
+import { CheckIcon } from "lucide-react";
 import { ChoiceSelect } from "@/components/ui/choice-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,15 @@ import {
   type ConnectionProbe,
   type ProviderConnection,
 } from "@/lib/models/provider-settings";
+
+function parseImageModelIds(raw: string): string[] {
+  const seen = new Set<string>();
+  for (const part of raw.split(/[\r\n,]+/)) {
+    const trimmed = part.trim();
+    if (trimmed) seen.add(trimmed);
+  }
+  return [...seen];
+}
 /** Manages one immutable destination and its model selection without reading its saved token. */
 export function ProviderConnectionCard({
   connection,
@@ -24,6 +34,12 @@ export function ProviderConnectionCard({
   const [probe, setProbe] = useState<ConnectionProbe | null>(null);
   const [model, setModel] = useState(defaultModel ?? "");
   const [token, setToken] = useState("");
+  const [imageRevision, setImageRevision] = useState(
+    connection.imageInputRevision,
+  );
+  const [imageModels, setImageModels] = useState(
+    (connection.imageModelIds ?? []).join("\n"),
+  );
   const [catalogModels, setCatalogModels] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -86,6 +102,20 @@ export function ProviderConnectionCard({
         `${result.totalModels} catalog matches. These are metadata, not proof of access for your token. Narrow the search if the model is not in the first 40 results.`,
       );
     });
+  };
+  const selectedImageSet = new Set(parseImageModelIds(imageModels));
+  const availableImageModels = [
+    ...new Set([
+      ...(probe?.state === "ready" ? probe.models : []),
+      ...(defaultModel ? [defaultModel] : []),
+      ...catalogModels.map((item) => item.id),
+    ]),
+  ];
+  const toggleImageModel = (id: string): void => {
+    const next = new Set(selectedImageSet);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setImageModels([...next].join("\n"));
   };
   return (
     <article className="provider-saved-card space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
@@ -300,6 +330,110 @@ export function ProviderConnectionCard({
             disabled={busy || !token.trim()}
           >
             Replace token
+          </Button>
+        </form>
+      </details>
+      <details className="rounded-lg border border-[var(--color-border)] p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          Image input support
+        </summary>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void run(async () => {
+              const ids = parseImageModelIds(imageModels);
+              await providerSettingsRequest(
+                "/api/models/connections",
+                "PATCH",
+                {
+                  id: connection.id,
+                  imageModelIds: ids,
+                  expectedImageInputRevision: imageRevision,
+                },
+              );
+              setNotice(
+                "Image support saved. Only these exact model IDs can receive reference images.",
+              );
+              onChanged();
+            });
+          }}
+        >
+          <p className="text-xs leading-relaxed text-[var(--color-text-3)]">
+            Plain text files (.txt, .md) work with any model. Because
+            OpenAI-compatible endpoints do not reliably report vision support,
+            select or list the exact model IDs on this connection that accept
+            images (one per line or comma-separated).
+          </p>
+          {availableImageModels.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--color-text-2)]">
+                Quick-toggle models on this connection
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {availableImageModels.map((id) => {
+                  const active = selectedImageSet.has(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={busy}
+                      onClick={() => toggleImageModel(id)}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
+                        active
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-primary)]"
+                          : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-2)] hover:text-[var(--color-text-1)]"
+                      }`}
+                    >
+                      {active && <CheckIcon size={12} aria-hidden="true" />}
+                      <span className="font-mono">{id}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {probe?.state !== "ready" && (
+                <p className="text-xs text-[var(--color-text-3)]">
+                  Click Check connection above to list all models from this
+                  service.
+                </p>
+              )}
+            </div>
+          )}
+          <label className="block space-y-2 text-sm">
+            <span>Models that accept images</span>
+            {imageRevision !== connection.imageInputRevision && (
+              <button
+                type="button"
+                className="block text-xs underline"
+                onClick={() => {
+                  setImageModels((connection.imageModelIds ?? []).join("\n"));
+                  setImageRevision(connection.imageInputRevision);
+                }}
+              >
+                Load the updated image settings before editing again
+              </button>
+            )}
+            <textarea
+              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
+              rows={3}
+              maxLength={51300}
+              value={imageModels}
+              disabled={busy}
+              onChange={(event) => setImageModels(event.target.value)}
+              placeholder="Exact model ID, one per line or comma-separated"
+            />
+          </label>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={
+              busy ||
+              !imageRevision ||
+              imageRevision !== connection.imageInputRevision
+            }
+          >
+            Save image support
           </Button>
         </form>
       </details>

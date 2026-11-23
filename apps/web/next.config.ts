@@ -13,9 +13,10 @@ readDocumentationBase(process.env.NEXT_PUBLIC_DOCS_URL, process.env.NODE_ENV)
 
 const apiOrigin = readApiOrigin(process.env.NEXT_PUBLIC_API_URL)
 
+// Both bounded transcription uploads and 45s source review can exceed Next's 30-second proxy default.
+const TRANSCRIPTION_PROXY_TIMEOUT_MS = 110_000
 const nextConfig: NextConfig = {
-  // Source review has its own 45s budget; the proxy must wait for the API response.
-  experimental: { proxyTimeout: 75_000 },
+  experimental: { proxyTimeout: TRANSCRIPTION_PROXY_TIMEOUT_MS },
   async rewrites() {
     return [
       {

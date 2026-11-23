@@ -2,6 +2,9 @@
 import styles from "@/components/settings/connections/connections.module.css";
 import { Suspense, useState } from "react";
 import { GitHubConnectionCard } from "@/components/settings/connections/github-connection-card";
+import { ProductionHostSetup } from "@/components/settings/production-databases/production-host-setup";
+import { ProductionServerSetup } from "@/components/settings/production-databases/production-server-setup";
+import { authClient } from "@/lib/auth/auth-client";
 import { DocumentationLink } from "@/components/documentation-link";
 // Configuration is not health.
 import Link from "next/link";
@@ -32,7 +35,7 @@ export default function ConnectionsPage(): React.JSX.Element {
   const summary = useSetupSummary();
   const [activeTab, setActiveTab] = useState<ConnectionTabId>("source");
   const publishingEnabled = summary.data?.publishing === "enabled";
-
+  const { data: session } = authClient.useSession();
   return (
     <section className={`connections-page ${styles.page}`}>
       <header>
@@ -49,7 +52,6 @@ export default function ConnectionsPage(): React.JSX.Element {
           <button onClick={() => void summary.refetch()}>Try again</button>
         </div>
       ) : null}
-
       <div className={styles.tabs} role="tablist" aria-label="Connection groups">
         {CONNECTION_TABS.map(({ id, label, icon: Icon }) => (
           <button
@@ -241,6 +243,13 @@ export default function ConnectionsPage(): React.JSX.Element {
               </details>
             </div>
           </article>
+
+          {summary.data?.role === "owner" && session?.user.id ? (
+            <>
+              <ProductionServerSetup actorId={session.user.id} />
+              <ProductionHostSetup actorId={session.user.id} />
+            </>
+          ) : null}
 
           <section className={styles.plannedSection} aria-label="Planned deployers">
             <div className={styles.plannedHeading}>

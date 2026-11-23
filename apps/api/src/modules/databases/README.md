@@ -13,6 +13,9 @@ The Development workflow is explicitly enabled with `WRENLY_APP_DATABASES_ENABLE
 and requires local previews. The default is off. Production database provisioning and
 database-backed publishing remain unavailable; Development is never promoted implicitly.
 
+In filenames, `production-*` means the real server adapter, as opposed to a test
+adapter. It does **not** mean support for the Production database environment.
+
 ## Find the code
 
 | Path | Responsibility |
@@ -26,6 +29,7 @@ database-backed publishing remain unavailable; Development is never promoted imp
 | `bindings/` | Match selected builds and previews to the resource and applied schema |
 | `validation/` | Test saved application source against a separate disposable database |
 | `viewing/` | Role-aware bounded table/schema/row reads and owned reader cleanup |
+| `production-targets/` | Private TLS/identity checks, encrypted setup requests and verification worker; attachment is not enabled |
 | `preview-runtime/` | Prepare the saved app, deliver runtime-only credentials and clean owned helpers |
 | `database-recovery*` | Inspect or clean interrupted work without repeating uncertain operations |
 

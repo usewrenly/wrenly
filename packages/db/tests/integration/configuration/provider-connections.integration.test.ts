@@ -38,6 +38,20 @@ integration('encrypted provider connection persistence', () => {
     return join(directory, 'private')
   }
   const input = { label: 'Fixture cloud', protocol: 'openai-compatible', kind: 'cloud', endpoint: 'https://provider.example/v1', token: 'fixture-provider-token' }
+  test('image capability changes require owner review and an exact independent revision', async () => {
+    const path = await fixture()
+    const connection = await createProviderConnection(database, 'owner', input, path)
+    const [before] = await database.select().from(schema.providerConnections).where(eq(schema.providerConnections.id, connection.id))
+    const change = { id: connection.id, imageModelIds: ['vision-test'], expectedImageInputRevision: before!.imageInputRevision }
+    await expect(updateProviderConnection(database, 'member', change, path)).rejects.toThrow('Only the instance owner')
+    await updateProviderConnection(database, 'owner', change, path)
+    const [after] = await database.select().from(schema.providerConnections).where(eq(schema.providerConnections.id, connection.id))
+    expect(after!.imageModelIds).toEqual(['vision-test'])
+    expect(after!.version).toBe(before!.version)
+    expect(after!.imageInputRevision).not.toBe(before!.imageInputRevision)
+    await expect(updateProviderConnection(database, 'owner', change, path)).rejects.toThrow('settings changed')
+    await expect(updateProviderConnection(database, 'owner', { ...change, expectedImageInputRevision: after!.imageInputRevision, imageModelIds: ['vision-test', 'vision-test'] }, path)).rejects.toThrow()
+  })
   test('owner creates encrypted connections; safe metadata excludes secrets and endpoint identity stays immutable', async () => {
     const path = await fixture()
     await expect(createProviderConnection(database, 'member', input, path)).rejects.toThrow('Only the instance owner')

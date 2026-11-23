@@ -1,4 +1,12 @@
 import type { GitHubConnectionHandlers } from "./modules/source-control/github/http"
+import type { AttachmentHttpHandlers } from "./modules/attachments/attachment-http";
+import type { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
+import type { DatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
+import type { OwnerRuntimeControlHandlers } from "./modules/deployments/maintenance/control-http";
+import type { MaintenanceHttpHandlers } from "./modules/deployments/maintenance/http";
+import type { ProjectProductionCreationHandlers } from "./modules/databases/production-targets/project-provisioning/http"
+import type { InstanceProductionHttpHandlers } from "./modules/databases/production-targets/instance/http"
+import type { RuntimeHostHttpHandlers } from "./modules/databases/production-targets/deployment-hosts/http"
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
 import type { ProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
 import type { DraftHandlers } from "./modules/projects/drafts/draft-http"
@@ -37,6 +45,12 @@ type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
   sourceGitHub?: GitHubConnectionHandlers
+  attachments?: AttachmentHttpHandlers;
+  runtimeMaintenanceControl?: OwnerRuntimeControlHandlers
+  runtimeMaintenance?: MaintenanceHttpHandlers
+  productionProjectCreation?: ProjectProductionCreationHandlers
+  productionDatabaseSetup?: InstanceProductionHttpHandlers
+  productionHostSetup?: RuntimeHostHttpHandlers
   projectDatabases?: { status: ProjectHandler; view: ProjectHandler; actions?: DatabaseCommandHandlers; migrationReview?: ProjectHandler; recoveryReview?: ProjectHandler; recovery?: DatabaseCommandHandlers }
   skills?: SkillHandlers
   projectSkills?: ProjectSkillHandlers
@@ -47,6 +61,7 @@ export interface ApiHandlers {
   profilePictures?: ProfilePictureHandlers
   sharing?: SharingHandlers
   projectSettings?: ProjectSettingsHandlers
+  transcription?: ReturnType<typeof createTranscriptionHttpHandlers>
   providerConfiguration?: ProviderConfigurationHandlers
   catalog?: CatalogHandlers
   invitations?: InvitationHandlers
@@ -57,6 +72,7 @@ export interface ApiHandlers {
   setupSummary?: RequestHandler
   instanceAccess?: RequestHandler
   deployments?: DeploymentHttpHandlers
+  conversationDatabases?: DatabaseWorkflowHandlers
   conversations?: ConversationHttpHandlers
   previews?: PreviewHttpHandlers
   builds?: BuildHttpHandlers
@@ -128,6 +144,13 @@ export function createApp(
     app.get('/api/source/github/registration/callback', c => source.registrationCallback(c.req.raw))
     app.get('/api/source/github/authorization/callback', c => source.authorizationCallback(c.req.raw))
   }
+  if (handlers.attachments) {
+    const attachments = handlers.attachments;
+    app.post('/api/attachments', c => attachments.upload(c.req.raw));
+    app.get('/api/attachments/uploads/:requestId', c => attachments.uploadStatus(c.req.raw, c.req.param('requestId')));
+    app.get('/api/attachments/:id', c => attachments.read(c.req.raw, c.req.param('id')));
+    app.delete('/api/attachments/:id', c => attachments.remove(c.req.raw, c.req.param('id')));
+  }
   if (handlers.profilePictures) {
     const pictures = handlers.profilePictures
     app.get('/api/account/profile-picture', c => pictures.metadata(c.req.raw))
@@ -191,6 +214,10 @@ export function createApp(
     app.get('/api/projects/:id/archive', c => handlers.projectArchive!.get(c.req.raw, c.req.param('id')))
     app.patch('/api/projects/:id/archive', c => handlers.projectArchive!.save(c.req.raw, c.req.param('id')))
   }
+  if (handlers.transcription) {
+    app.get('/api/transcription', c => handlers.transcription!.capability(c.req.raw))
+    app.post('/api/transcription', c => handlers.transcription!.transcribe(c.req.raw))
+  }
   if (handlers.drafts) {
     app.get('/api/drafts', c => handlers.drafts!.list(c.req.raw))
     app.post('/api/drafts', c => handlers.drafts!.create(c.req.raw))
@@ -203,6 +230,27 @@ export function createApp(
     app.patch('/api/projects/:id/preview-media',c=>handlers.previewMedia!.save(c.req.raw,c.req.param('id')))
   }
   // Database handlers are explicit dependencies; absence keeps the inactive module unmounted.
+  if (handlers.productionDatabaseSetup) {
+    const setup = handlers.productionDatabaseSetup
+    app.post('/api/instance/production-database', c => setup.submit(c.req.raw))
+    app.get('/api/instance/production-database', c => setup.status(c.req.raw))
+    app.get('/api/instance/production-database/requests/:requestId', c => setup.status(c.req.raw, c.req.param('requestId')))
+    app.post('/api/instance/production-database/acknowledge', c => setup.acknowledge(c.req.raw))
+  }
+  if (handlers.productionHostSetup) {
+    const setup = handlers.productionHostSetup
+    app.post('/api/instance/deployment-host', c => setup.submit(c.req.raw))
+    app.get('/api/instance/deployment-host', c => setup.status(c.req.raw))
+    app.get('/api/instance/deployment-host/requests/:requestId', c => setup.status(c.req.raw, c.req.param('requestId')))
+    app.post('/api/instance/deployment-host/acknowledge', c => setup.acknowledge(c.req.raw))
+  }
+  if (handlers.productionProjectCreation) {
+    const creation = handlers.productionProjectCreation
+    app.post('/api/projects/:id/databases/production/creation', c => creation.submit(c.req.raw, c.req.param('id')))
+    app.post('/api/projects/:id/databases/production/creation/recovery', c => creation.recovery(c.req.raw, c.req.param('id')))
+    app.get('/api/projects/:id/databases/production/creation', c => creation.status(c.req.raw, c.req.param('id')))
+    app.get('/api/projects/:id/databases/production/creation/requests/:requestId', c => creation.status(c.req.raw, c.req.param('id'), c.req.param('requestId')))
+  }
   if(handlers.projectDatabases){
     app.get('/api/projects/:id/databases',c=>handlers.projectDatabases!.status(c.req.raw,c.req.param('id')))
     app.get('/api/projects/:id/databases/view',c=>handlers.projectDatabases!.view(c.req.raw,c.req.param('id')))
@@ -241,6 +289,17 @@ export function createApp(
       return context.json({ error: 'Project ID must be a valid UUID' }, 400)
     return handlers.deployProject(context.req.raw, parsed.data)
   })
+  if (handlers.runtimeMaintenanceControl) {
+    const control = handlers.runtimeMaintenanceControl
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance/controls/:requestId', c => control.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId'), c.req.param('requestId')))
+    app.post('/api/projects/:id/deployments/:deploymentId/maintenance/controls', c => control.save(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+  }
+  if (handlers.runtimeMaintenance) {
+    const maintenance = handlers.runtimeMaintenance
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance', c => maintenance.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+    app.get('/api/projects/:id/deployments/:deploymentId/maintenance/actions/:requestId', c => maintenance.get(c.req.raw, c.req.param('id'), c.req.param('deploymentId'), c.req.param('requestId')))
+    app.post('/api/projects/:id/deployments/:deploymentId/maintenance', c => maintenance.save(c.req.raw, c.req.param('id'), c.req.param('deploymentId')))
+  }
   if (handlers.deployments) {
     const publishing = handlers.deployments
     app.get("/api/deployments", c => publishing.list(c.req.raw))
@@ -279,6 +338,11 @@ export function createApp(
     app.post('/api/previews/:id/access', c => previews.access(c.req.raw, c.req.param('id')))
   }
 
+  if (handlers.conversationDatabases) {
+    const workflows=handlers.conversationDatabases;
+    app.get('/api/projects/:id/database-workflows',c=>workflows.read(c.req.raw,c.req.param('id')));
+    app.post('/api/projects/:id/database-workflows/:workflowId',c=>workflows.approve(c.req.raw,c.req.param('id'),c.req.param('workflowId')));
+  }
   if (handlers.conversations) {
     const conversations = handlers.conversations
     app.post('/api/projects/:id/messages', c => conversations.create(c.req.raw, c.req.param('id')))

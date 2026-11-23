@@ -39,7 +39,10 @@ export async function validatePreviewBuild(database: typeof db, input: {
   expect(result.outcome.status).toBe("success");
   await finishBuild(database, claim, { status: "success" });
 }
-/** Admit through the real HTTP boundary, fetch through owned ingress, then await preview cleanup. */
+const PREVIEW_RENEWAL_DEADLINE_MS = 20_000;
+const PREVIEW_RENEWAL_POLL_MS = 100;
+
+/** Admit through the real HTTP boundary, verify renewed access, then await preview cleanup. */
 export async function verifyLiveDatabasePreview(database: typeof db, input: { projectId: string; buildId: string; directory: string }): Promise<void> {
   const environment = parseApiEnvironment({ WRENLY_DATABASE_URL: "postgresql://fixture@localhost/unused", WRENLY_DATA_DIR: input.directory,
     WRENLY_AUTH_SECRET: "combined-fixture-secret-at-least-32-characters", WRENLY_APP_URL: "http://localhost:3002",
@@ -80,6 +83,24 @@ export async function verifyLiveDatabasePreview(database: typeof db, input: { pr
     const host = new URL(environment.WRENLY_PREVIEW_BASE_URL); host.hostname = `${previewId}.${host.hostname}`;
     const page = await fetch(runtime.ingressUrl, { headers: { Host: host.host, "x-wrenly-preview-ingress": runtime.capability }, signal: AbortSignal.timeout(30_000) });
     expect(page.status).toBe(200); expect(await page.text()).toContain("Runtime database CRUD verified");
+    // A preview that serves its first page can still fail on its first renewal.
+    // Wait for a persisted lease advance, then exercise real SQL through ingress again.
+    const initialLease = saved.leaseExpiresAt?.getTime() ?? 0;
+    const renewalDeadline = Date.now() + PREVIEW_RENEWAL_DEADLINE_MS;
+    let renewedLease = initialLease;
+    while (Date.now() < renewalDeadline) {
+      const [current] = await database.select().from(schema.previews).where(eq(schema.previews.id, previewId));
+      expect(current?.status).toBe("ready");
+      renewedLease = current?.leaseExpiresAt?.getTime() ?? 0;
+      if (renewedLease > initialLease) break;
+      await Bun.sleep(PREVIEW_RENEWAL_POLL_MS);
+    }
+    expect(renewedLease).toBeGreaterThan(initialLease);
+    expect(await databasePreviewIsReady(database, saved)).toBe(true);
+    const renewedPage = await fetch(runtime.ingressUrl, { headers: { Host: host.host,
+      "x-wrenly-preview-ingress": runtime.capability }, signal: AbortSignal.timeout(30_000) });
+    expect(renewedPage.status).toBe(200);
+    expect(await renewedPage.text()).toContain("Runtime database CRUD verified");
     expect((await handlers.stop(new Request("http://localhost/preview", { method: "POST" }), previewId)).status).toBe(200);
   } finally { await worker.stop(); }
   if (previewId) {

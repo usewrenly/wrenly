@@ -1,8 +1,15 @@
+import {
+  validateProductionPublishingJournal,
+  PRODUCTION_PUBLISHING_STEPS,
+} from "@wrenly/db/production-publishing-contract";
 /**
  * Durable publishing persistence.
  * Admission freezes an owned successful revision and reserves capacity; claim-fenced operations record mutation intent and acknowledgement.
  * Execution snapshots and encrypted runtime secrets are server-only, distinct from safe status reads.
  */
+import { freezeProductionPublishingBinding } from "../database-runtime/binding";
+import { accessContext } from "../../auth/access/access-context";
+import type { ProductionPublishingBinding } from "@wrenly/db/production-publishing-contract";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import { hasDatabaseWork } from "../../databases/database-activity";
 import { validateLaravelSource } from "../../../../../../packages/sandbox/src/source-policy/laravel-runtime";
@@ -253,6 +260,7 @@ export function admitDeployment(
     buildId: string;
     idempotencyKey: string;
     target: DeploymentTarget;
+    allowProductionDatabase?: boolean;
   },
 ): Promise<{ deploymentId: string; replayed: boolean }> {
   return operation("admit", async () => {
@@ -373,12 +381,36 @@ export function admitDeployment(
           "This build contains invalid or private deployment source. Review its files and runtime configuration.",
         );
       }
+      const target = parseTarget(input.target);
+      const deploymentId = crypto.randomUUID();
+      let productionBinding: ProductionPublishingBinding | undefined;
       try {
-        if (readAppDatabaseManifest(source.files, project.stack))
-          throw new DeploymentStoreError(
-            409,
-            "This revision declares a database. Publishing requires a separately verified Production database binding; that integration is not enabled yet.",
+        if (readAppDatabaseManifest(source.files, project.stack)) {
+          const principal = accessContext.getStore()?.principal;
+          if (
+            !input.allowProductionDatabase ||
+            !principal ||
+            principal.userId !== input.userId ||
+            (project.stack !== "nextjs" && project.stack !== "laravel")
+          )
+            throw new DeploymentStoreError(
+              409,
+              "This revision needs enabled Production publishing, a ready Production database and reviewed applied migrations.",
+            );
+          productionBinding = await freezeProductionPublishingBinding(
+            transaction,
+            {
+              deploymentId,
+              projectId: project.id,
+              buildId: build.id,
+              sourceSha256: source.sha256,
+              files: source.files,
+              stack: project.stack,
+              serverId: target.coolifyServerUuid,
+              principal,
+            },
           );
+        }
       } catch (error) {
         if (error instanceof DeploymentStoreError) throw error;
         throw new DeploymentStoreError(
@@ -386,7 +418,6 @@ export function admitDeployment(
           "Review this revision’s database manifest and frozen migrations before publishing.",
         );
       }
-      const target = parseTarget(input.target);
       if (
         target.registryOrigin &&
         !["nextjs", "laravel"].includes(project.stack)
@@ -411,16 +442,19 @@ export function admitDeployment(
           "Deployment target differs from this project’s saved target. Explicit migration is required.",
         );
       if (!resources)
-        await transaction
-          .insert(deploymentResources)
-          .values({
-            projectId: project.id,
-            ...target,
-            repositoryName: `wrenly-${project.id}`,
-          });
+        await transaction.insert(deploymentResources).values({
+          projectId: project.id,
+          ...target,
+          repositoryName: `wrenly-${project.id}`,
+        });
       const [saved] = await transaction
         .insert(deployments)
         .values({
+          id: deploymentId,
+          productionDatabaseBinding: productionBinding ?? null,
+          productionRuntimeJournal: productionBinding
+            ? { version: 1, pending: null, completed: [] }
+            : null,
           projectId: project.id,
           buildId: build.id,
           userId: input.userId,
@@ -728,13 +762,28 @@ export function completeDeploymentMutation(
 }
 
 /** Separates a finished provider job from HTTP verification without changing its saved remote identity. */
-export function markDeploymentVerifying(database: Database, claim: DeploymentClaim): Promise<void> {
-  return operation("verify routed application", () => database.transaction(async transaction => {
-    const row = await lockClaim(transaction, claim);
-    if (row.mutationIntent || !row.remoteDeploymentUuid || !["deploying", "verifying"].includes(row.status))
-      throw new DeploymentStoreError(409, "A completed remote deployment job is required before URL verification.");
-    await transaction.update(deployments).set({ status: "verifying", updatedAt: new Date() }).where(eq(deployments.id, row.id));
-  }));
+export function markDeploymentVerifying(
+  database: Database,
+  claim: DeploymentClaim,
+): Promise<void> {
+  return operation("verify routed application", () =>
+    database.transaction(async (transaction) => {
+      const row = await lockClaim(transaction, claim);
+      if (
+        row.mutationIntent ||
+        !row.remoteDeploymentUuid ||
+        !["deploying", "verifying"].includes(row.status)
+      )
+        throw new DeploymentStoreError(
+          409,
+          "A completed remote deployment job is required before URL verification.",
+        );
+      await transaction
+        .update(deployments)
+        .set({ status: "verifying", updatedAt: new Date() })
+        .where(eq(deployments.id, row.id));
+    }),
+  );
 }
 
 /** Marks expired work interrupted while preserving remote mutation intent for reconciliation. */
@@ -863,11 +912,33 @@ export function finishDeployment(
         (row.mutationIntent ||
           !row.registryDigest ||
           !row.artifactImageId ||
-          !row.remoteDeploymentUuid)
+          (!row.productionDatabaseBinding && !row.remoteDeploymentUuid))
       )
         throw new DeploymentStoreError(
           409,
           "Deployment completion lacks confirmed remote evidence.",
+        );
+      if (outcome.status === "success" && row.productionDatabaseBinding) {
+        const journal = validateProductionPublishingJournal(
+          row.productionDatabaseBinding,
+          row.productionRuntimeJournal,
+        );
+        const route = journal.completed.at(-1)?.fact;
+        if (
+          journal.pending ||
+          journal.completed.length !== PRODUCTION_PUBLISHING_STEPS.length ||
+          route?.step !== "route-verify" ||
+          new URL(route.url).href !== new URL(outcome.url).href
+        )
+          throw new DeploymentStoreError(
+            409,
+            "Database-backed publishing lacks verified runtime and route evidence.",
+          );
+      }
+      if (!row.productionDatabaseBinding && row.productionRuntimeJournal)
+        throw new DeploymentStoreError(
+          409,
+          "Production runtime journal has no saved database binding.",
         );
       let url: string | null = null;
       if (outcome.status === "success") {
@@ -886,7 +957,8 @@ export function finishDeployment(
         url = parsed.href;
       }
       const status =
-        row.mutationIntent && outcome.status !== "success"
+        (row.mutationIntent || row.productionDatabaseBinding) &&
+        outcome.status !== "success"
           ? "interrupted"
           : outcome.status;
       await transaction

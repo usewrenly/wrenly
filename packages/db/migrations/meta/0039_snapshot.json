@@ -1,6 +1,6 @@
 {
-  "id": "dbe8e985-fd36-4cbd-9b9d-b2b6d2dc08d2",
-  "prevId": "ced465d7-7648-4b80-a64e-17e2c7747626",
+  "id": "19bf23f4-0631-41c8-b707-3c772623900a",
+  "prevId": "3e110c0a-ea95-4be8-b374-92688adf51c6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5308,19 +5308,24 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.source_authorization_requests": {
-      "name": "source_authorization_requests",
+    "public.production_database_setups": {
+      "name": "production_database_setups",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "notNull": true
         },
-        "user_id": {
-          "name": "user_id",
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -5337,437 +5342,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "state_hash": {
-          "name": "state_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "purpose": {
-          "name": "purpose",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "app_version": {
-          "name": "app_version",
+        "access_revision": {
+          "name": "access_revision",
           "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "credential": {
-          "name": "credential",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "callback_url": {
-          "name": "callback_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "consumed_at": {
-          "name": "consumed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "source_authorization_expiry": {
-          "name": "source_authorization_expiry",
-          "columns": [
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "source_authorization_requests_user_id_user_id_fk": {
-          "name": "source_authorization_requests_user_id_user_id_fk",
-          "tableFrom": "source_authorization_requests",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "source_authorization_requests_session_id_session_id_fk": {
-          "name": "source_authorization_requests_session_id_session_id_fk",
-          "tableFrom": "source_authorization_requests",
-          "tableTo": "session",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "source_authorization_requests_state_hash_unique": {
-          "name": "source_authorization_requests_state_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "state_hash"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_connections": {
-      "name": "source_connections",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "version": {
-          "name": "version",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "provider": {
-          "name": "provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "app_version": {
-          "name": "app_version",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "remote_user_id": {
-          "name": "remote_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "remote_login": {
-          "name": "remote_login",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "credential": {
-          "name": "credential",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "access_expires_at": {
-          "name": "access_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "refresh_expires_at": {
-          "name": "refresh_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "disconnected_at": {
-          "name": "disconnected_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "source_connection_user_provider": {
-          "name": "source_connection_user_provider",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "provider",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "source_connections_user_id_user_id_fk": {
-          "name": "source_connections_user_id_user_id_fk",
-          "tableFrom": "source_connections",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_github_app": {
-      "name": "source_github_app",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "app_id": {
-          "name": "app_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "slug": {
-          "name": "slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "client_id": {
-          "name": "client_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "credential": {
-          "name": "credential",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "configured_by": {
-          "name": "configured_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "source_github_app_configured_by_user_id_fk": {
-          "name": "source_github_app_configured_by_user_id_fk",
-          "tableFrom": "source_github_app",
-          "tableTo": "user",
-          "columnsFrom": [
-            "configured_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_import_reviews": {
-      "name": "source_import_reviews",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_version": {
-          "name": "connection_version",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repository": {
-          "name": "repository",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "commit_id": {
-          "name": "commit_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tree_id": {
-          "name": "tree_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "application_root": {
-          "name": "application_root",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "stack": {
-          "name": "stack",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "files": {
-          "name": "files",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "excluded_paths": {
-          "name": "excluded_paths",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "source_import_reviews_user_id_user_id_fk": {
-          "name": "source_import_reviews_user_id_user_id_fk",
-          "tableFrom": "source_import_reviews",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_project_origins": {
-      "name": "source_project_origins",
-      "schema": "",
-      "columns": {
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
           "primaryKey": false,
           "notNull": true
         },
@@ -5783,186 +5360,15 @@
           "primaryKey": false,
           "notNull": true
         },
-        "review_id": {
-          "name": "review_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "build_id": {
-          "name": "build_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repository": {
-          "name": "repository",
+        "target": {
+          "name": "target",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
-        "commit_id": {
-          "name": "commit_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "tree_id": {
-          "name": "tree_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "application_root": {
-          "name": "application_root",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "baseline": {
-          "name": "baseline",
+        "secret": {
+          "name": "secret",
           "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "source_import_user_request": {
-          "name": "source_import_user_request",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "request_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "source_import_review_once": {
-          "name": "source_import_review_once",
-          "columns": [
-            {
-              "expression": "review_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "source_project_origins_project_id_projects_id_fk": {
-          "name": "source_project_origins_project_id_projects_id_fk",
-          "tableFrom": "source_project_origins",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "source_project_origins_user_id_user_id_fk": {
-          "name": "source_project_origins_user_id_user_id_fk",
-          "tableFrom": "source_project_origins",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "source_project_origins_build_id_builds_id_fk": {
-          "name": "source_project_origins_build_id_builds_id_fk",
-          "tableFrom": "source_project_origins",
-          "tableTo": "builds",
-          "columnsFrom": [
-            "build_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_push_operations": {
-      "name": "source_push_operations",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "review_id": {
-          "name": "review_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "account_revision": {
-          "name": "account_revision",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "request_id": {
-          "name": "request_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -5972,13 +5378,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'queued'"
-        },
-        "phase": {
-          "name": "phase",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'preflight'"
         },
         "claim_token": {
           "name": "claim_token",
@@ -5992,15 +5391,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "tree_id": {
-          "name": "tree_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "commit_id": {
-          "name": "commit_id",
-          "type": "text",
+        "verified": {
+          "name": "verified",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -6025,11 +5418,11 @@
         }
       },
       "indexes": {
-        "source_push_user_request": {
-          "name": "source_push_user_request",
+        "production_database_setup_request_unique": {
+          "name": "production_database_setup_request_unique",
           "columns": [
             {
-              "expression": "user_id",
+              "expression": "actor_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -6046,39 +5439,32 @@
           "method": "btree",
           "with": {}
         },
-        "source_push_review_once": {
-          "name": "source_push_review_once",
+        "production_database_setup_project_status_idx": {
+          "name": "production_database_setup_project_status_idx",
           "columns": [
             {
-              "expression": "review_id",
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "source_push_operations_user_id_user_id_fk": {
-          "name": "source_push_operations_user_id_user_id_fk",
-          "tableFrom": "source_push_operations",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "source_push_operations_project_id_projects_id_fk": {
-          "name": "source_push_operations_project_id_projects_id_fk",
-          "tableFrom": "source_push_operations",
+        "production_database_setups_project_id_projects_id_fk": {
+          "name": "production_database_setups_project_id_projects_id_fk",
+          "tableFrom": "production_database_setups",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
@@ -6086,155 +5472,15 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "source_push_operations_review_id_source_push_reviews_id_fk": {
-          "name": "source_push_operations_review_id_source_push_reviews_id_fk",
-          "tableFrom": "source_push_operations",
-          "tableTo": "source_push_reviews",
-          "columnsFrom": [
-            "review_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
           "onDelete": "restrict",
           "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.source_push_reviews": {
-      "name": "source_push_reviews",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
         },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "build_id": {
-          "name": "build_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "access_revision": {
-          "name": "access_revision",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "connection_version": {
-          "name": "connection_version",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repository": {
-          "name": "repository",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_commit": {
-          "name": "base_commit",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_tree": {
-          "name": "base_tree",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "application_root": {
-          "name": "application_root",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "branch": {
-          "name": "branch",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "changes": {
-          "name": "changes",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "source_push_reviews_user_id_user_id_fk": {
-          "name": "source_push_reviews_user_id_user_id_fk",
-          "tableFrom": "source_push_reviews",
+        "production_database_setups_actor_id_user_id_fk": {
+          "name": "production_database_setups_actor_id_user_id_fk",
+          "tableFrom": "production_database_setups",
           "tableTo": "user",
           "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "source_push_reviews_project_id_projects_id_fk": {
-          "name": "source_push_reviews_project_id_projects_id_fk",
-          "tableFrom": "source_push_reviews",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "source_push_reviews_build_id_builds_id_fk": {
-          "name": "source_push_reviews_build_id_builds_id_fk",
-          "tableFrom": "source_push_reviews",
-          "tableTo": "builds",
-          "columnsFrom": [
-            "build_id"
+            "actor_id"
           ],
           "columnsTo": [
             "id"

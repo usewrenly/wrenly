@@ -17,6 +17,16 @@ steps, with different evidence and permissions.
 
 ## Current scope
 
+Optional voice dictation runs locally through a pinned Whisper.cpp Docker runtime.
+A person records up to 60 seconds, reviews the transcript and inserts it into a draft;
+Send remains explicit. Audio is temporary, not a saved attachment or cloud service.
+See the public voice-dictation guide for the one-time model/runtime setup.
+
+Optional official framework inspection adds isolated Laravel Boost package facts and
+Next.js 16 DevTools error state to stateless repair attempts. It is off by default,
+uses a fixed offline browser visit for Next.js, and never grants live database or
+model-driven browser access. See the public framework-inspection guide.
+
 Next.js and Laravel workflows cover generation, ongoing editing, validation, local
 previews and private publishing. Framework servers are extensible through MCP. Vue and
 Django are planned; their folders are not implemented support.
@@ -188,3 +198,79 @@ databases have distinct backup requirements.
 CONTRIBUTING.md explains local checks and PR scope. SECURITY.md explains private reporting.
 Keep user documentation practical: what to do, what it means, what should happen and how
 to recover safely. Keep release notes honest about verified capabilities and limitations.
+
+## Infrastructure adapters and framework tools
+
+A framework MCP server helps generate or edit source. An infrastructure adapter
+talks to a Git host, deployer or database service. Those responsibilities stay
+separate. For example, a future deployer can replace Coolify's API calls while
+Wrenly keeps the same owner checks, saved requests and recovery rules.
+
+The internal database-provider contract lives in `packages/deploy/src/databases`.
+A saved provider ID selects an explicitly configured, compiled-in adapter. The
+adapter interprets its own placement fields and returns an opaque remote identity.
+Missing adapters fail closed; existing resources never silently move to another
+provider. Common orchestration owns credentials, work claims, locks and explicit
+recovery. A provider reporting TLS enabled does not replace a real verified TLS
+connection check. This extension boundary does not mean other deployers are
+implemented, nor does it expose infrastructure operations as model MCP tools.
+
+## Production app database isolation decision
+
+Generated apps will share one dedicated, privately reachable PostgreSQL 17 cluster,
+with a separate database and restricted migrator, runtime and reader accounts per
+project. A cluster means one PostgreSQL server installation. It must never be the
+cluster containing Wrenly accounts, prompts or project metadata; authenticated server
+identity checks reject that configuration even when hostnames differ.
+
+This supports one-time infrastructure setup followed by dashboard-managed project
+provisioning. Verified TLS protects the private upstream connection. Generated apps
+retain the existing role-scoped socket boundary and blocked IP egress. Database
+creation and grants are separate durable steps: interrupted creation must be inspected,
+not repeated blindly or adopted by matching a name. Existing passwords are never
+silently replaced. PUBLIC privileges are changed only on the newly created project
+database, never across the shared cluster.
+
+This is database-and-role isolation, not machine isolation. CPU, storage, maintenance,
+WAL and server outages remain shared. The management credential is highly privileged
+and stays instance-side; project credentials cannot create databases or roles. Future
+infrastructure adapters may support other placements without changing owner review,
+backup or recovery rules. Production activation remains gated on complete runtime,
+recovery, publishing and UI acceptance.
+
+## Deployment-host transport decision
+
+A database socket is a file on the machine running the generated app. Giving a remote
+Coolify server a local volume name does not move that socket to it. Database-backed
+publishing therefore needs verified access to the deployment machine as well as the
+private PostgreSQL server.
+
+The deployment adapter uses a repository-owned fixed helper on that machine. Same-host
+operations can use the existing local Docker transport. Remote operations use SSH—an
+encrypted connection to a specifically trusted machine—with an explicitly pinned host
+key and a dedicated instance-owner credential. Generated code cannot choose the host,
+command or mounts. Host setup is separate from project publishing permissions.
+
+Runtime-role configuration travels through the helper's standard input, never command
+arguments, Docker environment metadata, Compose files or repositories. The generated
+application keeps IP networking disabled; a trusted ingress bridge and database broker
+provide only its HTTP and role-scoped database sockets. Every application image remains
+pinned to its validated digest. Existing stateless image publishing retains its adapter.
+This path becomes available only after the complete host, lifecycle and deployed-data
+acceptance checks pass.
+
+## Database requests in the conversation
+
+“Build a notes app that remembers notes” first offers the project owner a Development
+database proposal. Approval saves the requested instructions and exact model, Skills
+and source context; background work creates/connects the resource and admits one build.
+After generation, a second card presents the saved migration files. Its separate approval
+authorizes verified backup, disposable rehearsal and application of that exact review.
+No model response grants permission to change saved tables. Plan remains discussion only.
+
+Migration 0049 stores these continuations. A continuation means the next saved step after
+an operation finishes. Each operation has a stable request ID, so restart/reload observes
+its existing receipt. Stop prevents later phases; sign-out and access changes remove the
+authority needed to continue. Unknown effects remain blocked for inspection. The Database
+tab retains advanced resource controls. This Development flow does not automatically
+publish an app or promote its data to the separately configured Production environment.

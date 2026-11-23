@@ -181,3 +181,34 @@ export async function resolveExecutionProvider(
     );
   }
 }
+
+/** Image support is an owner-reviewed per-model capability, never inferred from a model name or catalog hint. */
+export async function assertModelImageInputs(
+  database: Database,
+  provider: string,
+  model: string,
+): Promise<void> {
+  const identity = parseIdentity(provider);
+  if (!identity?.version)
+    throw new Error(
+      "Configure this model's image support in Settings → Providers before attaching images.",
+    );
+  const [row] = await database
+    .select({
+      version: providerConnections.version,
+      enabled: providerConnections.enabled,
+      imageModelIds: providerConnections.imageModelIds,
+    })
+    .from(providerConnections)
+    .where(eq(providerConnections.id, identity.id));
+  if (
+    !row ||
+    !row.enabled ||
+    row.version !== identity.version ||
+    !Array.isArray(row.imageModelIds) ||
+    !row.imageModelIds.includes(model)
+  )
+    throw new Error(
+      "This model is not configured for image input. Review its capability in Settings → Providers or remove the image.",
+    );
+}

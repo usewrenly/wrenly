@@ -5,7 +5,7 @@ import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 // Installation disables hooks; compilation is offline; only trusted copy commands
 // assemble the image. No runtime credentials are available during preparation.
 import Docker from 'dockerode'
-import { ARTIFACT_WORKSPACE_LABEL, ARTIFACT_WORKSPACE_VERSION } from './artifact-policy'
+import { ARTIFACT_WORKSPACE_LABEL, ARTIFACT_WORKSPACE_VERSION, ARTIFACT_DATABASE_RUNTIME_LABEL, ARTIFACT_DATABASE_RUNTIME_VERSION } from './artifact-policy'
 import { LARAVEL_RUNTIME_IMAGE, LARAVEL_INSTALL_COMMAND, LARAVEL_BUILD_COMMAND, LARAVEL_COMPILE_COMMAND, LARAVEL_START_COMMAND, laravelValidationEnvironment, validateLaravelSource } from '../source-policy/laravel-runtime'
 import { ARTIFACT_WATCHDOG_SOURCE } from './artifact-watchdog'
 import { mkdtemp, mkdir, writeFile, rm, readdir, lstat } from 'node:fs/promises'
@@ -21,6 +21,7 @@ const COMPILER_LOG_DISK_LIMIT = '128k'
 const docker = new Docker({ socketPath: '/var/run/docker.sock', timeout: TIMEOUT_MS })
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
 const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes
+const MAX_BOOTSTRAP_BYTES = 2 * 1024 * 1024 // Same bound as trusted API worker bundles; never generated source.
 const LABEL = 'io.wrenly.deployment-id'
 const ROLE_LABEL = 'io.wrenly.artifact-role'
 /** Base messages expose only a fixed stage; compiler diagnostics use the explicit project-only subtype. */
@@ -63,7 +64,13 @@ export function buildRuntimeArtifact(input: RuntimeArtifactInput): Promise<Runti
 export function prepareDatabaseValidationArtifact(input: RuntimeArtifactInput & { stack: 'nextjs' | 'laravel'; migrationDigest: string }): Promise<RuntimeArtifact> {
   return prepareRuntimeArtifact(input, input.migrationDigest);
 }
-async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigrationDigest?: string): Promise<RuntimeArtifact> {
+/** Production images receive only a repository-owned bootstrap bundle, never runtime credentials. */
+export function prepareProductionDatabaseArtifact(input: RuntimeArtifactInput & { stack: 'nextjs' | 'laravel'; migrationDigest: string; bootstrap: Uint8Array }): Promise<RuntimeArtifact> {
+  if (!(input.bootstrap instanceof Uint8Array) || input.bootstrap.byteLength < 1 || input.bootstrap.byteLength > MAX_BOOTSTRAP_BYTES)
+    return Promise.reject(new RuntimeArtifactError('trusted Production bootstrap is invalid'))
+  return prepareRuntimeArtifact(input, input.migrationDigest, input.bootstrap)
+}
+async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigrationDigest?: string, productionBootstrap?: Uint8Array): Promise<RuntimeArtifact> {
   if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input.deploymentId) ||
     !input.files.length || input.files.length > 1000 || Buffer.byteLength(JSON.stringify(input.files)) > MAX_SOURCE_BYTES)
     throw new Error('Runtime artifact source is invalid or oversized.')
@@ -90,6 +97,8 @@ async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigra
     const base = await docker.getImage(laravel ? LARAVEL_RUNTIME_IMAGE : 'oven/bun:alpine').inspect()
     const baseImageId = base.Id
     directory = await mkdtemp(join(tmpdir(), `wrenly-artifact-${input.deploymentId}-`))
+    const productionBootstrapPath = join(directory, 'production-application.js')
+    if (productionBootstrap) await writeFile(productionBootstrapPath, productionBootstrap, { mode: 0o444, flag: 'wx' })
     const watchdog = join(directory, 'watchdog.js')
     await writeFile(watchdog, ARTIFACT_WATCHDOG_SOURCE, { mode: 0o644, flag: 'wx' })
     const source = join(directory, 'source')
@@ -154,12 +163,14 @@ async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigra
     // Blade updates compiled-file timestamps; write permission alone does not allow
     // a different owner to set explicit mtimes. CHOWN belongs only to trusted copy.
     const packed = await run(['sh', '-c', 'mkdir -p /app && cp -R /source/. /app/ && chmod -R a+rwX /app' +
-      (laravel ? ' && rm -f /app/.env /app/.env.* /app/bootstrap/cache/config.php /app/bootstrap/cache/routes-*.php && chown -Rh 1000:1000 /app' : '')], 'none', [`${volume.name}:/source:ro`], true, laravel)
+      (laravel ? ' && rm -f /app/.env /app/.env.* /app/bootstrap/cache/config.php /app/bootstrap/cache/routes-*.php && chown -Rh 1000:1000 /app' : '') +
+      (productionBootstrap ? ' && mkdir -p /wrenly && cp /trusted-production-application.js /wrenly/production-application.js && chmod 0444 /wrenly/production-application.js' : '')], 'none', [`${volume.name}:/source:ro`, ...(productionBootstrap ? [`${productionBootstrapPath}:/trusted-production-application.js:ro`] : [])], true, laravel)
     await input.beforeEffect(); signal.throwIfAborted()
     phase = 'image commit'
     const committed = await packed.commit({ changes: [
-      'USER 1000:1000', 'WORKDIR /app',
-      laravel ? `CMD ${JSON.stringify(LARAVEL_START_COMMAND)}` : 'CMD ["bun","node_modules/next/dist/bin/next","start","--hostname","0.0.0.0","--port","3000"]',
+      productionBootstrap ? 'USER 0:0' : 'USER 1000:1000', 'WORKDIR /app',
+      ...(productionBootstrap ? ['ENTRYPOINT ["bun","--no-env-file","/wrenly/production-application.js"]', 'CMD []', `LABEL ${ARTIFACT_DATABASE_RUNTIME_LABEL}=${ARTIFACT_DATABASE_RUNTIME_VERSION}`] : [
+      laravel ? `CMD ${JSON.stringify(LARAVEL_START_COMMAND)}` : 'CMD ["bun","node_modules/next/dist/bin/next","start","--hostname","0.0.0.0","--port","3000"]']),
       laravel ? 'ENV APP_ENV=production APP_DEBUG=false HOME=/tmp XDG_CONFIG_HOME=/tmp/config XDG_DATA_HOME=/tmp/data' : 'ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 HOME=/tmp', 'EXPOSE 3000',
       `LABEL ${ROLE_LABEL}=runtime`,
       `LABEL ${ARTIFACT_WORKSPACE_LABEL}=${ARTIFACT_WORKSPACE_VERSION}`,
@@ -167,7 +178,8 @@ async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigra
     retainedImage = committed.Id
     const image = await docker.getImage(committed.Id).inspect()
     if (image.Size > MAX_ARTIFACT_BYTES || image.Config.Labels?.[LABEL] !== input.deploymentId ||
-      image.Config.Labels[ARTIFACT_WORKSPACE_LABEL] !== ARTIFACT_WORKSPACE_VERSION)
+      image.Config.Labels[ARTIFACT_WORKSPACE_LABEL] !== ARTIFACT_WORKSPACE_VERSION ||
+      productionBootstrap && image.Config.Labels[ARTIFACT_DATABASE_RUNTIME_LABEL] !== ARTIFACT_DATABASE_RUNTIME_VERSION)
       throw new Error('Runtime artifact image exceeds its size limit or identity changed.')
     signal.throwIfAborted()
     return { imageId: committed.Id, baseImageId, sizeBytes: image.Size }

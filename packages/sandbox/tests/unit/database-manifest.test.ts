@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 import { readAppDatabaseManifest } from "../../src/databases/database-manifest";
 const sql = {
   path: "drizzle/0000_initial.sql",
@@ -170,7 +171,7 @@ test("Laravel review binds bootstrap and provider bytes, independent of input or
   expect(readAppDatabaseManifest([...files, { path: "config/app.php", content: "<?php" }], "laravel")?.digest).not.toBe(reviewed?.digest);
   expect(readAppDatabaseManifest(files.filter(file => file.path !== "composer.lock"), "laravel")?.digest).not.toBe(reviewed?.digest);
   expect(() => readAppDatabaseManifest([...files, {
-    path: "public/large.txt", content: "x".repeat(2 * 1024 * 1024 + 1),
+    path: "public/large.txt", content: "x".repeat(REVISION_LIMITS.textFileBytes + 1),
   }], "laravel")).toThrow("source exceeds");
 });
 

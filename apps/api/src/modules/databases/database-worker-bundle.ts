@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-type DatabaseWorkerKind = "administrator" | "migration" | "query" | "application" | "preview";
+type DatabaseWorkerKind = "administrator" | "migration" | "query" | "application" | "preview" | "production";
 const bundles = new Map<DatabaseWorkerKind, Promise<Uint8Array>>();
 const MAX_BUNDLE_BYTES = 2 * 1024 * 1024;
 async function buildBundle(kind: DatabaseWorkerKind): Promise<Uint8Array> {

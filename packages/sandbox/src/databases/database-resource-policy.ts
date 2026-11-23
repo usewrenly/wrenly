@@ -21,6 +21,34 @@ export interface ManagedDatabaseScope {
   projectId: string;
   environment: "development";
 }
+/** Client helpers share isolation rules across environments; persistent local resources stay Development-only. */
+export interface DatabaseClientScope {
+  resourceId: string;
+  projectId: string;
+  environment: "development" | "production";
+}
+/** Binds ephemeral sockets and helpers to an exact project/environment without allowing remote storage lifecycle operations. */
+export function databaseClientLabels(
+  scope: DatabaseClientScope,
+  kind:
+    | "database-socket"
+    | "database-query"
+    | "database-migration"
+    | "database-backup",
+): Record<string, string> {
+  if (
+    !UUID.test(scope.resourceId) ||
+    !UUID.test(scope.projectId) ||
+    !["development", "production"].includes(scope.environment)
+  )
+    throw new Error("Invalid database client scope.");
+  return {
+    [RESOURCE_LABEL]: scope.resourceId,
+    [PROJECT_LABEL]: scope.projectId,
+    [ENVIRONMENT_LABEL]: scope.environment,
+    [ROLE_LABEL]: kind,
+  };
+}
 export interface ManagedDatabaseNames {
   container: string;
   volume: string;

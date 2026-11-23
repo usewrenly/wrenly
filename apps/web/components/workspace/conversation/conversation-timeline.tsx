@@ -6,6 +6,10 @@ import {
   type ConversationMessage,
   type ConversationTurn,
 } from "@/lib/conversations/contracts";
+import {
+  DatabaseWorkflowCard,
+  useDatabaseWorkflowCards,
+} from "./database-workflow";
 import { SkillsUsed } from "./skills-used";
 import { ExecutionActivity } from "./execution-activity";
 import { AssistantMessage } from "./assistant-message";
@@ -116,6 +120,7 @@ function BuildActivity({
 
 /** Keeps real messages, tool activity and legacy build history distinct without deduplicating user text. */
 export function ConversationTimeline({
+  projectId,
   viewerName,
   viewerId,
   messages,
@@ -128,6 +133,7 @@ export function ConversationTimeline({
   onRetryResponse,
   onRevise,
 }: {
+  projectId: string;
   viewerName?: string;
   viewerId?: string;
   messages: ConversationMessage[];
@@ -140,6 +146,7 @@ export function ConversationTimeline({
   onRetryResponse: (turn: ConversationTurn) => void;
   onRevise?: (message: ConversationMessage) => void;
 }): React.JSX.Element {
+  const databaseWorkflows = useDatabaseWorkflowCards(projectId);
   const linked = new Set(turns.map((turn) => turn.buildId).filter(Boolean));
   const unlinkedExecution =
     execution.streamed && execution.buildId && !linked.has(execution.buildId)
@@ -157,6 +164,12 @@ export function ConversationTimeline({
     ]);
   return (
     <div className="flex flex-col gap-6" aria-label="Project conversation">
+      {databaseWorkflows.error && (
+        <p role="alert" className="text-xs text-[var(--color-text-2)]">
+          Database approval cards could not be loaded. Refresh before approving
+          work.
+        </p>
+      )}
       {legacy.length > 0 && (
         <details className="text-xs">
           <summary className="cursor-pointer text-[var(--color-text-2)]">
@@ -211,6 +224,7 @@ export function ConversationTimeline({
                   viewerName={viewerName}
                   viewerId={viewerId}
                   content={message.content}
+                  attachments={turn?.attachments}
                   timestamp={message.createdAt}
                   onRevise={
                     !disabled &&
@@ -257,6 +271,17 @@ export function ConversationTimeline({
                 )}
               </div>
             )}
+            {databaseWorkflows.data?.workflows
+              .filter((card) => card.turnId === id)
+              .map((card) => (
+                <DatabaseWorkflowCard
+                  key={card.id}
+                  card={card}
+                  projectId={projectId}
+                  canManage={databaseWorkflows.data!.canManage}
+                  onView={onView}
+                />
+              ))}
             {turn?.buildId ? (
               <BuildActivity
                 build={build}

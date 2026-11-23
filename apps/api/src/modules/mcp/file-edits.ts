@@ -45,9 +45,9 @@ export function applyFileEdits(base: FileTree, value: unknown): FileTree {
     else files.set(operation.path, { path: operation.path, content: operation.content })
   }
   const merged = [...files.values()]
+  assertRevisionBudget(merged)
   if (!merged.length || merged.length > MAX_FILES || Buffer.byteLength(JSON.stringify(merged)) > MAX_SOURCE_BYTES)
     throw new Error('Edited source exceeds the build artifact limits or contains no files.')
-  assertRevisionBudget(merged)
   validateFilePaths(merged)
   return merged
 }

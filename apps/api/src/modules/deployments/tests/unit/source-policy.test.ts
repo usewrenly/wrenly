@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 import { validateDeploymentSource } from "../../policy/source-policy";
 
 test("snapshot digest is stable across file order and changes with source", () => {
@@ -87,7 +88,7 @@ test("rejects malformed, empty and oversized snapshots before materialization", 
     expect(() => validateDeploymentSource(files)).toThrow("invalid");
   expect(() =>
     validateDeploymentSource([
-      { path: "a", content: "a".repeat(2 * 1024 * 1024 + 1) },
+      { path: "a", content: "a".repeat(REVISION_LIMITS.textFileBytes + 1) },
     ]),
   ).toThrow("byte limit");
 });

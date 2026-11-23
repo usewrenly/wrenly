@@ -7,6 +7,8 @@
 // come from GET /api/models (server-side provider probes): local Ollama
 // first, cloud providers grouped after — never a hardcoded list.
 
+import { usePromptAttachments } from "./attachments/use-prompt-attachments";
+import { AttachmentList } from "./attachments/attachment-list";
 import {
   Dialog,
   DialogContent,
@@ -21,9 +23,22 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { STACKS } from "@/lib/stacks";
 import { WrenlyMark } from "@/components/wrenly-mark";
-import { resolveSelection, setModelSelection, useModels } from "@/lib/models/discovery";
+import {
+  resolveSelection,
+  setModelSelection,
+  useModels,
+} from "@/lib/models/discovery";
 import type { ModelSelection } from "@/lib/models/discovery";
-import { PlusIcon, Loader2Icon, ListChecksIcon } from "lucide-react";
+import { DocumentationLink } from "@/components/documentation-link";
+import { useDictation } from "./dictation/use-dictation";
+import { DictationPanel } from "./dictation/dictation-panel";
+import {
+  MicIcon,
+  PaperclipIcon,
+  PlusIcon,
+  Loader2Icon,
+  ListChecksIcon,
+} from "lucide-react";
 
 const AVAILABLE_STACKS = new Set(["nextjs", "laravel"]);
 const MAX_DRAFT_HEIGHT = 200;
@@ -42,6 +57,7 @@ interface ComposerProps {
     model?: string,
     provider?: string,
     mode?: ConversationMode,
+    attachmentIds?: string[],
   ) => void | boolean | Promise<void | boolean>;
   mode?: ConversationMode;
   onModeChange?: (mode: ConversationMode) => void;
@@ -69,8 +85,11 @@ export function Composer({
   revisionRequest,
   revisionBaseLabel,
 }: ComposerProps): React.JSX.Element {
+  const attachments = usePromptAttachments();
+  const fileInput = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
@@ -120,6 +139,13 @@ export function Composer({
   const submittingRef = useRef(false);
   const mode = controlledMode ?? localMode;
   const blocked = disabled || submitting;
+  const dictation = useDictation(Boolean(blocked || readOnly), (text) => {
+    const next = prompt.trim() ? `${prompt}\n${text}` : text;
+    if (next.length > 16000) return false;
+    setPrompt(next);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    return true;
+  });
   useEffect(() => {
     if (!draft) return;
     setPrompt(draft.text);
@@ -146,7 +172,11 @@ export function Composer({
       setPreferenceError(null);
     } catch (error) {
       setSelection(null);
-      setPreferenceError(error instanceof Error ? error.message : "Model preference unavailable.");
+      setPreferenceError(
+        error instanceof Error
+          ? error.message
+          : "Model preference unavailable.",
+      );
     }
   }, [models, fixedModel]);
 
@@ -169,11 +199,23 @@ export function Composer({
   };
 
   // Only an actual selection may appear as a configured model.
-  const modelLabel = selectionAvailable && effectiveSelection ? effectiveSelection.model : modelsPending ? "Loading models…" : "Configure models";
+  const modelLabel =
+    selectionAvailable && effectiveSelection
+      ? effectiveSelection.model
+      : modelsPending
+        ? "Loading models…"
+        : "Configure models";
 
   const submit = async (): Promise<void> => {
     const value = prompt.trim();
-    if (!value || blocked || !selectionAvailable || submittingRef.current)
+    if (
+      !value ||
+      blocked ||
+      dictation.busy ||
+      attachments.blocked ||
+      !selectionAvailable ||
+      submittingRef.current
+    )
       return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -184,9 +226,11 @@ export function Composer({
         effectiveSelection?.model,
         effectiveSelection?.provider,
         mode,
+        attachments.ids,
       );
       if (accepted === false) return;
       setPrompt("");
+      attachments.clear();
       setRevising(false);
       if (textareaRef.current) textareaRef.current.style.height = "auto";
     } catch {
@@ -201,7 +245,13 @@ export function Composer({
     <div className="composer-choices">
       <ChoiceSelect
         label="Framework"
-        description={compact ? framework ? "Fixed for this project" : "Choose the framework for your app" : undefined}
+        description={
+          compact
+            ? framework
+              ? "Fixed for this project"
+              : "Choose the framework for your app"
+            : undefined
+        }
         value={activeStack}
         disabled={blocked || Boolean(framework)}
         onChange={setStack}
@@ -217,7 +267,13 @@ export function Composer({
       />
       <ChoiceSelect
         label="Model"
-        description={compact ? fixedModel ? "Selected by this project’s owner" : "The model answering your next message" : undefined}
+        description={
+          compact
+            ? fixedModel
+              ? "Selected by this project’s owner"
+              : "The model answering your next message"
+            : undefined
+        }
         value={
           effectiveSelection
             ? JSON.stringify([
@@ -245,7 +301,11 @@ export function Composer({
             setSelection(next);
             setPreferenceError(null);
           } catch (error) {
-            setPreferenceError(error instanceof Error ? error.message : "Model preference unavailable.");
+            setPreferenceError(
+              error instanceof Error
+                ? error.message
+                : "Model preference unavailable.",
+            );
           }
         }}
         options={
@@ -307,6 +367,30 @@ export function Composer({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        accept=".png,.jpg,.jpeg,.webp,.txt,.md"
+        className="sr-only"
+        aria-label="Choose reference files"
+        disabled={blocked || readOnly}
+        onChange={(event) => {
+          if (event.target.files) attachments.add(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <AttachmentList
+        items={attachments.items}
+        disabled={Boolean(blocked || readOnly)}
+        remove={attachments.remove}
+        retry={attachments.retry}
+      />
+      {attachments.error && (
+        <p role="alert" className="px-4 pt-2 text-xs text-red-700">
+          {attachments.error}
+        </p>
+      )}
       <textarea
         ref={textareaRef}
         value={prompt}
@@ -330,34 +414,137 @@ export function Composer({
         className="w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-[var(--color-text-1)] outline-none placeholder:text-[var(--color-text-3)] disabled:opacity-60"
       />
 
+      <DictationPanel dictation={dictation} disabled={Boolean(blocked || readOnly)} />
       <div className="composer-controls">
-        <Popover.Root>
-          <Popover.Trigger className="composer-options-trigger" aria-label="Prompt options"><PlusIcon size={17} aria-hidden="true" /></Popover.Trigger>
+        <Popover.Root open={optionsOpen} onOpenChange={setOptionsOpen}>
+          <Popover.Trigger
+            className="composer-options-trigger"
+            aria-label="Prompt options"
+          >
+            <PlusIcon size={17} aria-hidden="true" />
+          </Popover.Trigger>
           <Popover.Portal keepMounted>
-            <Popover.Positioner side="top" align="start" sideOffset={10} className="composer-options-positioner">
+            <Popover.Positioner
+              side="top"
+              align="start"
+              sideOffset={10}
+              className="composer-options-positioner"
+            >
               <Popover.Popup className="composer-options-popup">
                 <Popover.Title>Add to your prompt</Popover.Title>
-                <button type="button" className="composer-plan-toggle" role="switch" aria-label="Plan mode" aria-checked={mode === "plan"} disabled={blocked}
-                  onClick={() => { const next = mode === "plan" ? "auto" : "plan"; setLocalMode(next); onModeChange?.(next); }}>
-                  <ListChecksIcon size={18} aria-hidden="true" /><span><strong>Plan mode</strong><small>Work through an approach before building</small></span><span>{mode === "plan" ? "On" : "Off"}</span>
-                </button>
-                {compact && <section className="composer-menu-section"><h3>Build settings</h3>{choices}</section>}
-                <section className="composer-menu-section"><h3>Project tools</h3>{projectTools ?? <p>Skills and media permissions are available inside a project.</p>}</section>
+                <div className="composer-menu-list">
+                  <button
+                    type="button"
+                    className="composer-menu-action"
+                    disabled={
+                      blocked || readOnly || attachments.items.length >= 4
+                    }
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      fileInput.current?.click();
+                    }}
+                  >
+                    <PaperclipIcon size={16} aria-hidden="true" />
+                    <span>
+                      <strong>Reference files</strong>
+                      <small>
+                        {attachments.items.length
+                          ? `Images or text · ${attachments.items.length}/4 added`
+                          : "Images or text · up to 4 files"}
+                      </small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="composer-plan-toggle"
+                    role="switch"
+                    aria-label="Plan mode"
+                    aria-checked={mode === "plan"}
+                    disabled={blocked}
+                    onClick={() => {
+                      const next = mode === "plan" ? "auto" : "plan";
+                      setLocalMode(next);
+                      onModeChange?.(next);
+                    }}
+                  >
+                    <ListChecksIcon size={16} aria-hidden="true" />
+                    <span>
+                      <strong>Plan mode</strong>
+                      <small>Work through an approach before building</small>
+                    </span>
+                    <span className="composer-switch-pill" aria-hidden="true">
+                      <span className="composer-switch-thumb" />
+                    </span>
+                  </button>
+                </div>
+                {!dictation.available && (
+                  <section className="composer-menu-section">
+                    <h3>Voice dictation</h3>
+                    <p>
+                      {dictation.checked
+                        ? "Local transcription is not enabled on this instance."
+                        : "Checking local transcription…"}
+                    </p>
+                    <DocumentationLink guide="guides/voice-dictation">
+                      Set up local dictation →
+                    </DocumentationLink>
+                  </section>
+                )}
+                {compact && (
+                  <section className="composer-menu-section">
+                    <h3>Build settings</h3>
+                    {choices}
+                  </section>
+                )}
+                <section className="composer-menu-section">
+                  <h3>Project tools</h3>
+                  {projectTools ?? (
+                    <p>
+                      Skills and media permissions are available inside a
+                      project.
+                    </p>
+                  )}
+                </section>
               </Popover.Popup>
             </Popover.Positioner>
           </Popover.Portal>
         </Popover.Root>
-        {!compact && <div className="composer-right-options">{mode === "plan" && <span className="composer-plan-indicator">Plan</span>}{choices}</div>}
+        {!compact && (
+          <div className="composer-right-options">
+            {mode === "plan" && (
+              <span className="composer-plan-indicator">Plan</span>
+            )}
+            {choices}
+          </div>
+        )}
 
         {/* Send */}
         <div className="composer-send">
+          {dictation.available && (
+            <button
+              type="button"
+              aria-label="Dictate a prompt"
+              disabled={Boolean(blocked || readOnly || dictation.busy)}
+              onClick={dictation.begin}
+              className="flex size-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-text-3)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-1)] disabled:opacity-40"
+            >
+              <MicIcon size={17} aria-hidden="true" />
+            </button>
+          )}
           <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
             ⏎ to send
           </span>
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={blocked || !prompt.trim() || !selectionAvailable}
+            disabled={
+              blocked ||
+              readOnly ||
+              dictation.busy ||
+              attachments.blocked ||
+              !prompt.trim() ||
+              !selectionAvailable
+            }
             aria-label="Send prompt"
             className="flex size-9 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-primary)] text-[var(--color-on-primary)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
@@ -369,19 +556,33 @@ export function Composer({
           </button>
         </div>
       </div>
-      <p className="composer-guidance">{readOnly ? "You can inspect this project. An Editor or owner can send changes." : mode === "plan" ? "Plan helps you shape and revise an approach without building." : "Chats start in Auto. Use + → Plan to work through an approach without building."}</p>
-      {preferenceError && <p role="alert" className="px-4 pb-3 text-xs text-[var(--color-text-2)]">{preferenceError}</p>}
-      {!modelsPending && !selectionAvailable && (
+      <p className="composer-guidance">
+        {readOnly
+          ? "You can inspect this project. An Editor or owner can send changes."
+          : mode === "plan"
+            ? "Plan helps you shape and revise an approach without building."
+            : "Chats start in Auto. Use + → Plan to work through an approach without building."}
+      </p>
+      {preferenceError && (
         <p
-          className="composer-model-notice"
-          role="status"
+          role="alert"
+          className="px-4 pb-3 text-xs text-[var(--color-text-2)]"
         >
+          {preferenceError}
+        </p>
+      )}
+      {!modelsPending && !selectionAvailable && (
+        <p className="composer-model-notice" role="status">
           {modelsError
             ? "Model discovery is unavailable. Your draft is preserved."
             : selection
               ? "Your selected model is unavailable. Choose an available model to continue."
               : "No model configured yet. Connect a provider to get started."}{" "}
-          {!modelsError && !models?.models.length && <a href="/settings/models" className="ml-1 underline">Configure models →</a>}
+          {!modelsError && !models?.models.length && (
+            <a href="/settings/models" className="ml-1 underline">
+              Configure models →
+            </a>
+          )}
           {modelsError && (
             <button
               type="button"

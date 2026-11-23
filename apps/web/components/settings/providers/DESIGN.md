@@ -87,3 +87,12 @@ as descriptive bundled-icon cards; keep existing forms mounted and credential/re
 semantics. Models shows provider status above inventory. Do not load remote catalog
 logos without a separately reviewed asset policy. Shared dialogs use opaque themed
 surfaces and a dimmed backdrop. Remove redundant back navigation inside Settings.
+
+COMPONENT: Reviewed image-input models
+PURPOSE: Avoid sending screenshots to an endpoint merely because catalog metadata says a model supports vision.
+INPUTS: Owner's exact model IDs and current image-input revision.
+OUTPUTS: Bounded saved capability list or stale-save error.
+STEPS: Review endpoint/model documentation, list verified IDs, save with revision comparison,
+and re-read connection metadata. Admission/execution independently check the saved list.
+EDGE CASES: Empty lists mean text-only; imported environment providers require a saved connection.
+ERROR STATES: Changed revisions require refresh; capability changes never retarget credentials.

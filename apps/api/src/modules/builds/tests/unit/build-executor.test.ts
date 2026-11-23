@@ -13,12 +13,23 @@ import { BuildExecutionInterruptedError } from "../../execution/build-interrupti
 
 test("unknown database work stops repair and preserves the interruption identity", async () => {
   const f = fixture();
-  f.claim.input.databaseV1 = { version: 1, environment: "development", resourceId: crypto.randomUUID(), resourceRevision: crypto.randomUUID() };
-  f.dependencies.validate = async () => { throw new BuildExecutionInterruptedError(); };
-  await expect(executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).rejects.toBeInstanceOf(BuildExecutionInterruptedError);
+  f.claim.input.databaseV1 = {
+    version: 1,
+    environment: "development",
+    resourceId: crypto.randomUUID(),
+    resourceRevision: crypto.randomUUID(),
+  };
+  f.dependencies.validate = async () => {
+    throw new BuildExecutionInterruptedError();
+  };
+  await expect(
+    executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies),
+  ).rejects.toBeInstanceOf(BuildExecutionInterruptedError);
   expect(f.requests).toHaveLength(1);
   expect(f.requests[0]?.prompt).toContain("managed Development PostgreSQL");
-  expect(f.requests[0]?.prompt).not.toContain(f.claim.input.databaseV1.resourceId);
+  expect(f.requests[0]?.prompt).not.toContain(
+    f.claim.input.databaseV1.resourceId,
+  );
 });
 
 function fixture(): {
@@ -293,13 +304,12 @@ test("actual generation boundaries preserve attempt identity and persistence fai
   expect(failing.requests).toHaveLength(1);
 });
 
-
 describe("exact imported source validation", () => {
   test("validates once without asking a model to rewrite the imported files", async () => {
     const f = fixture();
     f.claim.input.sourceValidationV1 = { version: 1, commitId: "a".repeat(40) };
     let validations = 0;
-    f.dependencies.validate = async files => { validations++; expect(files).toEqual(f.claim.input.previousFiles); return { success: true, output: "Checked" }; };
+    f.dependencies.validate = async files => { validations++; expect(files).toEqual(f.claim.input.previousFiles); return { status: undefined, success: true, output: "Checked" }; };
     expect(await executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).toEqual({ status: "success" });
     expect(validations).toBe(1);
     expect(f.requests).toHaveLength(0);
@@ -325,4 +335,81 @@ describe("exact imported source validation", () => {
     await expect(executeClaimedBuild(f.claim, controller.signal, f.dependencies)).rejects.toThrow("Stopped");
     expect(f.requests).toHaveLength(0);
   });
+});
+
+test("saved references resolve once and remain identical through repair attempts", async () => {
+  const f = fixture();
+  f.claim.input.attachmentsV1 = { version: 1, files: [{ id: crypto.randomUUID(), objectId: crypto.randomUUID(), name: "reference.txt", mediaType: "text/plain", byteLength: 1, sha256: "a".repeat(64) }] };
+  let resolutions = 0;
+  const payload = { version: 1 as const, files: [{ mediaType: "text/plain" as const, dataBase64: "YQ==", sha256: "a".repeat(64) }] };
+  f.dependencies.resolveAttachments = async snapshot => { expect(snapshot.files[0]?.id).toBe(f.claim.input.attachmentsV1?.files[0]?.id); resolutions++; return payload; };
+  let validations = 0;
+  f.dependencies.validate = async () => (++validations === 1 ? { success: false, output: "Repair needed" } : { success: true, output: "Compiled" });
+  const outcome = await executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies);
+  expect(outcome.status).toBe("success");
+  expect(resolutions).toBe(1);
+  expect(f.requests).toHaveLength(2);
+  expect(f.requests.every(request => request.attachments_v1 === payload)).toBe(true);
+});
+test("missing reference resolution stops before inference instead of dropping files", async () => {
+  const f = fixture();
+  f.claim.input.attachmentsV1 = { version: 1, files: [{ id: crypto.randomUUID(), objectId: crypto.randomUUID(), name: "reference.txt", mediaType: "text/plain", byteLength: 1, sha256: "a".repeat(64) }] };
+  await expect(executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).rejects.toThrow("No attachment was dropped");
+  expect(f.requests).toHaveLength(0);
+});
+
+test("official inspection reaches only the next repair of the matching source", async () => {
+  const { runtimeErrorsReport, frameworkSourceHash } =
+    await import("@wrenly/inference/framework-tooling");
+  const f = fixture();
+  let calls = 0;
+  f.dependencies.validate = async (files) =>
+    ++calls === 1
+      ? {
+          success: false,
+          output: "Compiler error",
+          frameworkInspection: runtimeErrorsReport(
+            {
+              framework: "nextjs",
+              sourceHash: frameworkSourceHash(files),
+              toolchainHash: "b".repeat(64),
+            },
+            ["Known framework error"],
+          ),
+        }
+      : { success: true, output: "Compiled" };
+  expect(
+    (
+      await executeClaimedBuild(
+        f.claim,
+        new AbortController().signal,
+        f.dependencies,
+      )
+    ).status,
+  ).toBe("success");
+  expect(f.requests[0]?.framework_inspection_v1).toBeUndefined();
+  expect(f.requests[1]?.framework_inspection_v1?.facts).toEqual({
+    errors: ["Known framework error"],
+  });
+  const stale = fixture();
+  stale.dependencies.validate = async () => ({
+    success: false,
+    output: "Error",
+    frameworkInspection: runtimeErrorsReport(
+      {
+        framework: "nextjs",
+        sourceHash: "c".repeat(64),
+        toolchainHash: "b".repeat(64),
+      },
+      [],
+    ),
+  });
+  await expect(
+    executeClaimedBuild(
+      stale.claim,
+      new AbortController().signal,
+      stale.dependencies,
+    ),
+  ).rejects.toThrow("does not match");
+  expect(stale.requests).toHaveLength(1);
 });

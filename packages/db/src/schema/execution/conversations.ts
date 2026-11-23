@@ -1,3 +1,4 @@
+import type { AttachmentSnapshot } from "@wrenly/inference"
 // Persists attributed conversation turns, messages and atomic build actions.
 // Saved decisions/inputs survive reconnects; browser subscriptions never own execution.
 import type { BuildDatabaseSelection } from "../../application-databases/build-contract"
@@ -30,6 +31,7 @@ export const conversationTurns = pgTable('conversation_turns', {
   requestIdentity: text('request_identity').notNull(),
   mode: conversationModeEnum('mode').notNull(),
   prompt: text('prompt').notNull(),
+  attachmentsV1: jsonb('attachments_v1').$type<AttachmentSnapshot>().notNull().default({ version: 1, files: [] }),
   skillsV1: jsonb('skills_v1').$type<SkillGuidance>().notNull().default({ version: 1, skills: [] }),
   databaseV1: jsonb('database_v1').$type<BuildDatabaseSelection>(),
   baseBuildId: uuid('base_build_id').references(() => builds.id, { onDelete: 'restrict' }),

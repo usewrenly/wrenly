@@ -485,6 +485,7 @@ export function Workspace({
         className="workspace-conversation-scroll min-h-0 flex-1 overflow-y-auto"
       >
         <ConversationTimeline
+          projectId={projectId}
           viewerName={viewerSession?.user?.name}
           viewerId={viewerSession?.user?.id}
           messages={conversation.messages}
@@ -641,11 +642,12 @@ export function Workspace({
                 ? "Plan your app or discuss the next change…"
                 : "Ask Wrenly a question or describe a change…"
           }
-          onSubmit={async (message, _stack, model, provider, chosenMode) => {
+          onSubmit={async (message, _stack, model, provider, chosenMode, attachmentIds) => {
             if (disabled) return false;
             setWorkspaceError(null);
             const accepted = await conversation.submit({
               message,
+              ...(attachmentIds?.length ? { attachmentIds } : {}),
               mode: chosenMode ?? "auto",
               baseBuildId: selectedBuildId ?? null,
               ...(selectedDatabase ? { database: selectedDatabase } : {}),

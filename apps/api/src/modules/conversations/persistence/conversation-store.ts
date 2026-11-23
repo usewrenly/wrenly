@@ -1,3 +1,5 @@
+import { parseAttachmentSnapshot, type AttachmentSnapshot, type AttachmentReference } from "@wrenly/inference";
+import { bindRequestAttachments } from "../../attachments/attachment-store";
 /**
  * Remembering conversation requests, messages and progress.
  * Admission freezes actor, selected revision, model and skills with a unique request identity before work.
@@ -75,6 +77,7 @@ export interface ConversationAdmissionDependencies {
   defaultModel: string;
   /** Enabled only by complete database host composition, never by a model decision. */
   allowDatabaseSelection?: boolean;
+  validateAttachments?: (transaction: ConversationTransaction, provider: string, model: string, snapshot: AttachmentSnapshot) => Promise<void>;
   resolveSelection?: (
     provider: string | undefined,
     model: string | undefined,
@@ -88,7 +91,7 @@ export interface ConversationClaim {
   input: Pick<
     Turn,
     "conversationId" | "prompt" | "mode" | "baseBuildId" | "model" | "provider"
-  > & { skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection };
+  > & { attachmentsV1?: AttachmentSnapshot; skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection };
 }
 
 function logFailure(operation: string, error: unknown): void {
@@ -339,6 +342,10 @@ export async function admitConversationTurn(
         skills: await freezeProjectSkills(transaction, projectId),
       };
       const turnId = crypto.randomUUID();
+      if (input.attachmentIds?.length && !dependencies.validateAttachments)
+        throw new ConversationStoreError(409, "Attachments are not enabled on this instance yet.");
+      const attachmentsV1 = await bindRequestAttachments(transaction, userId, projectId, turnId, input.attachmentIds ?? []);
+      if (attachmentsV1.files.length) await dependencies.validateAttachments!(transaction, provider, model, attachmentsV1);
       await transaction
         .insert(conversationTurns)
         .values({
@@ -353,6 +360,7 @@ export async function admitConversationTurn(
           model,
           provider,
           skillsV1,
+          attachmentsV1,
           databaseV1: databaseV1 ?? null,
         });
       await transaction
@@ -390,6 +398,7 @@ export async function admitConversationTurn(
 }
 
 export interface ConversationTurnSummary {
+  attachments?: Array<Omit<AttachmentReference, "objectId">>;
   database?: BuildDatabaseSelection;
   actorId?: string;
   skillsUsed?: Array<{ name: string; versionId: string; sha256: string }>;
@@ -403,6 +412,7 @@ export interface ConversationTurnSummary {
   provider: string;
 }
 const TurnSummarySelection = {
+  attachmentsV1: conversationTurns.attachmentsV1,
   databaseV1: conversationTurns.databaseV1,
   skillsV1: conversationTurns.skillsV1,
   actorId: conversationTurns.actorId,
@@ -417,11 +427,13 @@ const TurnSummarySelection = {
 };
 
 function publicTurn(
-  turn: ConversationTurnSummary & { skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection | null },
+  turn: ConversationTurnSummary & { attachmentsV1?: AttachmentSnapshot; skillsV1?: SkillGuidance; databaseV1?: BuildDatabaseSelection | null },
 ): ConversationTurnSummary {
-  const { skillsV1, databaseV1, ...visible } = turn;
+  const { attachmentsV1, skillsV1, databaseV1, ...visible } = turn;
+  const files = parseAttachmentSnapshot(attachmentsV1).files;
   return {
     ...visible,
+    ...(files.length ? { attachments: files.map(({ objectId: _objectId, ...file }) => file) } : {}),
     ...(databaseV1 ? { database: BuildDatabaseSelection.parse(databaseV1) } : {}),
     skillsUsed: parseSkillGuidance(skillsV1).skills.map(
       ({ name, versionId, sha256 }) => ({ name, versionId, sha256 }),
@@ -604,6 +616,7 @@ export async function claimConversationTurn(
           model: turn.model,
           provider: turn.provider,
           skillsV1: turn.skillsV1,
+          attachmentsV1: parseAttachmentSnapshot(turn.attachmentsV1),
           ...(turn.databaseV1 ? { databaseV1: turn.databaseV1 } : {}),
         },
       };
@@ -646,7 +659,7 @@ export async function completeConversationAnswer(
     await database.transaction(async (transaction) => {
       const turn = await lockConversationClaim(transaction, claim);
       const decision = validateConversationDecision(value, turn.mode);
-      if (decision.type === "propose_build")
+      if (decision.type === "propose_build" || decision.type === "propose_database")
         throw new ConversationStoreError(
           409,
           "Build proposals require action admission, not answer completion.",

@@ -57,6 +57,7 @@ export function assertRevisionBudget(files: readonly RevisionFile[]): void {
       if (file.content !== '' || !isSourceAsset(file.asset)) throw new Error('Invalid saved source asset.');
       assetBytes += file.asset.byteLength;
     } else {
+      if (file.content.length > REVISION_LIMITS.textFileBytes) throw new Error('Source exceeds the build artifact limits (byte limit or file count).');
       const bytes = new TextEncoder().encode(file.content).length;
       if (bytes > REVISION_LIMITS.textFileBytes) throw new Error('Source exceeds the build artifact limits (byte limit or file count).');
       textBytes += bytes;

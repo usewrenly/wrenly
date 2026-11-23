@@ -16,7 +16,20 @@
     "./app-database-viewer-contract": "./src/application-databases/viewer-contract.ts",
     "./app-database-viewer": "./src/application-databases/viewer.ts",
     "./schema": "./src/schema/index.ts",
-    "./app-database-binding-contract": "./src/application-databases/binding-contract.ts"
+    "./app-database-binding-contract": "./src/application-databases/binding-contract.ts",
+    "./production-database-target-contract": "./src/application-databases/production-target-contract.ts",
+    "./production-database-inspection": "./src/application-databases/production-inspection.ts",
+    "./production-project-credentials": "./src/application-databases/production-cluster/contract.ts",
+    "./production-project-provisioning": "./src/application-databases/production-cluster/provisioning.ts",
+    "./production-project-recovery": "./src/application-databases/production-cluster/recovery.ts",
+    "./production-resource-binding": "./src/application-databases/production-cluster/resource-contract.ts",
+    "./production-connection-contract": "./src/application-databases/production-connection-contract.ts",
+    "./production-host-contract": "./src/application-databases/production-host-contract.ts",
+    "./production-publishing-contract": "./src/application-databases/production-publishing-contract.ts",
+    "./production-maintenance-contract": "./src/application-databases/maintenance/contract.ts",
+    "./production-project-contract": "./src/application-databases/production-project-contract.ts",
+    "./production-maintenance-attempt": "./src/application-databases/maintenance/attempt.ts",
+    "./conversation-workflow": "./src/application-databases/conversation-workflow.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

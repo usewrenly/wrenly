@@ -19,6 +19,8 @@ if (url) {
   const parsed = new URL(url)
   if (!['localhost', '127.0.0.1'].includes(parsed.hostname) || parsed.pathname !== '/wrenly_setup_test') throw new Error('Use only a disposable local wrenly_setup_test database.')
 }
+// This matrix performs sequential database reviews; slower CI must finish it before fixture cleanup starts.
+const LEGACY_STATE_MATRIX_TIMEOUT_MS = 30_000
 const integration = url ? describe : describe.skip
 integration('protected first-owner initialization', () => {
   const client = postgres(url ?? 'postgresql://localhost/wrenly_setup_test', { onnotice: () => {} })
@@ -329,7 +331,7 @@ integration('protected first-owner initialization', () => {
     expect((await review()).reviewId).toBeNull()
     await database.update(schema.deployments).set({ mutationIntent: null })
     expect((await review()).reviewId).not.toBeNull()
-  })
+  }, LEGACY_STATE_MATRIX_TIMEOUT_MS)
   test('stale or expired reviews and a late audit conflict roll back every selected project', async () => {
     const f = await legacyFixture()
     const secondId = crypto.randomUUID()

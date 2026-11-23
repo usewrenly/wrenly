@@ -1,4 +1,5 @@
 import type { RevisionFile } from "@wrenly/source-control/revision"
+import type { AttachmentSnapshot } from "@wrenly/inference"
 // Durable execution claims and immutable inputs; build records separately hold source/history.
 import type { SkillGuidance } from "@wrenly/inference"
 import type { BuildDatabaseSelection } from "../../application-databases/build-contract"
@@ -18,6 +19,7 @@ export const buildJobStatusEnum = pgEnum('build_job_status', [
 export interface BuildJobInput {
   /** Exact imported source is validated once, without model generation or automatic repair. */
   sourceValidationV1?: { version: 1; commitId: string }
+  attachmentsV1?: AttachmentSnapshot
   databaseV1?: BuildDatabaseSelection
   skillsV1?: SkillGuidance
   prompt: string

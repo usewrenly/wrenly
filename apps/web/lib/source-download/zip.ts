@@ -56,6 +56,12 @@ export function createSourceZip(
     throw new Error(
       `Source download supports 1–${MAX_SOURCE_FILES} saved files.`,
     );
+  let totalLowerBound = 0;
+  for (const file of files) {
+    totalLowerBound += file.asset ? file.asset.byteLength : file.content.length;
+    if (totalLowerBound > MAX_SOURCE_BYTES)
+      throw new Error("Source download exceeds its saved-source byte limit.");
+  }
   const identities = new Set<string>();
   let sourceBytes = 0;
   const entries = files.map((file) => {

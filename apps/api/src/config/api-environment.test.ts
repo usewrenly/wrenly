@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { REVISION_LIMITS } from '@wrenly/source-control/revision'
 import { parseApiEnvironment } from './api-environment'
 
 const BASE = {
@@ -107,5 +108,31 @@ test('owner import budgets default consistently and cannot exceed runtime ceilin
   expect(defaults.WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(1000);
   expect(defaults.WRENLY_SOURCE_IMPORT_TEXT_BYTES).toBe(8*1024*1024);
   expect(parseApiEnvironment({ ...BASE, WRENLY_SOURCE_IMPORT_MAX_FILES:'500' }).WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(500);
-  for (const value of ['0','1001','Infinity','1.5']) expect(()=>parseApiEnvironment({...BASE,WRENLY_SOURCE_IMPORT_MAX_FILES:value})).toThrow('WRENLY_SOURCE_IMPORT_MAX_FILES');
+  expect(parseApiEnvironment({ ...BASE, WRENLY_SOURCE_IMPORT_MAX_FILES:'3000' }).WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(3000);
+  for (const value of ['0', String(REVISION_LIMITS.files + 1), 'Infinity', '1.5']) expect(()=>parseApiEnvironment({...BASE,WRENLY_SOURCE_IMPORT_MAX_FILES:value})).toThrow('WRENLY_SOURCE_IMPORT_MAX_FILES');
+});
+
+test('local dictation is optional and enabling it requires an absolute model artifact path', () => {
+  expect(parseApiEnvironment(BASE).WRENLY_DICTATION_ENABLED).toBe('false')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_DICTATION_ENABLED: 'true' })).toThrow('WRENLY_DICTATION_MODEL_PATH')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_DICTATION_MODEL_PATH: 'relative/model.bin' })).toThrow('WRENLY_DICTATION_MODEL_PATH')
+  expect(parseApiEnvironment({ ...BASE, WRENLY_DICTATION_ENABLED: 'true', WRENLY_DICTATION_MODEL_PATH: '/models/ggml-base.bin' }).WRENLY_DICTATION_MODEL_PATH).toBe('/models/ggml-base.bin')
+})
+
+test('official framework inspection is optional and accepts only an explicit boolean setting', () => {
+  expect(parseApiEnvironment(BASE).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('false')
+  expect(parseApiEnvironment({ ...BASE, WRENLY_FRAMEWORK_INSPECTION_ENABLED: 'true' }).WRENLY_FRAMEWORK_INSPECTION_ENABLED).toBe('true')
+  expect(() => parseApiEnvironment({ ...BASE, WRENLY_FRAMEWORK_INSPECTION_ENABLED: 'yes' })).toThrow('WRENLY_FRAMEWORK_INSPECTION_ENABLED')
+})
+
+test('Production activation requires complete explicit installation pins and existing feature prerequisites',()=>{
+  expect(parseApiEnvironment(BASE).WRENLY_PRODUCTION_DATABASES_ENABLED).toBe('false');
+  expect(()=>parseApiEnvironment({...BASE,WRENLY_PRODUCTION_DATABASES_ENABLED:'true'})).toThrow('WRENLY_APP_DATABASES_ENABLED');
+  const enabled={...BASE,WRENLY_AUTH_SECRET:'a'.repeat(64),WRENLY_PREVIEW_ENABLED:'true',WRENLY_APP_DATABASES_ENABLED:'true',WRENLY_PUBLISHING_ENABLED:'true',WRENLY_PRODUCTION_DATABASES_ENABLED:'true',WRENLY_DEPLOY_ENCRYPTION_KEY:'ab'.repeat(32),WRENLY_REGISTRY_URL:'https://registry.example',WRENLY_REGISTRY_USERNAME:'fixture',WRENLY_REGISTRY_PASSWORD:'fixture-password',WRENLY_GIT_BASE_URL:'https://git.example',WRENLY_GIT_TOKEN:'fixture-token',WRENLY_COOLIFY_API_URL:'https://coolify.example/api/v1',WRENLY_COOLIFY_API_KEY:'fixture-key',WRENLY_COOLIFY_PROJECT_UUID:'project',WRENLY_COOLIFY_SERVER_UUID:'server',WRENLY_PRODUCTION_BROKER_IMAGE_ID:'sha256:'+'a'.repeat(64),WRENLY_PRODUCTION_INGRESS_IMAGE_ID:'sha256:'+'b'.repeat(64),WRENLY_PRODUCTION_INGRESS_IMAGE:'registry.example/wrenly/ingress@sha256:'+'c'.repeat(64)};
+  expect(parseApiEnvironment(enabled).WRENLY_PRODUCTION_DATABASES_ENABLED).toBe('true');
+  expect(() => parseApiEnvironment({...enabled,WRENLY_PRODUCTION_INGRESS_IMAGE:'elsewhere.example/wrenly/ingress@sha256:'+'c'.repeat(64)})).toThrow('configured private registry');
+  for(const name of ['WRENLY_PRODUCTION_BROKER_IMAGE_ID','WRENLY_PRODUCTION_INGRESS_IMAGE_ID','WRENLY_PRODUCTION_INGRESS_IMAGE']) {
+    expect(()=>parseApiEnvironment({...enabled,[name]:undefined})).toThrow(name);
+    expect(()=>parseApiEnvironment({...enabled,[name]:'private-invalid-value'})).toThrow(name);
+  }
 });

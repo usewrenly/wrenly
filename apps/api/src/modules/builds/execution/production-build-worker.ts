@@ -1,3 +1,5 @@
+import { attachmentExecutionContent } from "../../attachments/production-services";
+import { resolve } from "node:path";
 /**
  * Production build worker startup and shutdown.
  * Checks required storage, connects real MCP/Docker operations and forwards validation logs.
@@ -44,7 +46,7 @@ export async function verifyBuildWorkerSchema(
 /** Starts the production worker explicitly; caller must preflight schema and await stop during shutdown. */
 export async function startProductionBuildWorker(
   database: typeof db,
-  options: { databaseValidation?: boolean } = {},
+  options: { databaseValidation?: boolean; frameworkInspection?: boolean } = {},
 ): Promise<BuildWorkerLifecycle> {
   await verifyBuildWorkerSchema(database);
   const shutdown = new AbortController();
@@ -65,6 +67,7 @@ export async function startProductionBuildWorker(
     try {
       return await runSandbox({
         files,
+        frameworkInspection: options.frameworkInspection === true,
         projectId: claim.projectId,
         stack: claim.input.stack,
         buildId: claim.buildId,
@@ -87,6 +90,7 @@ export async function startProductionBuildWorker(
   const validateSelected = options.databaseValidation ? createDatabaseBuildValidator(database, validate) : validate;
   const dependencies = createBuildWorkerDependencies(database, {
     generate: (stack, input, signal) => callAgent(stack, input, signal),
+    resolveAttachments: snapshot => attachmentExecutionContent(resolve(process.env.WRENLY_DATA_DIR ?? ".local/wrenly"), snapshot),
     streamsValidationLogs: true,
     databaseValidation: options.databaseValidation === true,
     validate: async (files, claim, signal, attempt) => {
