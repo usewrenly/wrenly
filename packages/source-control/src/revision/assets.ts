@@ -73,8 +73,12 @@ function mediaType(path: string, bytes: Uint8Array): string {
   throw new Error('Unsupported or malformed image/font asset.');
 }
 /** Freeze a verified Git blob as a private immutable object instead of pretending binary bytes are text. */
-export function createSourceAsset(path: string, bytes: Uint8Array): SourceAsset {
-  if (!bytes.length || bytes.length > REVISION_LIMITS.assetFileBytes) throw new Error('Source asset exceeds its byte limit.');
+export function createSourceAsset(
+  path: string,
+  bytes: Uint8Array,
+  maxBytes: number = REVISION_LIMITS.assetFileBytes,
+): SourceAsset {
+  if (!bytes.length || bytes.length > maxBytes) throw new Error('Source asset exceeds its byte limit.');
   return { sha256: createHash('sha256').update(bytes).digest('hex'), mediaType: mediaType(path,bytes), byteLength: bytes.length, base64: Buffer.from(bytes).toString('base64') };
 }
 /** Recheck saved objects before every native write, including retries, previews and publishing. */

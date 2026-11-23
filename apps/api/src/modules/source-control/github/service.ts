@@ -31,6 +31,10 @@ import {
   readSourcePersonalToken,
 } from "./connection-store";
 import {
+  readConfiguredImportLimits,
+  saveConfiguredImportLimits,
+} from "./import-limits-store";
+import {
   exchangeGitHubManifest,
   exchangeGitHubAuthorization,
 } from "./exchange";
@@ -89,7 +93,22 @@ export function createGitHubConnectionService(
       ),
     prepareImport: imports.prepare,
     confirmImport: imports.confirm,
-    status: (principal) => readSourceConnectionStatus(database, principal),
+    updateLimits: (principal, raw) =>
+      saveConfiguredImportLimits(database, options.directory, principal, raw),
+    status: async (principal) => {
+      const [current, configured] = await Promise.all([
+        readSourceConnectionStatus(database, principal),
+        readConfiguredImportLimits(options.directory, options.importLimits),
+      ]);
+      return {
+        ...current,
+        importLimits: {
+          preset: configured.preset,
+          limits: configured.limits,
+          canManage: current.canRegister,
+        },
+      };
+    },
     begin: async (principal, input) => {
       const purpose =
         input.action === "register" ? "register-app" : "connect-account";

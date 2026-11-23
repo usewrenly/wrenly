@@ -12,7 +12,7 @@ const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const Files = z
   .array(z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }).strict())
   .min(1)
-  .max(1000);
+  .max(REVISION_LIMITS.files);
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Bounds saved application bytes before manifest review; this never loads or executes source. */

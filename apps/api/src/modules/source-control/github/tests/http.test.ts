@@ -168,3 +168,48 @@ test("import policy and provider failures return actionable JSON without remote 
     );
   }
 });
+
+test("size_limit errors expose measured vs limit details and Settings hint, and updateLimits enforces origin and auth", async () => {
+  const { SourceControlError } = await import("@wrenly/source-control");
+  const f = fixture();
+  f.service.prepareImport = async () => {
+    throw new SourceControlError(
+      "size_limit",
+      "public/hero.png",
+      20 * 1024 * 1024,
+      12 * 1024 * 1024,
+    );
+  };
+  const errRes = await f.handlers.prepareImport(start());
+  expect(errRes.status).toBe(400);
+  const errBody = (await errRes.json()) as { error: string };
+  expect(errBody.error).toContain("20.0 MB used vs 12.0 MB limit");
+  expect(errBody.error).toContain("Settings → Connections → GitHub");
+
+  f.service.updateLimits = async (_principal, input) => {
+    f.calls.push("updateLimits");
+    return input;
+  };
+  const denied = await f.handlers.updateLimits!(
+    start("https://evil.example", { preset: "large" }),
+  );
+  expect(denied.status).toBe(403);
+  const ok = await f.handlers.updateLimits!(
+    start("https://instance.example", { preset: "large" }),
+  );
+  expect(ok.status).toBe(200);
+  expect(f.calls).toContain("updateLimits");
+});
+
+test("timed-out GitHub reads return HTTP 504 with actionable directory guidance", async () => {
+  const { GitHubRequestError } = await import("@wrenly/source-control");
+  const f = fixture();
+  f.service.prepareImport = async () => {
+    throw new GitHubRequestError("request_failed", undefined, true);
+  };
+  const response = await f.handlers.prepareImport(start());
+  expect(response.status).toBe(504);
+  const body = (await response.json()) as { error: string };
+  expect(body.error).toContain("timed out");
+  expect(body.error).toContain("Application directory");
+});

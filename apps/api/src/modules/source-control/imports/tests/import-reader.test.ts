@@ -141,3 +141,204 @@ test('review detects a standalone application in a chosen directory without fetc
   expect(result.snapshot.files.map(file => file.path)).toEqual(['package.json']);
   expect(base.paths.some(path => path.includes('f'.repeat(40)))).toBe(false);
 });
+
+function buildRepoClient(entries: Record<string, string>): GitHubReadClient {
+  const bySha = new Map<string, { content: string; sha: string }>();
+  const tree = Object.entries(entries).map(([path, content]) => {
+    const sha = createHash("sha1")
+      .update(`blob ${Buffer.byteLength(content)}\0${content}`)
+      .digest("hex");
+    bySha.set(sha, { content, sha });
+    return {
+      path,
+      mode: "100644",
+      type: "blob",
+      sha,
+      size: Buffer.byteLength(content),
+    };
+  });
+  return {
+    async get(path) {
+      if (path === "/repositories/12") {
+        return {
+          id: 12,
+          owner: { login: "studio" },
+          name: "softe",
+          private: true,
+          archived: false,
+          disabled: false,
+          size: 512,
+        };
+      }
+      if (path.endsWith("/git/ref/heads/main")) {
+        return { object: { type: "commit", sha: "a".repeat(40) } };
+      }
+      if (path.endsWith("/git/commits/" + "a".repeat(40))) {
+        return { sha: "a".repeat(40), tree: { sha: "b".repeat(40) } };
+      }
+      if (path.endsWith("?recursive=1")) {
+        return { sha: "b".repeat(40), truncated: false, tree };
+      }
+      const match = path.match(/\/git\/blobs\/([a-f0-9]{40})$/);
+      const blob = match?.[1] ? bySha.get(match[1]) : undefined;
+      if (blob) {
+        return {
+          sha: blob.sha,
+          size: Buffer.byteLength(blob.content),
+          encoding: "base64",
+          content: Buffer.from(blob.content, "utf8").toString("base64"),
+        };
+      }
+      throw new Error(`Unexpected path ${path}`);
+    },
+  };
+}
+
+test("allowRiskReview classifies Laravel caches, APP_KEY, and Composer/npm scripts without blocking review", async () => {
+  const client = buildRepoClient({
+    "composer.json": JSON.stringify({
+      name: "studio/softe",
+      type: "project",
+      require: { "laravel/framework": "^12.0" },
+      scripts: { "post-autoload-dump": ["@php artisan package:discover"] },
+      config: { "optimize-autoloader": true, "allow-plugins": true },
+    }),
+    "composer.lock": JSON.stringify({ packages: [] }),
+    "package.json": JSON.stringify({
+      private: true,
+      scripts: { dev: "vite", build: "vite build" },
+    }),
+    ".env": "APP_KEY=base64:secretvalue\n",
+    ".env.example": "APP_NAME=Softe\nAPP_KEY=base64:sample\n",
+    artisan: "#!/usr/bin/env php\n",
+    "bootstrap/app.php": "<?php\n",
+    "bootstrap/providers.php": "<?php\nreturn [];\n",
+    "bootstrap/cache/packages.php": "<?php\nreturn [];\n",
+    "storage/framework/cache/data": "cached",
+    "routes/web.php": "<?php\n",
+    "routes/console.php": "<?php\n",
+    "public/index.php": "<?php\n",
+    "config/app.php": "<?php\n",
+    "config/session.php": "<?php\n",
+    "config/cache.php": "<?php\n",
+    "config/logging.php": "<?php\n",
+  });
+
+  const result = await readImportSource(
+    client,
+    { repositoryId: "12", ref: "main", stack: "auto" },
+    new AbortController().signal,
+    undefined,
+    { allowRiskReview: true },
+  );
+
+  expect(result.stack).toBe("laravel");
+  expect(result.snapshot.repository.sizeKb).toBe(512);
+  expect((result.snapshot.totalBytes ?? 0) > 0).toBe(true);
+  expect(result.snapshot.excludedPaths).toContain(".env");
+  expect(result.snapshot.excludedPaths).toContain("storage/framework/cache/data");
+  expect(result.snapshot.excludedPaths).toContain("bootstrap/cache/packages.php");
+  const codes = result.riskFlags.map((flag) => flag.code);
+  expect(codes).toContain("private_env");
+  expect(codes).toContain("runtime_caches");
+  expect(codes).toContain("package_scripts");
+
+  const sanitizedComposer = JSON.parse(
+    result.snapshot.files.find((f) => f.path === "composer.json")!.content,
+  ) as Record<string, unknown>;
+  expect("scripts" in sanitizedComposer).toBe(false);
+  const envExample = result.snapshot.files.find((f) => f.path === ".env.example")!.content;
+  expect(envExample).not.toMatch(/APP_KEY=/);
+});
+
+test("allowRiskReview flags Next.js 14 version instead of blocking review", async () => {
+  const client = buildRepoClient({
+    "package.json": JSON.stringify({
+      dependencies: { next: "^14.2.5", react: "^18.3.0" },
+    }),
+    "app/layout.tsx": "export default function RootLayout() { return null; }\n",
+  });
+
+  const result = await readImportSource(
+    client,
+    { repositoryId: "12", ref: "main", stack: "auto" },
+    new AbortController().signal,
+    undefined,
+    { allowRiskReview: true },
+  );
+
+  expect(result.stack).toBe("nextjs");
+  expect(result.riskFlags.some((f) => f.code === "unverified_version")).toBe(true);
+});
+
+test("allowRiskReview suggests nested monorepo directories when root has no framework app", async () => {
+  const client = buildRepoClient({
+    "package.json": JSON.stringify({ name: "monorepo", private: true }),
+    "apps/web/package.json": JSON.stringify({ dependencies: { next: "^16.4.6" } }),
+    "apps/docs/package.json": JSON.stringify({ dependencies: { next: "^16.4.6" } }),
+  });
+
+  await expect(
+    readImportSource(
+      client,
+      { repositoryId: "12", ref: "main", stack: "auto" },
+      new AbortController().signal,
+      undefined,
+      { allowRiskReview: true },
+    ),
+  ).rejects.toThrow("apps/docs, apps/web");
+});
+
+test("allowRiskReview accepts next@latest without flagging an old or unverified version", async () => {
+  const client = buildRepoClient({
+    "package.json": JSON.stringify({
+      dependencies: { next: "latest", react: "latest" },
+    }),
+    "app/layout.tsx":
+      "import './globals.css'; export default function RootLayout({ children }: { children: unknown }) { return children; }\n",
+    "app/globals.css": "@import 'tailwindcss';\n",
+  });
+
+  const result = await readImportSource(
+    client,
+    { repositoryId: "12", ref: "main", stack: "auto" },
+    new AbortController().signal,
+    undefined,
+    { allowRiskReview: true },
+  );
+
+  expect(result.stack).toBe("nextjs");
+  expect(result.riskFlags.some((f) => f.code === "unverified_version")).toBe(
+    false,
+  );
+});
+
+test("allowRiskReview rejects monorepo root before downloading unrelated source blobs", async () => {
+  const files: Record<string, string> = {
+    "package.json": JSON.stringify({ name: "monorepo", private: true }),
+    "apps/web/package.json": JSON.stringify({ dependencies: { next: "^16.4.6" } }),
+    "apps/docs/package.json": JSON.stringify({ dependencies: { next: "^16.4.6" } }),
+  };
+  for (let i = 0; i < 45; i++) {
+    files[`packages/shared/file-${i}.ts`] = `export const n${i} = ${i};\n`;
+  }
+  const inner = buildRepoClient(files);
+  let blobFetches = 0;
+  const countingClient: GitHubReadClient = {
+    async get(path, signal) {
+      if (path.includes("/git/blobs/")) blobFetches++;
+      return inner.get(path, signal);
+    },
+  };
+
+  await expect(
+    readImportSource(
+      countingClient,
+      { repositoryId: "12", ref: "main", stack: "auto" },
+      new AbortController().signal,
+      undefined,
+      { allowRiskReview: true },
+    ),
+  ).rejects.toThrow("apps/docs, apps/web");
+  expect(blobFetches).toBe(3);
+});

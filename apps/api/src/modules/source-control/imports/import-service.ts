@@ -3,10 +3,13 @@ import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "@wrenly/source-c
 import type { db } from "@wrenly/db";
 import { createGitHubReadClient } from "@wrenly/source-control";
 import type { AccessPrincipal } from "../../auth/access/access-context";
+import { readConfiguredImportLimits } from "../github/import-limits-store";
 import { readSourcePersonalToken } from "../github/connection-store";
 import { saveSourceImportReview, admitSourceImport } from "./import-store";
 import { readImportSource } from "./import-reader";
-const IMPORT_REVIEW_TIMEOUT_MS = 45_000;
+const IMPORT_REVIEW_TIMEOUT_MS = 180_000;
+const MIN_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_RESPONSE_BYTES = 128 * 1024 * 1024;
 
 /** No repository code runs in this request; the saved validation job owns Docker execution. */
 export function createSourceImportService(
@@ -22,32 +25,52 @@ export function createSourceImportService(
   confirm(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
 } {
   return {
-    confirm: (principal, raw) => admitSourceImport(database, principal, raw, limits),
+    confirm: async (principal, raw) => {
+      const { limits: activeLimits } = await readConfiguredImportLimits(
+        directory,
+        limits,
+      );
+      return admitSourceImport(database, principal, raw, activeLimits);
+    },
     prepare: async (principal, raw, signal) => {
       // Leave time for a structured response before the API and browser deadlines.
       const reviewSignal = AbortSignal.any([
         signal,
         AbortSignal.timeout(IMPORT_REVIEW_TIMEOUT_MS),
       ]);
-      const personal = await readSourcePersonalToken(
-        database,
-        principal,
-        directory,
+      const [{ limits: activeLimits }, personal] = await Promise.all([
+        readConfiguredImportLimits(directory, limits),
+        readSourcePersonalToken(database, principal, directory),
+      ]);
+      const maxResponseBytes = Math.min(
+        MAX_RESPONSE_BYTES,
+        Math.max(
+          MIN_RESPONSE_BYTES,
+          Math.max(activeLimits.fileBytes, activeLimits.assetFileBytes) * 2,
+        ),
       );
-      const { snapshot, stack } = await readImportSource(
-        createGitHubReadClient(personal.token),
+      const { snapshot, stack, riskFlags } = await readImportSource(
+        createGitHubReadClient(personal.token, undefined, { maxResponseBytes }),
         raw,
         reviewSignal,
-        limits,
+        activeLimits,
+        { allowRiskReview: true },
       );
       reviewSignal.throwIfAborted();
+      const reviewSnapshot =
+        riskFlags.length > 0
+          ? {
+              ...snapshot,
+              repository: { ...snapshot.repository, riskFlags },
+            }
+          : snapshot;
       const review = await saveSourceImportReview(
         database,
         principal,
         personal.version,
-        snapshot,
+        reviewSnapshot,
         stack,
-        limits,
+        activeLimits,
       );
       return {
         ...review,
@@ -55,8 +78,12 @@ export function createSourceImportService(
         commitId: snapshot.commitId,
         applicationRoot: snapshot.applicationRoot ?? "",
         stack,
-        limits,
-        assetCount: snapshot.files.filter(file => file.asset).length,
+        limits: activeLimits,
+        textBytes: snapshot.textBytes ?? 0,
+        assetBytes: snapshot.assetBytes ?? 0,
+        totalBytes: snapshot.totalBytes ?? 0,
+        riskFlags,
+        assetCount: snapshot.files.filter((file) => file.asset).length,
       };
     },
   };

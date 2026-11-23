@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createGitHubReadClient, createGitHubObjectClient } from "../../src/providers/github/http-client";
+import { createGitHubReadClient, createGitHubObjectClient, GitHubRequestError } from "../../src/providers/github/http-client";
 test("GitHub GET pins origin and credentials without redirects or cookies", async () => {
   const client = createGitHubReadClient("test-token", async (url, init) => {
     expect(String(url)).toBe("https://api.github.com/repos/team/studio");
@@ -61,6 +61,38 @@ test("cancellation bounds a transport or body that ignores its signal", async ()
     );
     controller.abort();
     await expect(pending).rejects.toThrow("request_failed");
+  }
+});
+
+test("timeouts mark GitHubRequestError.timedOut while manual aborts do not", async () => {
+  const manualController = new AbortController();
+  const manualPromise = createGitHubReadClient(
+    "token",
+    async (): Promise<Response> => new Promise(() => {}),
+  ).get("/user", manualController.signal);
+  manualController.abort();
+  try {
+    await manualPromise;
+    expect.unreachable();
+  } catch (error) {
+    expect(error).toBeInstanceOf(GitHubRequestError);
+    expect((error as GitHubRequestError).timedOut).toBe(false);
+  }
+
+  try {
+    await createGitHubReadClient(
+      "token",
+      async (_url, init): Promise<Response> =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        }),
+    ).get("/user", AbortSignal.timeout(15));
+    expect.unreachable();
+  } catch (error) {
+    expect(error).toBeInstanceOf(GitHubRequestError);
+    expect((error as GitHubRequestError).timedOut).toBe(true);
   }
 });
 

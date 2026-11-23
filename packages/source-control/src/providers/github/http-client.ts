@@ -9,10 +9,18 @@
  */
 const API_ORIGIN = "https://api.github.com";
 const API_VERSION = "2022-11-28";
-const MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
-const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
-const TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 24 * 1024 * 1024;
+const TIMEOUT_MS = 45_000;
 const MAX_TOKEN_CHARACTERS = 8192;
+function isTimeoutError(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "name" in value &&
+    value.name === "TimeoutError"
+  );
+}
 export class GitHubRequestError extends Error {
   constructor(
     public readonly code:
@@ -22,6 +30,7 @@ export class GitHubRequestError extends Error {
       | "invalid_json"
       | "request_failed",
     public readonly status?: number,
+    public readonly timedOut?: boolean,
   ) {
     super(`GitHub request failed (${code}).`);
     this.name = "GitHubRequestError";
@@ -34,6 +43,7 @@ export interface GitHubReadClient {
 function createGitHubTransport(
   token: string,
   transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
+  options?: { maxResponseBytes?: number },
 ): {
   request(
     method: "GET" | "POST",
@@ -42,6 +52,7 @@ function createGitHubTransport(
     signal?: AbortSignal,
   ): Promise<unknown>;
 } {
+  const maxResponseBytes = options?.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   if (
     !token ||
     token.length > MAX_TOKEN_CHARACTERS ||
@@ -98,7 +109,14 @@ function createGitHubTransport(
       const cancelled = new Promise<never>((_, reject) => {
         signal.addEventListener(
           "abort",
-          () => reject(new GitHubRequestError("request_failed")),
+          () =>
+            reject(
+              new GitHubRequestError(
+                "request_failed",
+                undefined,
+                isTimeoutError(signal.reason),
+              ),
+            ),
           { once: true },
         );
       });
@@ -130,7 +148,7 @@ function createGitHubTransport(
         const declared = response.headers.get("content-length");
         if (
           declared !== null &&
-          (!/^\d+$/.test(declared) || Number(declared) > MAX_RESPONSE_BYTES)
+          (!/^\d+$/.test(declared) || Number(declared) > maxResponseBytes)
         ) {
           await response.body?.cancel();
           throw new GitHubRequestError("response_limit");
@@ -143,7 +161,7 @@ function createGitHubTransport(
           const chunk = await Promise.race([reader.read(), cancelled]);
           if (chunk.done) break;
           bytes += chunk.value.byteLength;
-          if (bytes > MAX_RESPONSE_BYTES)
+          if (bytes > maxResponseBytes)
             throw new GitHubRequestError("response_limit");
           chunks.push(chunk.value);
         }
@@ -159,7 +177,11 @@ function createGitHubTransport(
         }
       } catch (error) {
         if (error instanceof GitHubRequestError) throw error;
-        throw new GitHubRequestError("request_failed");
+        throw new GitHubRequestError(
+          "request_failed",
+          undefined,
+          isTimeoutError(error) || isTimeoutError(signal.reason),
+        );
       } finally {
         if (reader) {
           void reader.cancel().catch(() => undefined);
@@ -174,8 +196,9 @@ function createGitHubTransport(
 export function createGitHubReadClient(
   token: string,
   transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
+  options?: { maxResponseBytes?: number },
 ): GitHubReadClient {
-  const client = createGitHubTransport(token, transport);
+  const client = createGitHubTransport(token, transport, options);
   return {
     get: (path, signal) => client.request("GET", path, undefined, signal),
   };
@@ -187,8 +210,9 @@ export interface GitHubObjectClient extends GitHubReadClient {
 export function createGitHubObjectClient(
   token: string,
   transport: (url: URL, init: RequestInit) => Promise<Response> = fetch,
+  options?: { maxResponseBytes?: number },
 ): GitHubObjectClient {
-  const client = createGitHubTransport(token, transport);
+  const client = createGitHubTransport(token, transport, options);
   return {
     get: (path, signal) => client.request("GET", path, undefined, signal),
     post: (path, body, signal) => client.request("POST", path, body, signal),

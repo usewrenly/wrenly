@@ -1,3 +1,5 @@
+import type { ImportLimitPresetId, SourceImportLimits } from "../policy/import-policy";
+
 /** Safe browser projection of a personal source connection; no credential fields are allowed. */
 export interface SourceConnectionStatus {
   canRegister: boolean;
@@ -8,6 +10,11 @@ export interface SourceConnectionStatus {
     login: string;
     needsAuthorization: boolean;
   } | null;
+  importLimits?: {
+    preset: ImportLimitPresetId;
+    limits: SourceImportLimits;
+    canManage: boolean;
+  };
 }
 function record(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -52,5 +59,35 @@ export function parseSourceConnectionStatus(
       needsAuthorization: value.needsAuthorization,
     };
   }
-  return { canRegister: raw.canRegister, app, connection };
+  let importLimits: SourceConnectionStatus["importLimits"] = undefined;
+  if (raw.importLimits !== undefined && raw.importLimits !== null) {
+    const cfg = raw.importLimits;
+    if (
+      !record(cfg) ||
+      typeof cfg.preset !== "string" ||
+      !["default", "medium", "large", "unlimited"].includes(cfg.preset) ||
+      !record(cfg.limits) ||
+      typeof cfg.limits.files !== "number" ||
+      typeof cfg.limits.fileBytes !== "number" ||
+      typeof cfg.limits.totalBytes !== "number" ||
+      typeof cfg.limits.assetFileBytes !== "number" ||
+      typeof cfg.limits.assetBytes !== "number" ||
+      typeof cfg.canManage !== "boolean"
+    )
+      throw new Error("Connection status could not be read.");
+    importLimits = {
+      preset: cfg.preset as ImportLimitPresetId,
+      limits: {
+        files: cfg.limits.files,
+        fileBytes: cfg.limits.fileBytes,
+        totalBytes: cfg.limits.totalBytes,
+        assetFileBytes: cfg.limits.assetFileBytes,
+        assetBytes: cfg.limits.assetBytes,
+      },
+      canManage: cfg.canManage,
+    };
+  }
+  return importLimits
+    ? { canRegister: raw.canRegister, app, connection, importLimits }
+    : { canRegister: raw.canRegister, app, connection };
 }

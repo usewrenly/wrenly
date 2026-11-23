@@ -42,6 +42,7 @@ export interface GitHubConnectionService {
     signal: AbortSignal,
   ): Promise<unknown>;
   confirmImport?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
+  updateLimits?(principal: AccessPrincipal, raw: unknown): Promise<unknown>;
   status(principal: AccessPrincipal): Promise<unknown>;
   begin(
     principal: AccessPrincipal,
@@ -68,6 +69,7 @@ export interface GitHubConnectionHandlers {
   recoverPush(request: Request): Promise<Response>;
   prepareImport(request: Request): Promise<Response>;
   confirmImport(request: Request): Promise<Response>;
+  updateLimits?(request: Request): Promise<Response>;
   status(request: Request): Promise<Response>;
   start(request: Request): Promise<Response>;
   registrationCallback(request: Request): Promise<Response>;
@@ -155,16 +157,34 @@ export function createGitHubConnectionHandlers(options: {
           unsafe_path:
             "This repository contains an unsupported or ambiguous file path. Review its source before importing.",
           size_limit:
-            "This repository exceeds the configured source or asset limits. Review the instance import limits in the GitHub guide.",
+            "This repository exceeds the configured source, file count, or asset limits. Increase or uncap import limits in Settings → Connections → GitHub.",
           invalid_content:
             "This repository contains an unsupported or malformed asset, Git LFS pointer or unsupported text. Supported passive assets include PNG, JPEG, WebP, ICO and fonts.",
         };
+        const formatSizeMeasure = (value: number): string =>
+          value >= 1024 * 1024
+            ? `${(value / (1024 * 1024)).toFixed(1)} MB`
+            : `${Math.max(1, Math.round(value / 1024))} KB`;
+        const limitDetail =
+          error.code === "size_limit" &&
+          typeof error.measuredBytes === "number" &&
+          typeof error.limitBytes === "number"
+            ? error.limitBytes >= 64 * 1024
+              ? ` (${formatSizeMeasure(error.measuredBytes)} used vs ${formatSizeMeasure(error.limitBytes)} limit).`
+              : ` (${error.measuredBytes.toLocaleString()} vs ${error.limitBytes.toLocaleString()} limit).`
+            : "";
         return Response.json(
-          { error: messages[error.code] + (error.path ? ` File: ${error.path.slice(0, 512)}` : "") },
+          {
+            error:
+              messages[error.code] +
+              limitDetail +
+              (error.path ? ` File: ${error.path.slice(0, 512)}` : ""),
+          },
           { status: 400, headers: PRIVATE },
         );
       }
       if (error instanceof GitHubRequestError) {
+        const timedOut = error.timedOut === true;
         const message =
           error.status === 404
             ? "GitHub could not find this repository or branch with your current access. Check the branch name and selected repositories."
@@ -173,16 +193,23 @@ export function createGitHubConnectionHandlers(options: {
               : error.status === 403 || error.status === 429
                 ? "GitHub refused this request or temporarily limited access. Check App repository permissions and try again later."
                 : error.code === "response_limit"
-                  ? "GitHub returned more source data than this import supports. Choose a smaller repository."
-                  : "GitHub source could not be read. Check the connection and try again shortly.";
+                  ? "GitHub returned more source data than this import supports. Increase or uncap import limits in Settings → Connections → GitHub, or choose a specific Application directory."
+                  : timedOut
+                    ? "Reading this repository from GitHub timed out. Large repositories or monorepos can take longer — set an Application directory (for example apps/web) to review a single app, or try again."
+                    : error.code === "http_error" &&
+                        typeof error.status === "number" &&
+                        error.status >= 500
+                      ? `GitHub returned a temporary server error (${error.status}). Try again shortly.`
+                      : "GitHub source could not be read. Check the connection and try again shortly.";
         logger.error("GitHub source request failed", {
           operation: new URL(request.url).pathname,
           providerCode: error.code,
           httpStatus: error.status,
+          timedOut,
         });
         return Response.json(
           { error: message },
-          { status: 502, headers: PRIVATE },
+          { status: timedOut ? 504 : 502, headers: PRIVATE },
         );
       }
       if (
@@ -320,6 +347,15 @@ export function createGitHubConnectionHandlers(options: {
         if (!options.service.confirmImport)
           throw new SourceConnectionError(503, "Source import is unavailable.");
         return options.service.confirmImport(principal, await json(request));
+      }),
+    updateLimits: (request) =>
+      boundary(request, true, async (principal) => {
+        if (!options.service.updateLimits)
+          throw new SourceConnectionError(
+            503,
+            "Import limits configuration is unavailable.",
+          );
+        return options.service.updateLimits(principal, await json(request));
       }),
     status: (request) =>
       boundary(request, false, (p) => options.service.status(p)),

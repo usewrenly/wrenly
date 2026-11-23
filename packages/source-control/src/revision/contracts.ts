@@ -10,8 +10,8 @@ export interface RevisionFile {
   content: string;
   asset?: SourceAsset;
 }
-// Ceilings cover persisted JSON as well as native bytes; base64 is never model context.
-export const REVISION_LIMITS = {
+/** Default per-project budgets suitable for constrained self-hosted instances. */
+export const DEFAULT_REVISION_LIMITS = {
   files: 1000,
   textFileBytes: 2 * 1024 * 1024,
   textBytes: 8 * 1024 * 1024,
@@ -19,14 +19,23 @@ export const REVISION_LIMITS = {
   assetBytes: 12 * 1024 * 1024,
   serializedBytes: 48 * 1024 * 1024,
 } as const;
+// Hard ceilings allow instance owners to expand or select Unlimited import limits without rebuilding Wrenly.
+export const REVISION_LIMITS = {
+  files: 100_000,
+  textFileBytes: 64 * 1024 * 1024,
+  textBytes: 1024 * 1024 * 1024,
+  assetFileBytes: 128 * 1024 * 1024,
+  assetBytes: 1024 * 1024 * 1024,
+  serializedBytes: 1536 * 1024 * 1024,
+} as const;
 const MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'font/woff', 'font/woff2', 'font/ttf', 'font/otf']);
 /** Check JSON shape before allocating decoded bytes; callers verify format and content identity too. */
-export function isSourceAsset(value: unknown): value is SourceAsset {
+export function isSourceAsset(value: unknown, maxAssetFileBytes: number = REVISION_LIMITS.assetFileBytes): value is SourceAsset {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const asset = value as Record<string, unknown>;
   return Object.keys(asset).length === 4 && typeof asset.sha256 === 'string' && /^[a-f0-9]{64}$/.test(asset.sha256) &&
     typeof asset.mediaType === 'string' && MEDIA_TYPES.has(asset.mediaType) &&
-    typeof asset.byteLength === 'number' && Number.isSafeInteger(asset.byteLength) && asset.byteLength > 0 && asset.byteLength <= REVISION_LIMITS.assetFileBytes &&
+    typeof asset.byteLength === 'number' && Number.isSafeInteger(asset.byteLength) && asset.byteLength > 0 && asset.byteLength <= maxAssetFileBytes &&
     typeof asset.base64 === 'string' && asset.base64.length === 4 * Math.ceil(asset.byteLength / 3) &&
     /^[A-Za-z0-9+/]*={0,2}$/.test(asset.base64);
 }

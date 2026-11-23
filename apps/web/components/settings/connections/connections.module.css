@@ -1,16 +1,191 @@
 /* Existing settings use shared authority and data; this scope only arranges their presentation. */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
+}
+.tab:hover {
+  color: var(--color-text-1);
+  background: var(--color-surface-2);
+}
+.tab[aria-selected="true"] {
+  background: var(--color-surface);
+  color: var(--color-text-1);
+  border-color: var(--color-border-2);
+  box-shadow: var(--shadow-sm);
+}
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 .page .sectionTitle {
-  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
 }
 .page .sectionTitle h2 {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 550;
   color: var(--color-text-1);
   margin: 0;
 }
 .page .sectionTitle p {
   margin: 5px 0 0;
+  font-size: 13px;
+}
+.badgeActive,
+.badgeAvailable,
+.badgeWarning,
+.badgePlanned {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 550;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.badgeActive {
+  background: var(--color-surface);
+  color: var(--color-text-1);
+  border: 1px solid var(--color-border-2);
+}
+.dotActive {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+  flex-shrink: 0;
+}
+.badgeAvailable {
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  border: 1px solid var(--color-border);
+}
+.badgeWarning {
+  background: color-mix(in srgb, var(--color-wood) 9%, var(--color-surface));
+  color: var(--color-wood);
+  border: 1px solid color-mix(in srgb, var(--color-wood) 28%, var(--color-border));
+}
+.badgePlanned {
+  background: transparent;
+  color: var(--color-text-3);
+  border: 1px dashed var(--color-border-2);
+}
+.cardHeaderRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.cardHeaderRow h2,
+.cardHeaderRow h3 {
+  margin: 0;
+}
+.plannedSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--color-border-2);
+}
+.plannedHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.plannedHeading span {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-3);
+}
+.plannedHeading p {
+  margin: 0;
   font-size: 12px;
+  color: var(--color-text-2);
+}
+.plannedCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  padding: 22px;
+  border: 1px dashed var(--color-border-2);
+  border-radius: 12px;
+  background: var(--color-bg);
+  min-width: 0;
+}
+.plannedCard > svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+  color: var(--color-text-3);
+}
+.plannedCard > div {
+  min-width: 0;
+  flex: 1;
+}
+.plannedCard h2,
+.plannedCard h3 {
+  font-size: 15px;
+  font-weight: 550;
+  color: var(--color-text-1);
+  margin: 0;
+}
+.plannedCard p {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--color-text-2);
+}
+.crossLinkNote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 13px;
+  color: var(--color-text-2);
+}
+.crossLinkNote a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-1);
+  font-weight: 550;
+  text-decoration: underline;
 }
 .github .body {
   min-width: 0;
@@ -22,6 +197,15 @@
 .github .body > p {
   margin: 0;
 }
+.githubHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.githubHeader h2 {
+  margin: 0;
+}
 .github .actions {
   display: flex;
   flex-wrap: wrap;
@@ -31,7 +215,7 @@
 .github .actions :global([data-slot="button"]),
 .github :global([data-slot="button"]) {
   min-height: 38px;
-  padding: 9px 13px;
+  padding: 9px 14px;
   border-radius: 9px;
   font-size: 12px;
 }
@@ -50,7 +234,7 @@
 .github .advanced {
   padding-top: 16px;
   border-top: 1px solid var(--color-border);
-  margin-top: 18px;
+  margin-top: 4px;
 }
 .github .advanced summary {
   font-size: 12px;
@@ -67,15 +251,238 @@
   border: 1px solid var(--color-border-2);
   border-radius: 9px;
 }
-.page .roadmap {
-  border-top: 1px solid var(--color-border);
-  padding-top: 18px;
+.limitsCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
 }
-.roadmap > summary {
+.limitsHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.limitsHeader h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--color-text-1);
+}
+.limitSliderWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.limitTrackBox {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.limitRailFrame {
+  position: relative;
+  width: calc(100% - 14px);
+  margin: 0 7px;
+  height: 2px;
+  pointer-events: none;
+}
+.limitRailBg {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--color-border-2);
+}
+.limitRailFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transition: width var(--duration-fast) ease;
+}
+.limitStopDot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border-2);
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.limitStopDot[data-reached="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.limitRange {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
   cursor: pointer;
+  z-index: 2;
+}
+.limitRange:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.limitRange:focus-visible {
+  outline: none;
+}
+.limitRange:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--shadow-focus);
+}
+.limitRange::-webkit-slider-runnable-track {
+  height: 2px;
+  background: transparent;
+}
+.limitRange::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.limitRange::-moz-range-track {
+  height: 2px;
+  background: transparent;
+}
+.limitRange::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.limitStops {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.limitStop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+.limitStop:hover:not(:disabled) {
+  border-color: var(--color-text-2);
+}
+.limitStop[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+.limitStop:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.limitStopTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+.limitStopBadge {
+  font-size: 11px;
   color: var(--color-text-2);
+}
+.limitDetailCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border-2);
+  background: var(--color-surface);
+}
+.limitDetailTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.limitDetailTitleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+.limitDetailDesc {
+  margin: 0;
   font-size: 13px;
-  padding-bottom: 18px;
+  line-height: 1.55;
+  color: var(--color-text-2);
+}
+.limitsMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+.limitMetricCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.limitMetricCell strong {
+  font-size: 13px;
+  color: var(--color-text-1);
+}
+.alertError {
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--color-error);
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.alertSuccess {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border-2);
+  background: var(--color-surface);
+  color: var(--color-text-1);
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (max-width: 700px) {
+  .limitStops,
+  .limitsMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 600px) {
   .github {

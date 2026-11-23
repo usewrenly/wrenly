@@ -21,6 +21,7 @@ import {
   buildJobs,
   projectModels,
   providerConnections,
+  sourceProjectOrigins,
 } from "@wrenly/db";
 import { and, eq, desc } from "drizzle-orm";
 
@@ -95,6 +96,15 @@ export async function getProject(
       eq(providerConnections.id, projectModels.connectionId),
     )
     .where(eq(projectModels.projectId, id));
+  const [sourceOrigin] = await db
+    .select({
+      repository: sourceProjectOrigins.repository,
+      commitId: sourceProjectOrigins.commitId,
+      applicationRoot: sourceProjectOrigins.applicationRoot,
+    })
+    .from(sourceProjectOrigins)
+    .where(eq(sourceProjectOrigins.projectId, id))
+    .limit(1);
   const authors = await getProjectAuthors(
     db,
     buildRows.map((row) => row.actorId ?? project.userId),
@@ -103,6 +113,7 @@ export async function getProject(
     {
       features: { developmentDatabases: dependencies?.developmentDatabases === true },
       projectModel: projectModel ?? null,
+      sourceOrigin: sourceOrigin ?? null,
       project,
       builds: buildRows.map((row) => ({
         ...row,

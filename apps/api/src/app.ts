@@ -120,6 +120,7 @@ export function createApp(
     app.post('/api/source/github/push/recover', c => source.recoverPush(c.req.raw))
     app.post('/api/source/github/import/review', c => source.prepareImport(c.req.raw))
     app.post('/api/source/github/import/confirm', c => source.confirmImport(c.req.raw))
+    if (source.updateLimits) app.post('/api/source/github/limits', c => source.updateLimits!(c.req.raw))
     app.get('/api/source/github', c => source.status(c.req.raw))
     app.post('/api/source/github/start', c => source.start(c.req.raw))
     app.post('/api/source/github/disconnect', c => source.disconnect(c.req.raw))

@@ -26,7 +26,7 @@ const MAX_DIAGNOSTIC_CHARS = 256_000;
 const FilesSchema = z
   .array(z.object({ path: z.string().min(1), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }))
   .min(1)
-  .max(1000);
+  .max(REVISION_LIMITS.files);
 const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 
 export interface BuildExecutorDependencies {

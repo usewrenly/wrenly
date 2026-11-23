@@ -1,7 +1,12 @@
-import { DEFAULT_IMPORT_LIMITS, type SourceImportLimits } from "../../policy/import-policy";
+import {
+  DEFAULT_IMPORT_LIMITS,
+  classifyInteractiveExclusion,
+  type SourceImportLimits,
+} from "../../policy/import-policy";
 /** GitHub response decoding; no network requests, tokens or authorization decisions live here. */
 import {
   SourceControlError,
+  type SourceImportRiskCode,
   type SourceRepository,
   type SourceTreeEntry,
 } from "../../contracts/source";
@@ -12,6 +17,9 @@ import {
 } from "../../policy/import-policy";
 import { validateApplicationRoot } from "../../policy/application-root";
 const MAX_TREE_ENTRIES = 4096; // Bound metadata too, including excluded files and directories.
+const ASSET_PATTERN = /\.(?:png|jpe?g|webp|ico|woff2?|ttf|otf)$/i;
+const SKIPPABLE_BINARY_PATTERN =
+  /(?:^|\/)\.DS_Store$|\.(?:pdf|zip|tar|gz|tgz|7z|rar|mp4|mov|webm|mp3|wav|ogg|avi|mkv|sqlite3?|db|exe|dll|so|dylib|bin|dmg|iso|avif|heic|heif|lockb|map|gif|bmp|tiff?|psd|ai|fig|sketch|wasm|pyc|pyo|class|jar|war|ear|o|a|obj|pdb)$/i;
 const SHA = /^[a-f0-9]{40}$/;
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -39,12 +47,19 @@ export function readGitHubRepository(
     value.archived !== false
   )
     throw new SourceControlError("invalid_repository");
+  const sizeKb =
+    typeof value.size === "number" &&
+    Number.isSafeInteger(value.size) &&
+    value.size >= 0
+      ? value.size
+      : undefined;
   const repository: SourceRepository = {
     provider: "github",
     id: String(value.id),
     owner: value.owner.login,
     name: value.name,
     private: value.private,
+    ...(sizeKb !== undefined ? { sizeKb } : {}),
   };
   if (
     expected &&
@@ -63,25 +78,35 @@ export function readGitHubSourceTree(
   expectedTreeId: string,
   applicationRoot = "",
   limits: SourceImportLimits = DEFAULT_IMPORT_LIMITS,
+  options?: { interactiveReview?: boolean },
 ): {
   entries: SourceTreeEntry[];
   excludedPaths: string[];
+  riskPaths?: Partial<Record<SourceImportRiskCode, string[]>>;
 } {
+  const interactive = options?.interactiveReview === true;
+  const maxRawEntries = interactive ? Math.max(100_000, limits.files * 20) : MAX_TREE_ENTRIES;
   if (
     !SHA.test(expectedTreeId) ||
     !record(value) ||
     value.sha !== expectedTreeId ||
     value.truncated !== false ||
     !Array.isArray(value.tree) ||
-    value.tree.length > MAX_TREE_ENTRIES
+    value.tree.length > maxRawEntries
   )
     throw new SourceControlError("invalid_tree");
   validateApplicationRoot(applicationRoot);
   const prefix = applicationRoot ? `${applicationRoot}/` : "";
   const entries: SourceTreeEntry[] = [],
     excludedPaths: string[] = [],
-    paths: string[] = [];
-  let total = 0;
+    paths: string[] = [],
+    riskPaths: Partial<Record<SourceImportRiskCode, string[]>> = {};
+  const recordRisk = (code: SourceImportRiskCode, path: string): void => {
+    const bucket = (riskPaths[code] ??= []);
+    if (bucket.length < 250) bucket.push(path);
+  };
+  let textTotal = 0;
+  let assetTotal = 0;
   for (const entry of value.tree) {
     if (
       !record(entry) ||
@@ -95,32 +120,57 @@ export function readGitHubSourceTree(
     assertSourcePath(path);
     if (entry.type === "tree" && entry.mode === "040000") continue;
     paths.push(path);
-    // Refuse symlinks/submodules even when their names otherwise look excludable.
-    if (
-      entry.type !== "blob" ||
-      !["100644", "100755"].includes(String(entry.mode))
-    )
-      throw new SourceControlError("unsupported_entry");
-    if (shouldExcludeSourcePath(path)) {
+    if (entry.type !== "blob" || !["100644", "100755"].includes(String(entry.mode))) {
+      if (interactive) {
+        excludedPaths.push(path);
+        recordRisk("unsupported_files", path);
+        continue;
+      }
+      throw new SourceControlError("unsupported_entry", path);
+    }
+    if (interactive) {
+      const excludedReason = classifyInteractiveExclusion(path);
+      if (excludedReason) {
+        excludedPaths.push(path);
+        recordRisk(excludedReason, path);
+        continue;
+      }
+      if (SKIPPABLE_BINARY_PATTERN.test(path)) {
+        excludedPaths.push(path);
+        recordRisk("unsupported_files", path);
+        continue;
+      }
+    } else if (shouldExcludeSourcePath(path)) {
       excludedPaths.push(path);
       continue;
     }
-    if (
-      !Number.isSafeInteger(entry.size) ||
-      Number(entry.size) < 0 ||
-      Number(entry.size) > (/\.(?:png|jpe?g|webp|ico|woff2?|ttf|otf)$/i.test(path) ? limits.assetFileBytes : limits.fileBytes) ||
-      (total += Number(entry.size)) > (limits.totalBytes + limits.assetBytes) ||
-      entries.length >= limits.files
-    )
-      throw new SourceControlError("size_limit");
+    const size = Number(entry.size);
+    const isAsset = ASSET_PATTERN.test(path);
+    if (!Number.isSafeInteger(entry.size) || size < 0)
+      throw new SourceControlError("size_limit", path);
+    if (isAsset) {
+      if (size > limits.assetFileBytes)
+        throw new SourceControlError("size_limit", path, size, limits.assetFileBytes);
+      if ((assetTotal += size) > limits.assetBytes)
+        throw new SourceControlError("size_limit", path, assetTotal, limits.assetBytes);
+    } else {
+      if (size > limits.fileBytes)
+        throw new SourceControlError("size_limit", path, size, limits.fileBytes);
+      if ((textTotal += size) > limits.totalBytes)
+        throw new SourceControlError("size_limit", path, textTotal, limits.totalBytes);
+    }
+    if (entries.length >= limits.files)
+      throw new SourceControlError("size_limit", path, entries.length + 1, limits.files);
     entries.push({
       path,
       blobId: entry.sha,
-      size: Number(entry.size),
+      size,
       executable: entry.mode === "100755",
     });
   }
   assertDistinctSourcePaths(paths);
   if (!entries.length) throw new SourceControlError("invalid_tree");
-  return { entries, excludedPaths };
+  return interactive
+    ? { entries, excludedPaths, riskPaths }
+    : { entries, excludedPaths };
 }

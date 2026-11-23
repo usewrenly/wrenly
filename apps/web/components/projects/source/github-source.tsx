@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
 import { z } from "zod";
 import { authClient } from "@/lib/auth/auth-client";
 import { apiFetch } from "@/lib/api";
@@ -16,9 +17,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+const RiskFlag = z.object({
+  code: z.string(),
+  title: z.string(),
+  detail: z.string(),
+  paths: z.array(z.string()),
+});
 const Repository = z.object({
   owner: z.string().regex(/^[A-Za-z0-9_.-]+$/),
   name: z.string().regex(/^[A-Za-z0-9_.-]+$/),
+  riskAcknowledged: z.boolean().optional(),
+  riskFlags: z.array(RiskFlag).optional(),
 });
 const Status = z.object({
   project: z.object({
@@ -151,7 +160,8 @@ function SourceFlow({
     command = useRef<Record<string, string> | null>(null);
   const status = useQuery({
     queryKey: ["github-project", userId, projectId],
-    enabled: open && Boolean(userId),
+    enabled: Boolean(userId),
+    staleTime: 30000,
     retry: false,
     queryFn: async () =>
       Status.parse(
@@ -257,10 +267,26 @@ function SourceFlow({
   const pending = status.data?.operations.some((op) =>
     ["queued", "running", "needs_review"].includes(op.status),
   );
+  const riskAcknowledged =
+    status.data?.origin?.repository.riskAcknowledged === true;
+  const riskFlags = status.data?.origin?.repository.riskFlags ?? [];
   return (
     <>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        GitHub source
+        <span>GitHub source</span>
+        {riskAcknowledged && (
+          <span
+            className="ml-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+            style={{
+              background: "var(--color-warning-bg)",
+              color: "var(--color-warning)",
+              border: "1px solid var(--color-warning)",
+            }}
+          >
+            <AlertTriangle size={10} aria-hidden="true" />
+            Security risk acknowledged
+          </span>
+        )}
       </Button>
       <Dialog
         open={open}
@@ -268,7 +294,7 @@ function SourceFlow({
           if (!busy) setOpen(value);
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[700px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Project source</DialogTitle>
             <DialogDescription>
@@ -276,6 +302,22 @@ function SourceFlow({
               not publish your running app.
             </DialogDescription>
           </DialogHeader>
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg p-3 text-sm"
+              style={{
+                border: "1px solid var(--color-error)",
+                background: "var(--color-error-bg)",
+                color: "var(--color-error)",
+              }}
+            >
+              {error}
+              {uncertain
+                ? " Keep this request: its result has not been confirmed."
+                : ""}
+            </p>
+          )}
           {status.isPending ? (
             <p>Reading project source…</p>
           ) : status.isError ? (
@@ -301,6 +343,33 @@ function SourceFlow({
                     </p>
                   )}
                 </div>
+                {riskAcknowledged && (
+                  <div
+                    className="rounded-lg p-4 space-y-2 text-sm"
+                    style={{
+                      border: "1px solid var(--color-warning)",
+                      background: "var(--color-warning-bg)",
+                    }}
+                  >
+                    <p className="flex items-center gap-2 font-medium text-foreground">
+                      <AlertTriangle size={15} aria-hidden="true" />
+                      Security risk acknowledged at import
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      This repository contained items flagged during review and
+                      was imported with explicit consent.
+                    </p>
+                    {riskFlags.length > 0 && (
+                      <ul className="space-y-1 text-xs">
+                        {riskFlags.map((flag) => (
+                          <li key={flag.code}>
+                            <strong>{flag.title}:</strong> {flag.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 {!status.data.origin ? (
                   bindingReview ? (
                     <section className="space-y-3">
@@ -571,17 +640,6 @@ function SourceFlow({
                 )}
               </div>
             )
-          )}
-          {error && (
-            <p
-              role="alert"
-              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
-            >
-              {error}
-              {uncertain
-                ? " Keep this request: its result has not been confirmed."
-                : ""}
-            </p>
           )}
         </DialogContent>
       </Dialog>

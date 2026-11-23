@@ -4,26 +4,27 @@
   font-size: 13px;
 }
 .content {
-  width: min(560px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
+  max-width: 760px;
   max-height: calc(100dvh - 48px);
   overflow-y: auto;
-  padding: 28px;
+  padding: 32px 36px;
   gap: 22px;
 }
 .mark {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--color-border-2);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--color-surface-2);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .steps {
   display: flex;
   gap: 24px;
-  padding: 15px 0;
+  padding: 14px 0;
   border-block: 1px solid var(--color-border-2);
   font-size: 12px;
   color: var(--color-text-2);
@@ -43,10 +44,44 @@
   border: 1px solid var(--color-border-2);
   font-size: 11px;
 }
+.errorBanner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--color-error);
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.errorBannerHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.errorBannerHeader svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.errorLink {
+  align-self: flex-start;
+  margin-left: 26px;
+  font-size: 12px;
+  font-weight: 550;
+  text-decoration: underline;
+  color: var(--color-error);
+}
 .fields {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 18px;
+}
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 .access {
   display: flex;
@@ -61,12 +96,22 @@
   font-size: 12px;
   color: var(--color-text-2);
 }
+.connectionLink:hover {
+  color: var(--color-text-1);
+}
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
 .fieldLabel {
   display: flex;
   flex-direction: column;
   gap: 8px;
   font-size: 13px;
   font-weight: 500;
+  min-width: 0;
 }
 .optional,
 .note {
@@ -76,7 +121,7 @@
   color: var(--color-text-2);
 }
 .optional {
-  margin-top: -4px;
+  margin-top: -2px;
 }
 .sectionHeading {
   display: flex;
@@ -85,20 +130,317 @@
   padding-top: 18px;
   border-top: 1px solid var(--color-border-2);
   font-size: 12px;
+  font-weight: 550;
   color: var(--color-text-2);
+}
+.combobox {
+  position: relative;
+}
+.repoTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 9px;
+  background: var(--color-surface-2);
+  color: var(--color-text-1);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.repoTrigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.repoTriggerMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.repoTriggerMain span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repoTriggerMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.sizeBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+.repoMenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-2);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.repoSearchWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+.repoSearchWrap svg {
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+.repoSearchInput {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-1);
+  font-size: 13px;
+  outline: none;
+}
+.repoList {
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.repoOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.repoOption:hover {
+  background: var(--color-surface-2);
+}
+.repoOption[aria-selected="true"] {
+  background: var(--color-surface-2);
+}
+.repoOptionLeft {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+.repoOptionName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repoOptionOwner {
+  color: var(--color-text-2);
+}
+.repoOptionRight {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.repoEmpty {
+  padding: 14px 12px;
+  font-size: 12px;
+  color: var(--color-text-2);
+  text-align: center;
+}
+.reviewCard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border-2);
+  background: var(--color-surface-2);
+}
+.reviewHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reviewRepo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-2);
+}
+.reviewMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+.metricLabel {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-2);
+  margin-bottom: 3px;
+}
+.metricValue {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-text-1);
+}
+.metricSub {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-2);
+  margin-top: 2px;
+}
+.riskPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 12px;
+  border: 1px solid var(--color-warning);
+  background: var(--color-warning-bg);
+}
+.riskTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+.riskList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.riskItem {
+  padding: 12px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.riskItem strong {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-1);
+  margin-bottom: 4px;
+}
+.riskItem p {
+  color: var(--color-text-2);
+  margin: 0;
+}
+.riskPaths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.riskPathChip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-1);
+}
+.modeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.modeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-2);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+}
+.modeCard[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+.modeCard strong {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--color-text-1);
+}
+.modeCard span {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-2);
+}
+.consentLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--color-border-2);
+  background: var(--color-surface);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-1);
+  cursor: pointer;
+}
+.consentLabel input {
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
 }
 .content :global([data-slot="input"]) {
   border: 1px solid var(--color-border-2);
   border-radius: 9px;
   background: var(--color-surface-2);
-  height: 40px;
+  height: 42px;
   padding: 9px 12px;
   font-size: 13px;
 }
 .content :global([data-slot="button"]) {
   border-radius: 9px;
-  min-height: 36px;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 8px 14px;
   font-size: 12px;
 }
 .content .primary {
@@ -110,9 +452,14 @@
 .note summary {
   cursor: pointer;
 }
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .content {
-    padding: 22px;
+    padding: 22px 18px;
+  }
+  .fieldGrid,
+  .reviewMetrics,
+  .modeGrid {
+    grid-template-columns: 1fr;
   }
   .access {
     align-items: flex-start;
@@ -122,5 +469,3 @@
     gap: 14px;
   }
 }
-
-.repositoryPopup { max-height: min(320px, var(--available-height)); }

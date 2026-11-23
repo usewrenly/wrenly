@@ -49,6 +49,8 @@ const ImportCommand = z
     requestId: z.uuid(),
     reviewId: z.uuid(),
     name: z.string().trim().min(1).max(100),
+    importMode: z.enum(["clean", "with_risks"]).optional(),
+    riskConsent: z.boolean().optional(),
   })
   .strict();
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -166,8 +168,17 @@ export async function admitSourceImport(
       400,
       "Provide the reviewed import, a request UUID and a project name.",
     );
-  const input = command.data,
-    requestIdentity = JSON.stringify([input.reviewId, input.name]);
+  const input = command.data;
+  if (input.importMode === "with_risks" && input.riskConsent !== true) {
+    throw new SourceConnectionError(
+      400,
+      "Confirm risk consent before importing with detected risks.",
+    );
+  }
+  const requestIdentity =
+    input.importMode === "with_risks"
+      ? JSON.stringify([input.reviewId, input.name, input.importMode, true])
+      : JSON.stringify([input.reviewId, input.name]);
   return database.transaction(async (tx) => {
     await tx.insert(buildQueue).values({ id: 1 }).onConflictDoNothing();
     await tx
@@ -286,6 +297,12 @@ export async function admitSourceImport(
         message: "Imported source saved. Waiting for Docker validation.",
       },
     });
+    const originRepository =
+      input.importMode === "with_risks" && input.riskConsent === true
+        ? { ...review.repository, riskAcknowledged: true }
+        : review.repository.riskFlags?.length
+          ? { ...review.repository, riskAcknowledged: false }
+          : review.repository;
     await tx.insert(sourceProjectOrigins).values({
       projectId,
       userId: principal.userId,
@@ -293,7 +310,7 @@ export async function admitSourceImport(
       requestIdentity,
       reviewId: review.id,
       buildId,
-      repository: review.repository,
+      repository: originRepository,
       commitId: review.commitId,
       treeId: review.treeId,
       applicationRoot: review.applicationRoot,
