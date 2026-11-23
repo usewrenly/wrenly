@@ -55,7 +55,7 @@ export const DatabaseRecovery = z.object({
 }).strict();
 export type DatabaseRecovery = z.infer<typeof DatabaseRecovery>;
 export const DatabaseRecoveryAction = DatabaseRecovery.extend({
-  kind: z.enum(["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation", "recover-rehearsal"]),
+  kind: z.enum(["recover-before-effect", "recover-runtime-state", "recover-read", "recover-validation", "recover-production-operation", "recover-rehearsal"]),
   confirmRecovery: z.literal(true),
 }).strict();
 export type DatabaseRecoveryAction = z.infer<typeof DatabaseRecoveryAction>;

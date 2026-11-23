@@ -1,0 +1,9 @@
+{
+  "require": {
+    "laravel/boost": "2.10.4"
+  },
+  "config": {
+    "allow-plugins": false,
+    "sort-packages": true
+  }
+}

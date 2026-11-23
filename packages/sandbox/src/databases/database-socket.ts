@@ -10,16 +10,26 @@ import {
 } from "./database-runtime";
 import {
   managedDatabaseLabels,
+  databaseClientLabels,
+  type DatabaseClientScope,
   localDatabaseSocketConfiguration,
   DATABASE_SOCKET_DIRECTORY,
   DATABASE_SOCKET_PATH,
   type ManagedDatabaseScope,
+  type DatabaseSocketConfiguration,
 } from "./database-resource-policy";
+import {
+  productionDatabaseSocketConfiguration,
+  productionSocketHostMapping,
+  type ProductionSocketUpstream,
+} from "./production-socket-policy";
+import type { ProductionProjectCredentials } from "@wrenly/db/production-project-credentials";
 const docker = new Docker({
   socketPath: "/var/run/docker.sock",
   timeout: 10_000,
 });
 export const DATABASE_SOCKET_IMAGE = "wrenly/database-socket:1";
+export const PRODUCTION_DATABASE_SOCKET_IMAGE = "wrenly/database-socket:2";
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const TIMEOUT_MS = 15_000;
 const POLL_MS = 100;
@@ -38,7 +48,6 @@ export async function startDatabaseSocket(input: {
   fence: DatabaseRuntimeFence;
   signal: AbortSignal;
 }): Promise<DatabaseSocketIdentity> {
-  let child: Bun.Subprocess<"pipe", "ignore", "ignore"> | undefined;
   try {
     if (!UUID.test(input.socketId)) throw new Error("Invalid socket identity");
     await input.fence.assertHeld();
@@ -49,7 +58,96 @@ export async function startDatabaseSocket(input: {
       upstream,
       input.role,
     );
-    const image = await docker.getImage(DATABASE_SOCKET_IMAGE).inspect();
+    return await startConfiguredDatabaseSocket({
+      ...input,
+      configuration,
+      networkId: input.database.networkId,
+      labels: managedDatabaseLabels(input.scope, "database-socket"),
+      toolchain: DATABASE_SOCKET_IMAGE,
+    });
+  } catch (error) {
+    throw new DatabaseRuntimeError("socket preparation", error);
+  }
+}
+
+/** Opens only a role-scoped Unix socket; the trusted broker alone receives the private TLS network. */
+export async function startProductionDatabaseSocket(input: {
+  scope: { resourceId: string; projectId: string; environment: "production" };
+  socketId: string;
+  networkId: string;
+  upstream: ProductionSocketUpstream;
+  credentials: ProductionProjectCredentials;
+  role: "runtime" | "migrator" | "reader";
+  certificateAuthority?: string;
+  fence: DatabaseRuntimeFence;
+  signal: AbortSignal;
+  verifyTarget: () => Promise<void>;
+}): Promise<DatabaseSocketIdentity> {
+  try {
+    if (
+      !UUID.test(input.scope.resourceId) ||
+      !UUID.test(input.scope.projectId) ||
+      !UUID.test(input.socketId) ||
+      input.scope.environment !== "production" ||
+      !input.networkId
+    )
+      throw new Error("Invalid Production socket identity");
+    await input.fence.assertHeld();
+    input.signal.throwIfAborted();
+    await input.verifyTarget();
+    const network = await docker.getNetwork(input.networkId).inspect();
+    const labels = {
+      "io.wrenly.database-id": input.scope.resourceId,
+      "io.wrenly.project-id": input.scope.projectId,
+      "io.wrenly.database-environment": "production",
+    };
+    if (
+      network.Id !== input.networkId ||
+      network.Driver !== "bridge" ||
+      network.Internal ||
+      network.EnableIPv6 ||
+      Object.entries(labels).some(
+        ([key, value]) => network.Labels?.[key] !== value,
+      )
+    )
+      throw new Error("Production socket network identity changed");
+    const configuration = productionDatabaseSocketConfiguration({
+      resourceId: input.scope.resourceId,
+      credentials: input.credentials,
+      role: input.role,
+      upstream: input.upstream,
+      certificateAuthority: input.certificateAuthority,
+    });
+    const result = await startConfiguredDatabaseSocket({
+      ...input,
+      configuration,
+      labels: { ...labels, "io.wrenly.role": "database-socket" },
+      hostMapping: productionSocketHostMapping(input.upstream),
+      toolchain: PRODUCTION_DATABASE_SOCKET_IMAGE,
+    });
+    // A ready Unix listener alone is not proof that DNS and the immutable upstream identity still match.
+    await input.verifyTarget();
+    return result;
+  } catch (error) {
+    throw new DatabaseRuntimeError("Production socket preparation", error);
+  }
+}
+
+/** Shared Docker lifecycle; callers supply only server-verified configurations and retain cleanup ownership on failure. */
+async function startConfiguredDatabaseSocket(input: {
+  scope: { resourceId: string; projectId: string };
+  socketId: string;
+  networkId: string;
+  labels: Record<string, string>;
+  configuration: DatabaseSocketConfiguration;
+  toolchain: string;
+  hostMapping?: string;
+  fence: DatabaseRuntimeFence;
+  signal: AbortSignal;
+}): Promise<DatabaseSocketIdentity> {
+  let child: Bun.Subprocess<"pipe", "ignore", "ignore"> | undefined;
+  try {
+    const image = await docker.getImage(input.toolchain).inspect();
     if (
       !/^sha256:[a-f0-9]{64}$/.test(image.Id) ||
       image.Config.User !== "1000:1000"
@@ -57,7 +155,7 @@ export async function startDatabaseSocket(input: {
       throw new Error("Unverified socket toolchain");
     const name = `wrenly-database-socket-${input.socketId}`;
     const labels = {
-      ...managedDatabaseLabels(input.scope, "database-socket"),
+      ...input.labels,
       "io.wrenly.database-socket-id": input.socketId,
     };
     for (const resource of [
@@ -105,7 +203,8 @@ export async function startDatabaseSocket(input: {
         Retries: 3,
       },
       HostConfig: {
-        NetworkMode: input.database.networkId,
+        NetworkMode: input.networkId,
+        ...(input.hostMapping ? { ExtraHosts: [input.hostMapping] } : {}),
         Memory: 64 * 1024 ** 2,
         NanoCpus: 250_000_000,
         PidsLimit: 32,
@@ -146,7 +245,7 @@ export async function startDatabaseSocket(input: {
         env: { PATH: "/usr/local/bin:/usr/bin:/bin" },
       },
     );
-    child.stdin.write(JSON.stringify(configuration));
+    child.stdin.write(JSON.stringify(input.configuration));
     child.stdin.end();
     const deadline = Date.now() + TIMEOUT_MS;
     while (true) {
@@ -245,7 +344,7 @@ export async function cleanupDatabaseSocket(
 
 /** Removes a partially created socket only after the caller recorded its creation intent. */
 export async function cleanupScopedDatabaseSocket(
-  scope: ManagedDatabaseScope,
+  scope: DatabaseClientScope,
   socketId: string,
   assertHeld: () => Promise<void> = async () => {},
 ): Promise<void> {
@@ -253,11 +352,18 @@ export async function cleanupScopedDatabaseSocket(
   if (!UUID.test(socketId))
     throw new DatabaseRuntimeError("invalid socket cleanup scope");
   // Validate every scope identifier before deriving local Docker handles.
-  managedDatabaseLabels(scope, "database-socket");
+  databaseClientLabels(scope, "database-socket");
   const name = `wrenly-database-socket-${socketId}`;
   let imageId = "";
   try {
-    imageId = (await docker.getContainer(name).inspect()).Image;
+    const current = await docker.getContainer(name).inspect();
+    if (
+      Object.entries(databaseClientLabels(scope, "database-socket")).some(
+        ([key, value]) => current.Config.Labels?.[key] !== value,
+      )
+    )
+      throw new Error("Socket cleanup environment changed");
+    imageId = current.Image;
   } catch (error) {
     if (!(
       typeof error === "object" &&
@@ -266,6 +372,23 @@ export async function cleanupScopedDatabaseSocket(
       error.statusCode === 404
     ))
       throw new DatabaseRuntimeError("socket cleanup inspection");
+  }
+  try {
+    const volume = await docker.getVolume(name).inspect();
+    if (
+      Object.entries(databaseClientLabels(scope, "database-socket")).some(
+        ([key, value]) => volume.Labels?.[key] !== value,
+      )
+    )
+      throw new Error("Socket volume cleanup environment changed");
+  } catch (error) {
+    if (!(
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      error.statusCode === 404
+    ))
+      throw new DatabaseRuntimeError("socket cleanup volume inspection");
   }
   await cleanupDatabaseSocket(
     {

@@ -5,38 +5,47 @@ description: Start a local instance, create its owner and connect your first mod
 
 import { Step, Steps } from "fumadocs-ui/components/steps";
 
-An instance is your installation of Wrenly: its accounts, projects and settings belong
+An instance is your installation of Wrenly: its accounts, projects, and settings belong
 to that installation. You do not need an external Wrenly account. You do need to sign in,
 even if you are the only person using it. That keeps a server address from becoming an
 open invitation to your private projects.
 
-## Who needs to install it?
-
 Only the **instance operator**—the person running the server—sets up Wrenly. Everyone
 invited to that instance opens its web address and signs in; they do not need Git,
-Bun or a source checkout on their own computer.
-
-This guide currently uses a source checkout. Contributors use that same checkout to
-change and test the code, but ordinary users do not need to become contributors.
-A packaged guided installer is not released yet. The reserved `@wrenly` npm scope is
-for future package distribution; there is no published installer command to run today.
-
-## Get the source
-
-Download the intended source release or clone the public repository. Open a terminal
-in the extracted/cloned folder containing `package.json`. Invited teammates do not
-repeat this installation; they use your instance's web address.
+Bun, or a source checkout on their own computer.
 
 ## Prerequisites
 
-Use Bun1.3.14, Node24 or newer, Git and Docker. The source checkout is required; the
-public source release is planned for28October2026. Linux with local Docker is the
-supported host for the current isolated preview/publishing workflows. Those optional
-workflows have additional toolchain requirements described in their own guides.
+- **Linux x86_64 host** — local workstation or self-hosted Linux server for the installer and isolated Docker previews
+- **[Bun 1.3.14+](https://bun.sh)** — runs the CLI installer, API server, and package scripts
+- **[Node.js 24+](https://nodejs.org)** — compiles the Next.js web application
+- **[Docker Engine & Compose v2](https://docs.docker.com/engine/install/)** — runs PostgreSQL, sandboxed app builds, and local previews
+- **`util-linux` (`flock`) & 10 GiB+ free disk space** — for the instance source, database storage, and container images
 
-The local development services contain example credentials. This walkthrough is for
-your development machine; review network exposure, HTTPS and persistent backups before
-making an installation available to other people.
+## Install with the Wrenly CLI (recommended)
+
+For most Linux installations, run the guided `@wrenly/cli` installer with Bun:
+
+```bash
+bunx @wrenly/cli@beta
+```
+
+It checks your prerequisites, downloads and verifies the pinned release archive by
+SHA-256, generates private secrets, starts dedicated PostgreSQL storage, applies
+migrations, and starts local services. Pass `--databases` to prepare Development
+app databases and isolated previews at the same time.
+
+See the [guided installer guide](/docs/guides/guided-installer) for non-interactive flags,
+custom ports, `status`/`start`/`stop`, and safe recovery.
+
+## Install from a source checkout
+
+Use the manual workflow below if you are contributing to Wrenly or customizing a local
+development checkout.
+
+Download the intended source release or clone the public repository, then open a terminal
+in the root folder containing `package.json`. Review network exposure, HTTPS, and
+persistent backups before making an installation available to other people.
 
 <Steps>
 
@@ -81,7 +90,7 @@ The web configuration supplies `NEXT_PUBLIC_WEB_URL=http://localhost:3000` and
 `NEXT_PUBLIC_API_URL=http://localhost:3002`. Public settings identify addresses; provider
 tokens belong on the server and are configured through Settings after sign-in.
 Use a plain HTTP(S) origin for `NEXT_PUBLIC_WEB_URL`, without credentials, a path,
-query parameters or a fragment. Better Auth uses this browser-facing address.
+query parameters, or a fragment. Better Auth uses this browser-facing address.
 The Next.js server forwards browser `/api` requests to `NEXT_PUBLIC_API_URL`.
 Use an HTTP(S) origin without `/api` or credentials, reachable from that server;
 restart Next.js after changing it.
@@ -115,7 +124,7 @@ bun run dev
 ```
 
 Keep this terminal running. Open `http://localhost:3000` for the builder. The API uses
-port3002; the documentation/landing app uses port3001. They are separate applications,
+port 3002; the documentation/landing app uses port 3001. They are separate applications,
 so opening the API address is not how you open the builder.
 
 </Step>
@@ -131,12 +140,12 @@ cd apps/api
 bun run setup
 ```
 
-Open the private, short-lived link it prints. Choose your name, email and password,
+Open the private, short-lived link it prints. Choose your name, email, and password,
 then complete ordinary sign-in. The one-time proof establishes who may create the
 first account; it is not a permanent sign-in link. Keep it private.
 
 See [First owner and sign-in](/docs/guides/instance-setup) for expiry, an existing
-installation and recovery. Do not reset an existing installation to claim ownership.
+installation, and recovery. Do not reset an existing installation to claim ownership.
 
 </Step>
 
@@ -146,7 +155,7 @@ installation and recovery. Do not reset an existing installation to claim owners
 
 Open Settings and follow [Models and providers](/docs/guides/model-provider-setup).
 Connect a supported hosted provider or an installed local Ollama model, check its
-model list and choose a default. Then ask a simple question from a project.
+model list, and choose a default. Then ask a simple question from a project.
 
 A successful model-list check proves that the connection is reachable; the response
 proves that inference works. Building additionally needs the framework's isolated
@@ -169,33 +178,32 @@ If this value is absent in production, the UI says documentation is not connecte
 rather than guessing a domain. The rest of the builder continues to work.
 
 If you open the apps through an HTTPS port-forwarding address, forward the docs app's
-port3001 too. Use that forwarded address followed by `/docs` as `NEXT_PUBLIC_DOCS_URL`
+port 3001 too. Use that forwarded address followed by `/docs` as `NEXT_PUBLIC_DOCS_URL`
 in `apps/web/.env.local`, then restart the web dev server. The browser needs an address
 it can reach; your server's `localhost` is not necessarily the browser's computer.
-
 
 ## Updating an existing instance
 
 A source update and a data backup are different things. Git keeps Wrenly’s code; it
-cannot recover your accounts, projects or encryption keys.
+cannot recover your accounts, projects, or encryption keys.
 
 1. Record the currently running code revision and read the incoming release notes.
-2. Stop accepting new work. Let active builds, migrations and publishing operations
+2. Stop accepting new work. Let active builds, migrations, and publishing operations
    finish or resolve their saved recovery state; then stop the API and web processes.
 3. Back up the control PostgreSQL database with PostgreSQL’s backup tools. Keep a
-   matching copy of `WRENLY_DATA_DIR`, private configuration and stable secrets. A
+   matching copy of `WRENLY_DATA_DIR`, private configuration, and stable secrets. A
    database dump alone cannot decrypt saved provider or application-database credentials.
 4. If you enabled experimental app databases, preserve their data and verified backups
    separately. The control database contains their records, not their actual app rows.
-   Private Git, registry and deployed applications have their own storage too.
+   Private Git, registry, and deployed applications have their own storage too.
 5. Test the backup in an isolated installation before relying on it. Never restore over
    your working instance just to see whether a backup is valid.
 6. Update the checkout, run `bun install --frozen-lockfile`, then apply all migrations
    from `packages/db` with `bun run db:migrate`. Rebuild the apps and restart them with
    the same configuration and data-directory location.
-7. Confirm sign-in, existing projects, model settings and a small test request. Check
+7. Confirm sign-in, existing projects, model settings, and a small test request. Check
    optional previews and publishing separately if you enabled them.
 
 If startup refuses a missing migration or key, stop and investigate. Deleting storage,
-creating replacement keys or starting old code against a newer schema is not a safe
+creating replacement keys, or starting old code against a newer schema is not a safe
 rollback. Recovery needs a compatible code revision and the matching verified backups.

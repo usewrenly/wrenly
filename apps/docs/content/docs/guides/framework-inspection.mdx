@@ -1,0 +1,85 @@
+---
+title: Official framework assistance
+description: How isolated Laravel Boost and Next.js DevTools inspection can help repair an app.
+---
+
+When an app fails validation, Wrenly normally gives the build errors to your chosen
+model for its next repair attempt. Optional framework inspection adds information
+from the framework's own development tools to that same attempt.
+
+For example, Next.js DevTools can identify a runtime error in the app's home page.
+Laravel Boost can describe the installed Laravel/PHP versions and packages so the
+model works with the dependencies actually present. These tools complement Wrenly's
+framework MCP servers; they do not generate or publish the app themselves.
+
+## What is supported
+
+| Framework | Inspection | Limits |
+| --- | --- | --- |
+| Laravel 13 / PHP 8.4 | Boost 2.10.4 application information | Package/version facts only; no database queries, Tinker or hosted documentation search |
+| Next.js 16 | DevTools MCP 0.4.0 error state | One fixed home-page browser session inside the disposable container |
+| Next.js 15 and other versions | Existing validation only | Wrenly never upgrades the app just to enable inspection |
+
+Inspection currently runs for **stateless sandbox builds**. Database-backed validation
+keeps its separate workflow and does not receive inspection access to a database.
+This is not a full app test suite: one page can work while another page has errors.
+
+## Enable it once
+
+You need Linux, local Docker access and the existing Laravel toolchain. Run these
+commands from the repository root. Downloads happen while building the trusted images,
+not while an inspection is running:
+
+```bash
+docker build -t wrenly/laravel-runtime:13-php8.4 packages/sandbox/images/laravel
+
+docker build --target laravel -t wrenly/framework-inspection-laravel:1 \
+  -f packages/sandbox/images/framework-inspection/Dockerfile .
+
+docker build --target nextjs -t wrenly/framework-inspection-nextjs:1 \
+  -f packages/sandbox/images/framework-inspection/Dockerfile .
+```
+
+Then add this setting to your root `.env` and restart the API:
+
+```dotenv
+WRENLY_FRAMEWORK_INSPECTION_ENABLED=true
+```
+
+Run the API as a non-root Linux user with Docker access. Inspection follows that
+user's file permissions. Its container has at most two CPU cores and 2 GiB RAM.
+The inspection budget is 45 seconds within the existing build timeout; it does not
+add unlimited repair attempts.
+
+## What happens during a build
+
+1. Wrenly installs dependencies and validates the app using its existing sandbox.
+2. It mounts the prepared source read-only in a separate inspection container.
+3. The official tool returns bounded facts tied to that exact source and tool image.
+4. If validation failed, those facts accompany the next existing repair attempt.
+
+Logs distinguish an available report from an unavailable inspection. Missing images,
+unsupported versions, apps that cannot boot without external services or a browser
+session that cannot start leave ordinary validation in charge. “Unavailable” does
+not mean the app passed. An unconfirmed cleanup stops work for recovery rather than
+silently starting another attempt.
+
+## Privacy and permissions
+
+Inspection runs without IP network access, database sockets, host ports, provider
+keys or deployment credentials. Laravel execution tools and database tools remain
+blocked. Next.js receives one fixed localhost page visit; the model gets no browser
+commands. The page, browser and development server disappear with the container.
+
+Chromium runs non-root within Docker. On hosts that prohibit nested browser user
+namespaces, the trusted image uses Chromium's `--no-sandbox` flag; Docker's outer
+network, filesystem, resource and process restrictions remain mandatory. Wrenly
+never launches that browser on the API host.
+
+The app source and returned diagnostics remain untrusted input. They cannot grant
+new tools or override project permissions. Reports may appear in project build logs,
+so avoid putting real secrets into generated source or error messages.
+
+To disable inspection, set the flag to `false` and restart the API. No external
+account is required, and generated apps do not need these development tools installed
+in their published runtime image.

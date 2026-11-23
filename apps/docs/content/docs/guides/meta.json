@@ -3,6 +3,7 @@
   "pages": [
     "---Get started---",
     "installation",
+    "guided-installer",
     "instance-setup",
     "model-provider-setup",
     "---Your workspace---",
@@ -11,9 +12,11 @@
     "skills",
     "voice-dictation",
     "local-previews",
+    "framework-inspection",
     "private-publishing",
     "publishing-setup",
     "app-databases",
+    "production-database-evaluation",
     "---Accounts and teams---",
     "invitations",
     "account-settings"

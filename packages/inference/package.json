@@ -3,7 +3,17 @@
   "version": "0.0.1",
   "private": true,
   "main": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "build": "tsc --noEmit", "check-types": "tsc --noEmit" },
-  "devDependencies": { "@repo/typescript-config": "*", "@types/node": "*", "typescript": "*" }
+  "exports": {
+    ".": "./src/index.ts",
+    "./framework-tooling": "./src/framework-tooling/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "*",
+    "typescript": "*"
+  }
 }

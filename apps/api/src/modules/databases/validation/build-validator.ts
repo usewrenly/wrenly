@@ -7,7 +7,7 @@
  * bounded deadline for preparation/checks, and stop repair retries on unresolved outcomes.
  * EDGE CASES: Model-mentioned databases never provision/select resources; saved selection is rechecked by storage.
  * ERROR STATES: Missing manifest is repairable; uncertain external work throws a fixed interruption.
- * Activation is explicit: ordinary production worker wiring does not install this factory yet.
+ * The API installs this adapter only when Development databases are explicitly enabled.
  */
 import { MigrationHistoryError } from "../migration-history";
 import type { db } from "@wrenly/db";

@@ -4,6 +4,7 @@ import type {
   appDatabaseOperations,
   appDatabaseMigrations,
 } from "@wrenly/db";
+import { parseProductionResourceBinding } from "@wrenly/db/production-resource-binding";
 type Resource = Pick<
   typeof appDatabases.$inferSelect,
   | "id"
@@ -13,7 +14,25 @@ type Resource = Pick<
   | "status"
   | "runtimeIdentity"
   | "schemaDigest"
->;
+> & { providerIdentity?: unknown };
+
+/** Production has no local database container; its immutable cluster binding identifies the preserved resource. */
+function hasPreservedResource(resource: Resource): boolean {
+  if (resource.environment === "development")
+    return resource.provider === "local" && resource.runtimeIdentity !== null;
+  if (
+    resource.environment !== "production" ||
+    resource.provider !== "postgres-cluster" ||
+    resource.runtimeIdentity !== null
+  )
+    return false;
+  try {
+    parseProductionResourceBinding(resource.id, resource.providerIdentity);
+    return true;
+  } catch {
+    return false;
+  }
+}
 type Operation = Pick<
   typeof appDatabaseOperations.$inferSelect,
   | "id"
@@ -57,10 +76,8 @@ export function isFailedDisposableRehearsal(
     ["create-socket", `wrenly-database-socket-${id}`],
   ];
   return (
-    resource.environment === "development" &&
-    resource.provider === "local" &&
+    hasPreservedResource(resource) &&
     resource.status === "recovery_required" &&
-    resource.runtimeIdentity !== null &&
     resource.id !== id &&
     operation.projectId === resource.projectId &&
     operation.databaseId === resource.id &&
@@ -106,7 +123,7 @@ export function isInterruptedRehearsalRecovery(
     operation.effect?.kind !== "inspect-rehearsal-operation" ||
     operation.effect.id !== migrationId ||
     operation.completedEffects.length !== 0 ||
-    !resource.runtimeIdentity
+    !hasPreservedResource(resource)
   )
     return false;
   const allowed = (effect: { kind: string; id: string }): boolean => {
@@ -120,7 +137,10 @@ export function isInterruptedRehearsalRecovery(
     if (effect.kind === "verify-rehearsal-source")
       return effect.id === `wrenly-database-administrator-${operation.id}`;
     if (effect.kind === "start-preserved-database")
-      return effect.id === resource.runtimeIdentity!.containerId;
+      return (
+        resource.environment === "development" &&
+        effect.id === resource.runtimeIdentity?.containerId
+      );
     return (
       effect.kind === "cleanup-prior-inspector" &&
       /^wrenly-database-administrator-[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(

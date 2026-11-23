@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { appDatabases, appDatabaseOperations, type db } from "@wrenly/db";
 import { requireProjectCapability } from "../../projects/access/project-access";
+import { accessContext } from "../../auth/access/access-context";
+import { ProductionOperationPrincipal } from "@wrenly/db/production-resource-binding";
 import { AppDatabaseError, DatabaseCredentials } from "../database-contract";
 import {
   DATABASE_LEASE_MS,
@@ -79,6 +81,15 @@ export async function beginDatabaseRead(
           429,
           "Database inspection is busy. Try again shortly.",
         );
+      const executionPrincipal =
+        request.environment === "production"
+          ? ProductionOperationPrincipal.parse({
+              ...accessContext.getStore()?.principal,
+              accessRevision: authority.accessRevision,
+            })
+          : undefined;
+      if (executionPrincipal && executionPrincipal.userId !== actorId)
+        throw new AppDatabaseError(403, "Database reader session changed.");
       const id = crypto.randomUUID(),
         token = crypto.randomUUID();
       await tx.insert(appDatabaseOperations).values({
@@ -86,6 +97,7 @@ export async function beginDatabaseRead(
         databaseId: request.resourceId,
         projectId,
         actorId,
+        executionPrincipal,
         requestId: crypto.randomUUID(),
         kind: "read",
         status: "running",

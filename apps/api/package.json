@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "bun --no-env-file --env-file=../../.env --watch src/index.ts",
-    "build": "bun build src/index.ts --target=bun --packages=external --env=disable --splitting --outdir=dist && bun build src/modules/previews/gateway/preview-ingress.ts --target=bun --env=disable --outfile=dist/preview-ingress.js && bun build src/modules/auth/profile/pictures/profile-picture-decoder-worker.ts --target=bun --packages=external --env=disable --outfile=dist/profile-picture-decoder-worker.js && bun build src/modules/databases/database-administrator-worker.ts --target=bun --env=disable --outfile=dist/database-administrator-worker.js && bun build src/modules/databases/database-migration-worker.ts --target=bun --env=disable --outfile=dist/database-migration-worker.js && bun build src/modules/databases/database-query-worker.ts --target=bun --env=disable --outfile=dist/database-query-worker.js && bun build src/modules/databases/database-application-worker.ts --target=bun --env=disable --outfile=dist/database-application-worker.js && bun build src/modules/databases/database-preview-worker.ts --target=bun --env=disable --outfile=dist/database-preview-worker.js",
+    "build": "bun build src/index.ts --target=bun --packages=external --env=disable --splitting --outdir=dist && bun build src/modules/previews/gateway/preview-ingress.ts --target=bun --env=disable --outfile=dist/preview-ingress.js && bun build src/modules/auth/profile/pictures/profile-picture-decoder-worker.ts --target=bun --packages=external --env=disable --outfile=dist/profile-picture-decoder-worker.js && bun build src/modules/databases/database-administrator-worker.ts --target=bun --env=disable --outfile=dist/database-administrator-worker.js && bun build src/modules/databases/database-migration-worker.ts --target=bun --env=disable --outfile=dist/database-migration-worker.js && bun build src/modules/databases/database-query-worker.ts --target=bun --env=disable --outfile=dist/database-query-worker.js && bun build src/modules/databases/database-application-worker.ts --target=bun --env=disable --outfile=dist/database-application-worker.js && bun build src/modules/databases/database-preview-worker.ts --target=bun --env=disable --outfile=dist/database-preview-worker.js && bun build src/modules/databases/database-production-worker.ts --target=bun --env=disable --outfile=dist/database-production-worker.js && bun build src/modules/databases/production-targets/deployment-hosts/helper.ts --target=bun --env=disable --outfile=dist/runtime-host.js",
     "start": "bun --no-env-file --env-file=../../.env dist/index.js",
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
@@ -12,7 +12,11 @@
     "recover-owner": "bun --no-env-file --env-file=../../.env src/modules/auth/setup/recovery-cli.ts",
     "catalog:snapshot": "bun --no-env-file --env-file=../../.env src/modules/models/catalog/catalog-snapshot-cli.ts",
     "recover-password": "bun --no-env-file --env-file=../../.env src/modules/auth/password-recovery/password-recovery-cli.ts",
-    "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts"
+    "reconcile-deployment": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-deployment.ts",
+    "prepare-production-images": "bun --no-env-file --env-file=../../.env src/modules/databases/activation/prepare-images-cli.ts",
+    "reconcile-production-route": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-production-route.ts",
+    "reconcile-production-setup": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/reconcile-production-setup.ts",
+    "continue-production-publication": "bun --no-env-file --env-file=../../.env src/modules/deployments/recovery/continue-production-publication.ts"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "^1.7.7",
@@ -27,14 +31,16 @@
     "sharp": "0.35.5",
     "yaml": "^2.9.1",
     "zod": "^4.6.7",
-    "@wrenly/audio": "*"
+    "@wrenly/audio": "*",
+    "dockerode": "^4.0.2"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
     "@types/node": "^20",
     "eslint": "10.9.1",
     "@repo/eslint-config": "*",
-    "@babel/preset-typescript": "8.0.1"
+    "@babel/preset-typescript": "8.0.1",
+    "@types/dockerode": "^3.3.31"
   },
   "packageManager": "bun@1.3.14",
   "ignoreScripts": [

@@ -10,11 +10,42 @@ const MAX_PROGRESS_BYTES = 4 * 1024 * 1024
 const MAX_MANIFEST_BYTES = 1024 * 1024
 const MEDIA_TYPES = 'application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json'
 
-/** Pushes an owned image only to an authenticated private registry and verifies immutable content. */
-export async function publishRuntimeArtifact(input: {
-  deploymentId: string; imageId: string; origin: string; namespace: string; username: string; password: string;
+interface PrivateImageInput {
+  imageId: string; origin: string; namespace: string; username: string; password: string;
   signal: AbortSignal; beforeEffect: () => Promise<void>;
-}): Promise<{ repository: string; digest: string }> {
+}
+/** Pushes an owned image only to an authenticated private registry and verifies immutable content. */
+export async function publishRuntimeArtifact(input: PrivateImageInput & { deploymentId: string }): Promise<{repository:string;digest:string}> {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(input.deploymentId))
+    throw new Error('Private runtime artifact configuration validation could not be confirmed.');
+  return publishVerifiedPrivateImage(input, {
+    repositoryName: `deployment-${input.deploymentId}`,
+    verify: image => {
+      if (image.Config.Labels?.['io.wrenly.deployment-id'] !== input.deploymentId ||
+          image.Config.Labels['io.wrenly.artifact-role'] !== 'runtime' ||
+          image.Config.Labels[ARTIFACT_WORKSPACE_LABEL] !== ARTIFACT_WORKSPACE_VERSION)
+        throw new Error('Artifact ownership or workspace provenance mismatch.');
+    },
+  });
+}
+/** Installation-only promotion of the fixed repository-built relay; never accepts generated image provenance. */
+export async function publishTrustedDeploymentIngress(input: PrivateImageInput): Promise<{repository:string;digest:string}> {
+  const selected = await docker.getImage('wrenly/deployment-ingress:1').inspect();
+  if (selected.Id !== input.imageId) throw new Error('Trusted relay image changed before installation.');
+  return publishVerifiedPrivateImage(input, {
+    repositoryName: `deployment-ingress-${input.imageId.replace('sha256:', '')}`,
+    verify: image => {
+      if (image.Config.User !== '1000:1000' ||
+          JSON.stringify(image.Config.Entrypoint) !== JSON.stringify(['bun','--no-env-file','/wrenly/ingress.js']) ||
+          image.Config.Labels?.['io.wrenly.runtime-role'] !== 'deployment-ingress' ||
+          image.Config.Labels?.['io.wrenly.runtime-version'] !== '1')
+        throw new Error('Unverified trusted relay.');
+    },
+  });
+}
+async function publishVerifiedPrivateImage(input: PrivateImageInput, selection: {
+  repositoryName:string; verify:(image:Docker.ImageInspectInfo)=>void;
+}):Promise<{repository:string;digest:string}> {
   const signal = AbortSignal.any([input.signal, AbortSignal.timeout(REGISTRY_DEADLINE_MS)])
   let phase = 'configuration validation'
   let stream: NodeJS.ReadableStream | undefined
@@ -23,15 +54,12 @@ export async function publishRuntimeArtifact(input: {
   try {
     const origin = new URL(input.origin)
     if (!['http:', 'https:'].includes(origin.protocol) || origin.pathname !== '/' || origin.username || origin.password || origin.search || origin.hash ||
-      !/^[a-z0-9_-]{1,100}$/.test(input.namespace) || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(input.deploymentId) ||
+      !/^[a-z0-9_-]{1,100}$/.test(input.namespace) || !/^[a-z0-9_-]{1,100}$/.test(selection.repositoryName) ||
       !/^sha256:[a-f0-9]{64}$/.test(input.imageId) || !input.username || !input.password || /[\r\n:]/.test(input.username) || /[\r\n]/.test(input.password))
       throw new Error('Invalid registry configuration')
     phase = 'artifact identity'
     const image = await docker.getImage(input.imageId).inspect()
-    if (image.Config.Labels?.['io.wrenly.deployment-id'] !== input.deploymentId ||
-      image.Config.Labels['io.wrenly.artifact-role'] !== 'runtime' ||
-      image.Config.Labels[ARTIFACT_WORKSPACE_LABEL] !== ARTIFACT_WORKSPACE_VERSION)
-      throw new Error('Artifact ownership or workspace provenance mismatch. Rebuild from the selected revision.')
+    selection.verify(image)
     phase = 'anonymous access check'
     const requireAnonymousDenial = async (url: string): Promise<void> => {
       const probe = await fetch(url, { redirect: 'error', credentials: 'omit', signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]), headers: { Accept: MEDIA_TYPES } })
@@ -39,7 +67,7 @@ export async function publishRuntimeArtifact(input: {
       if (probe.status !== 401 || !/^Basic\s/i.test(probe.headers.get('www-authenticate') ?? '')) throw new Error('Registry does not require private Basic authentication')
     }
     await requireAnonymousDenial(`${origin.origin}/v2/`)
-    const repositoryPath = `${input.namespace}/deployment-${input.deploymentId}`
+    const repositoryPath = `${input.namespace}/${selection.repositoryName}`
     const repository = `${origin.host}/${repositoryPath}`
     await requireAnonymousDenial(`${origin.origin}/v2/${repositoryPath}/manifests/artifact`)
     await input.beforeEffect(); signal.throwIfAborted()
@@ -99,8 +127,21 @@ export async function publishRuntimeArtifact(input: {
       throw new Error('Published manifest differs from the local artifact descriptor')
     // Containerd-backed Docker may wrap a single native image in an OCI index.
     if (parsed && typeof parsed === 'object' && 'manifests' in parsed) {
-      if (!Array.isArray(parsed.manifests) || parsed.manifests.length !== 1) throw new Error('Unsupported multi-platform artifact')
-      const descriptor: unknown = parsed.manifests[0]
+      if (!Array.isArray(parsed.manifests) || parsed.manifests.length < 1 || parsed.manifests.length > 2) throw new Error('Unsupported multi-platform artifact')
+      // BuildKit can retain an attestation beside the sole runnable platform.
+      // The verified index digest covers both; never select an attestation as code.
+      const runnable = parsed.manifests.filter((entry: unknown) => {
+        if (!entry || typeof entry !== 'object' || !('platform' in entry) || !entry.platform || typeof entry.platform !== 'object') return false
+        return 'os' in entry.platform && entry.platform.os === image.Os && 'architecture' in entry.platform && entry.platform.architecture === image.Architecture
+      })
+      if (runnable.length !== 1) throw new Error('Ambiguous runnable platform')
+      for (const entry of parsed.manifests) {
+        if (entry === runnable[0]) continue
+        if (descriptorDigest === undefined || !entry || typeof entry !== 'object' || !('annotations' in entry) || !entry.annotations || typeof entry.annotations !== 'object' ||
+          entry.annotations['vnd.docker.reference.type'] !== 'attestation-manifest' || entry.annotations['vnd.docker.reference.digest'] !== runnable[0].digest ||
+          entry.platform?.os !== 'unknown' || entry.platform?.architecture !== 'unknown') throw new Error('Unsupported secondary image descriptor')
+      }
+      const descriptor: unknown = runnable[0]
       if (!descriptor || typeof descriptor !== 'object' || !('digest' in descriptor) || typeof descriptor.digest !== 'string' ||
         !('platform' in descriptor) || !descriptor.platform || typeof descriptor.platform !== 'object' ||
         !('os' in descriptor.platform) || descriptor.platform.os !== image.Os || !('architecture' in descriptor.platform) || descriptor.platform.architecture !== image.Architecture)
