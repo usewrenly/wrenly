@@ -29,7 +29,7 @@ import {
   useModels,
 } from "@/lib/models/discovery";
 import type { ModelSelection } from "@/lib/models/discovery";
-import { PlusIcon, Loader2Icon, ListChecksIcon } from "lucide-react";
+import { PaperclipIcon, PlusIcon, Loader2Icon, ListChecksIcon } from "lucide-react";
 
 const AVAILABLE_STACKS = new Set(["nextjs", "laravel"]);
 const MAX_DRAFT_HEIGHT = 200;
@@ -80,6 +80,7 @@ export function Composer({
   const fileInput = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
@@ -397,7 +398,7 @@ export function Composer({
       />
 
       <div className="composer-controls">
-        <Popover.Root>
+        <Popover.Root open={optionsOpen} onOpenChange={setOptionsOpen}>
           <Popover.Trigger
             className="composer-options-trigger"
             aria-label="Prompt options"
@@ -413,40 +414,51 @@ export function Composer({
             >
               <Popover.Popup className="composer-options-popup">
                 <Popover.Title>Add to your prompt</Popover.Title>
-                <button
-                  type="button"
-                  className="composer-plan-toggle"
-                  disabled={
-                    blocked || readOnly || attachments.items.length >= 4
-                  }
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <PlusIcon size={18} aria-hidden="true" />
-                  <span>
-                    <strong>Reference files</strong>
-                    <small>Images or text · up to four files</small>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="composer-plan-toggle"
-                  role="switch"
-                  aria-label="Plan mode"
-                  aria-checked={mode === "plan"}
-                  disabled={blocked}
-                  onClick={() => {
-                    const next = mode === "plan" ? "auto" : "plan";
-                    setLocalMode(next);
-                    onModeChange?.(next);
-                  }}
-                >
-                  <ListChecksIcon size={18} aria-hidden="true" />
-                  <span>
-                    <strong>Plan mode</strong>
-                    <small>Work through an approach before building</small>
-                  </span>
-                  <span>{mode === "plan" ? "On" : "Off"}</span>
-                </button>
+                <div className="composer-menu-list">
+                  <button
+                    type="button"
+                    className="composer-menu-action"
+                    disabled={
+                      blocked || readOnly || attachments.items.length >= 4
+                    }
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      fileInput.current?.click();
+                    }}
+                  >
+                    <PaperclipIcon size={16} aria-hidden="true" />
+                    <span>
+                      <strong>Reference files</strong>
+                      <small>
+                        {attachments.items.length
+                          ? `Images or text · ${attachments.items.length}/4 added`
+                          : "Images or text · up to 4 files"}
+                      </small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="composer-plan-toggle"
+                    role="switch"
+                    aria-label="Plan mode"
+                    aria-checked={mode === "plan"}
+                    disabled={blocked}
+                    onClick={() => {
+                      const next = mode === "plan" ? "auto" : "plan";
+                      setLocalMode(next);
+                      onModeChange?.(next);
+                    }}
+                  >
+                    <ListChecksIcon size={16} aria-hidden="true" />
+                    <span>
+                      <strong>Plan mode</strong>
+                      <small>Work through an approach before building</small>
+                    </span>
+                    <span className="composer-switch-pill" aria-hidden="true">
+                      <span className="composer-switch-thumb" />
+                    </span>
+                  </button>
+                </div>
                 {compact && (
                   <section className="composer-menu-section">
                     <h3>Build settings</h3>
