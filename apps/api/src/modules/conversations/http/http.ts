@@ -3,6 +3,8 @@
  * Authenticates before bounded input, uses explicit request/revision identity and rechecks reads.
  * Closing an event stream stops observation only; cancellation has its own authorized endpoint.
  */
+import { AttachmentPolicyError } from "@wrenly/inference";
+import { AttachmentStoreError } from "../../attachments/attachment-error";
 import { SkillError } from "../../skills/skill-contract";
 import { AccessDeniedError } from "../../auth/access/access-policy";
 import { z } from "zod";
@@ -57,6 +59,10 @@ function failure(error: unknown): Response {
     return json({ error: error.message }, 401);
   if (error instanceof SkillError)
     return json({ error: error.message }, error.status);
+  if (error instanceof AttachmentStoreError)
+    return json({ error: error.message }, error.status);
+  if (error instanceof AttachmentPolicyError)
+    return json({ error: error.message }, 400);
   if (error instanceof ConversationStoreError)
     return json({ error: error.message }, error.status);
   logger.error("Conversation HTTP operation failed", {
