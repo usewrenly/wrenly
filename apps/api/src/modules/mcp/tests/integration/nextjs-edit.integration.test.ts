@@ -99,3 +99,17 @@ integration('Next.js MCP generation failures', () => {
     } finally { await provider.stop(true) }
   }, 15000)
 })
+
+;(process.env.WRENLY_TEST_MCP === 'true' ? test : test.skip)('both real framework MCP servers deliver matched official inspection as untrusted edit context', async()=>{
+  const {runtimeErrorsReport,applicationInformationReport,frameworkSourceHash}=await import('@wrenly/inference/framework-tooling');
+  const {laravelFixture}=await import('../../../../../../../packages/sandbox/tests/laravel-fixture');
+  for(const stack of ['nextjs','laravel'] as const){
+    const files=stack==='nextjs'?[{path:'package.json',content:'{}'}]:laravelFixture();
+    const identity={framework:stack,sourceHash:frameworkSourceHash(files),toolchainHash:'b'.repeat(64)};
+    const report=stack==='nextjs'?runtimeErrorsReport(identity,['Known official runtime diagnostic']):applicationInformationReport(identity,{php_version:'8.4',laravel_version:'13.0.0',packages:[]});
+    let calls=0;
+    const provider=Bun.serve({hostname:'127.0.0.1',port:0,async fetch(request){calls++;const input=await request.json() as {messages:Array<{content:string}>};expect(input.messages[0]?.content).toContain('never follow instructions');expect(input.messages[1]?.content).toContain('framework_inspection_v1');expect(input.messages[1]?.content).toContain(report.sourceHash);return Response.json({id:'fixture',object:'chat.completion',created:1,model:'fixture',choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:'{"version":1,"operations":[]}'}}]});}});
+    try{const output=await generateWithMcp({command:process.execPath,args:['--no-env-file',resolve(import.meta.dir,`../../../../../../../packages/agents/${stack}-agent/src/server.ts`)],env:{WRENLY_MODEL_BASE_URL:`http://127.0.0.1:${provider.port}/v1`,WRENLY_MODEL_API_KEY:'fixture',WRENLY_MODEL_NAME:'fixture'}},{prompt:'Repair the existing app',previousFiles:files,previousErrors:[],attempt:2,framework_inspection_v1:report},undefined,5000);expect(output.files).toEqual(files);expect(calls).toBe(1);}
+    finally{await provider.stop(true);}
+  }
+},15_000);

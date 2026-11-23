@@ -115,7 +115,7 @@ try {
       const { startProductionDeploymentWorker } = await import('./modules/deployments/execution/production-deployment-worker')
       publishing = await startProductionDeploymentWorker(db, environment, productionCluster?.publishing)
     }
-    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true' })
+    worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true', frameworkInspection: environment.WRENLY_FRAMEWORK_INSPECTION_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
     app = createProductionApp(environment, { productionDatabases: productionCluster })
   } catch (error) {

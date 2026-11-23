@@ -17,6 +17,11 @@ steps, with different evidence and permissions.
 
 ## Current scope
 
+Optional official framework inspection adds isolated Laravel Boost package facts and
+Next.js 16 DevTools error state to stateless repair attempts. It is off by default,
+uses a fixed offline browser visit for Next.js, and never grants live database or
+model-driven browser access. See the public framework-inspection guide.
+
 Next.js and Laravel workflows cover generation, ongoing editing, validation, local
 previews and private publishing. Framework servers are extensible through MCP. Vue and
 Django are planned; their folders are not implemented support.

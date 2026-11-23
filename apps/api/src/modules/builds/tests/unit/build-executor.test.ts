@@ -13,12 +13,23 @@ import { BuildExecutionInterruptedError } from "../../execution/build-interrupti
 
 test("unknown database work stops repair and preserves the interruption identity", async () => {
   const f = fixture();
-  f.claim.input.databaseV1 = { version: 1, environment: "development", resourceId: crypto.randomUUID(), resourceRevision: crypto.randomUUID() };
-  f.dependencies.validate = async () => { throw new BuildExecutionInterruptedError(); };
-  await expect(executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).rejects.toBeInstanceOf(BuildExecutionInterruptedError);
+  f.claim.input.databaseV1 = {
+    version: 1,
+    environment: "development",
+    resourceId: crypto.randomUUID(),
+    resourceRevision: crypto.randomUUID(),
+  };
+  f.dependencies.validate = async () => {
+    throw new BuildExecutionInterruptedError();
+  };
+  await expect(
+    executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies),
+  ).rejects.toBeInstanceOf(BuildExecutionInterruptedError);
   expect(f.requests).toHaveLength(1);
   expect(f.requests[0]?.prompt).toContain("managed Development PostgreSQL");
-  expect(f.requests[0]?.prompt).not.toContain(f.claim.input.databaseV1.resourceId);
+  expect(f.requests[0]?.prompt).not.toContain(
+    f.claim.input.databaseV1.resourceId,
+  );
 });
 
 function fixture(): {
@@ -291,4 +302,60 @@ test("actual generation boundaries preserve attempt identity and persistence fai
     ),
   ).rejects.toThrow("Lost persistence");
   expect(failing.requests).toHaveLength(1);
+});
+
+test("official inspection reaches only the next repair of the matching source", async () => {
+  const { runtimeErrorsReport, frameworkSourceHash } =
+    await import("@wrenly/inference/framework-tooling");
+  const f = fixture();
+  let calls = 0;
+  f.dependencies.validate = async (files) =>
+    ++calls === 1
+      ? {
+          success: false,
+          output: "Compiler error",
+          frameworkInspection: runtimeErrorsReport(
+            {
+              framework: "nextjs",
+              sourceHash: frameworkSourceHash(files),
+              toolchainHash: "b".repeat(64),
+            },
+            ["Known framework error"],
+          ),
+        }
+      : { success: true, output: "Compiled" };
+  expect(
+    (
+      await executeClaimedBuild(
+        f.claim,
+        new AbortController().signal,
+        f.dependencies,
+      )
+    ).status,
+  ).toBe("success");
+  expect(f.requests[0]?.framework_inspection_v1).toBeUndefined();
+  expect(f.requests[1]?.framework_inspection_v1?.facts).toEqual({
+    errors: ["Known framework error"],
+  });
+  const stale = fixture();
+  stale.dependencies.validate = async () => ({
+    success: false,
+    output: "Error",
+    frameworkInspection: runtimeErrorsReport(
+      {
+        framework: "nextjs",
+        sourceHash: "c".repeat(64),
+        toolchainHash: "b".repeat(64),
+      },
+      [],
+    ),
+  });
+  await expect(
+    executeClaimedBuild(
+      stale.claim,
+      new AbortController().signal,
+      stale.dependencies,
+    ),
+  ).rejects.toThrow("does not match");
+  expect(stale.requests).toHaveLength(1);
 });

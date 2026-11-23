@@ -1,3 +1,5 @@
+import {inspectInstalledFramework, FrameworkInspectionCleanupError} from '../framework-tooling/runtime';
+import type {FrameworkInspectionReport} from '@wrenly/inference/framework-tooling';
 // Runs one build attempt in separate dependency-install and offline-validation containers.
 // One deadline covers both phases. Exact build/claim labels fence cleanup so a failed
 // attempt cannot remove another worker's resources or keep executing after cancellation.
@@ -22,11 +24,12 @@ export interface SandboxInput {
   signal?: AbortSignal
   onOutput?: (chunk: string) => void
   onStage?: (operation: "installation" | "validation", state: "started" | "completed" | "failed") => Promise<void>
+  frameworkInspection?: boolean
   timeoutMs?: number
 }
 // Persistence failure is a lost execution fence, not an error generated source can repair.
 export class SandboxProgressError extends Error {}
-export interface SandboxOutput { success: boolean; output: string; error?: string }
+export interface SandboxOutput { success: boolean; output: string; error?: string; frameworkInspection?: FrameworkInspectionReport }
 
 type StackSandboxConfig = {
   image: string
@@ -279,8 +282,17 @@ export async function runSandbox(input: SandboxInput): Promise<SandboxOutput> {
     append('\nBuilding with network disabled...\n')
     const built = await runContainer(config.buildCmd, imageId, workspace, buildId, claimToken, 'none', controller.signal, append, environment)
     await stage('validation', built === 0 ? 'completed' : 'failed')
-    return built === 0 ? { success: true, output } : { success: false, output, error: `Build failed (exit ${built}).` }
+    let frameworkInspection: FrameworkInspectionReport | undefined
+    if (input.frameworkInspection && (stack === 'nextjs' || stack === 'laravel')) {
+      const receipt = await inspectInstalledFramework({directory:workspace,files:input.files,framework:stack,buildId,claimToken,signal:controller.signal})
+      if (receipt.status === 'available') {
+        frameworkInspection = receipt.report
+        append(`Official framework inspection: ${JSON.stringify(receipt.report)}\n`)
+      } else append(`Official framework inspection unavailable: ${receipt.reason}\n`)
+    }
+    return built === 0 ? { success: true, output, frameworkInspection } : { success: false, output, frameworkInspection, error: `Build failed (exit ${built}).` }
   } catch (error) {
+    if (error instanceof FrameworkInspectionCleanupError) throw new SandboxCleanupError()
     if (error instanceof SandboxCleanupError || error instanceof SandboxProgressError) throw error
     return { success: false, output, error: controller.signal.aborted ? 'Sandbox execution was aborted or exceeded its deadline.' : error instanceof Error ? error.message : 'Sandbox execution failed.' }
   } finally {

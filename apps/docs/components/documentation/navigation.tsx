@@ -38,6 +38,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
     title: "Run & publish",
     pages: [
       ["/docs/guides/local-previews", "layers"],
+      ["/docs/guides/framework-inspection", "sparkles"],
       ["/docs/guides/private-publishing", "rocket"],
       ["/docs/guides/publishing-setup", "terminal"],
       ["/docs/guides/app-databases", "database"],
