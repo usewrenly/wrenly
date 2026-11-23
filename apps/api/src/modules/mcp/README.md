@@ -26,9 +26,11 @@ Their names and the `*-agent` package names are compatibility identifiers.
 ## Updating an existing app
 
 A new app uses the `generate_app` tool. A change to an existing app requires
-`edit_app_v1` and the complete selected revision. For example, changing a heading
+`edit_app_v1` and complete text files selected from the saved revision. For example, changing a heading
 updates that file while keeping files the model did not mention. Deletion must be
-explicit. Conflicting changes, unsafe paths and incomplete or oversized context fail
+explicit. Large files and binary assets outside the model context remain unchanged.
+The model receives a bounded list of omitted paths and cannot edit their unseen contents.
+Conflicting changes, unsafe paths and oversized context fail
 before a merged revision is returned. An unsupported server never falls back to
 regenerating the whole app. Frozen project skills also require advertised support.
 

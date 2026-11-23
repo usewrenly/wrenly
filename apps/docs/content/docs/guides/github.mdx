@@ -1,0 +1,231 @@
+---
+title: GitHub connections
+description: Connect your own GitHub account and choose repository access.
+---
+
+A GitHub connection lets Wrenly check repositories available to your account. It is
+separate from signing in to Wrenly and from publishing through Gitea and Coolify.
+
+## What you can do
+
+| Start here | What Wrenly does |
+| --- | --- |
+| An app already on GitHub | Import a reviewed commit into a new private Wrenly project |
+| An app you built in Wrenly | Link an existing GitHub repository, review the differences and push a new branch |
+| No GitHub repository yet | Create and initialize one on GitHub first; Wrenly does not create repositories yet |
+
+Connecting GitHub does not deploy an app or continuously synchronize files. You
+choose when to import or push, and review the source before either action.
+
+## Before you start
+
+- Apply the current Wrenly database migrations, including `0051`.
+- Sign in to Wrenly. The instance owner registers the GitHub App first.
+- Use HTTPS for an internet-facing installation. Local development may use localhost.
+- Have a GitHub account and internet access for this optional integration.
+
+## Register the instance's App
+
+1. Open **Settings → Connections → GitHub** as the instance owner.
+2. Choose a unique App name. For members using their own GitHub accounts, enable
+   **Let members connect their own GitHub accounts using this instance’s App**. This makes
+   the App registration installable by other accounts; repositories stay private.
+3. Make sure you are signed in to the GitHub account that should own the App in
+   this browser, then select **Register on GitHub**.
+4. Review GitHub's registration screen and confirm. GitHub returns you to Wrenly.
+
+There is **one GitHub App for this Wrenly installation**, registered by its owner.
+Members do not each need to create a separate App. Think of the App as the connector;
+each person still grants their own account and repository access. Sharing this App
+does not share the owner’s personal GitHub login or automatically grant their repository access.
+Wrenly stores the App credentials encrypted on this installation; you do not copy a
+client secret into an environment file.
+
+GitHub requires both a homepage and a webhook URL in its registration manifest.
+Wrenly supplies an unused reserved-example address for the webhook because GitHub
+rejects localhost webhook destinations even when disabled. Delivery stays disabled,
+no events are subscribed, and Wrenly never calls that address. Your registration and
+authorization callbacks still return to your own instance. No webhook receiver or
+tunnel is needed for this integration.
+
+## Connect your account
+
+1. Select **Connect GitHub** and authorize the App on GitHub.
+2. Follow **Choose repositories** to install the App for your account or organization.
+3. Prefer selected repositories and select the ones you want Wrenly to access.
+4. Return to Connections and select **Check repository access**.
+
+Each member connects their own account. Another member's connection does not grant
+you access to their private repositories. An organization may require approval from
+its administrator before repositories appear.
+
+## Disconnect or reconnect
+
+**Disconnect** removes Wrenly's saved personal credentials and cancels pending
+connection callbacks. To remove the App's installation permissions as well, manage
+its installation in GitHub's settings. Expiring tokens refresh on the server when you use the connection. If a refresh
+reply cannot be confirmed, Wrenly stops using that refresh token. Select **Reconnect**
+to authorize again; an uncertain single-use exchange is never automatically repeated.
+
+## Import a project
+
+1. Select **Import from GitHub** on **Home** or **Projects**.
+2. Select **Load repositories**, search by owner or repository name, then choose an accessible repository.
+3. Leave **Branch or commit** empty to use that repository’s default branch, or enter a specific branch name or full commit SHA.
+4. For a standalone app inside a larger repository, enter its **Application directory**,
+   such as `apps/web`. Leave this empty for an app at the repository root.
+5. Leave **Framework → Detect automatically**, or choose the family explicitly
+   if the repository contains both frameworks. Enter a name for your private Wrenly
+   project. The review shows the detected family; it does not convert the app.
+6. Select **Review this source**. Check the exact commit and excluded files.
+7. Select **Import & validate**. Wrenly saves the files and checks them in Docker.
+
+The framework selector chooses the framework family, not a version to install.
+Wrenly reads the version from your package manifest and preserves it. For example,
+a Laravel 12 project stays on Laravel 12 when imported and edited. New-project
+starter versions are separate from existing-project compatibility.
+
+The import never asks a model to rewrite your repository. If compilation fails,
+inspect the saved source/logs and submit a separate prompt to request repairs.
+Do not use an ordinary generation retry to change an exact imported commit.
+
+Import supports Next.js 15/16 and Laravel 12/13 applications at the repository root
+or in a selected standalone application directory. Wrenly preserves the selected
+directory when pushing changes back; sibling applications remain untouched.
+The selected app must build independently: workspace dependencies outside its
+directory are not fetched. Framework versions are preserved, not upgraded.
+PNG, JPEG, WebP, ICO, WOFF/WOFF2 and TTF/OTF assets are preserved as private binary objects.
+Git LFS pointers, symlinks, submodules and other binary formats are not supported.
+Laravel repositories with Composer scripts/plugins or custom repositories require
+policy-compatible source before review. Private environment and credential files
+are excluded. Review the source yourself too: exclusion is not a general secret scan.
+
+If the confirmation reply is lost, **Retry same import** reuses its saved request ID
+and returns the same project. Review expires after ten minutes. Disconnecting GitHub
+or changing authorization requires a new source review before a new import.
+
+## Connect an existing Wrenly project
+
+For example, you built a booking app in Wrenly and want its source in a repository
+you already own on GitHub. Linking that repository tells Wrenly which remote commit
+to compare your selected revision against. It does **not** import that repository
+over your current app.
+
+Open a finished revision in the workspace and select **GitHub source**, next to
+Download source. Choose **Load repositories**, select a repository and review its
+baseline branch or commit. Confirm **Connect repository**.
+
+This saves the remote comparison baseline. It does not replace the Wrenly project's
+files, run a build or push anything. Imported projects already have this baseline.
+The project owner must use their own GitHub connection; collaborators cannot borrow it.
+
+An empty GitHub repository has no commit to use as a baseline. The current linking
+flow requires a supported application with a commit already present. Creating
+a repository, initializing an empty repository and a first export into an empty
+repository are **not supported yet**. Do not create a placeholder repository expecting
+Wrenly to initialize it automatically. Repository replacement and applications that depend on sibling workspace packages
+are not supported yet.
+
+## Review and push a revision
+
+1. Select the finished local revision you want to export.
+2. Open **GitHub source** and choose a new branch under `wrenly/`, for example
+   `wrenly/booking-calendar`.
+3. Select **Review selected revision**. Inspect additions, removals and before/after
+   contents. If there are no changes from the baseline, nothing needs pushing.
+4. Confirm **Push to new branch**. The server saves the request before contacting GitHub.
+5. Watch **Recent source pushes**, then use **Open pushed revision** when it succeeds.
+
+The new branch starts from the reviewed baseline commit. Remote files outside the
+managed source set are preserved. Existing branches, including the default branch,
+are never overwritten or force-pushed. Changes under `.github/workflows` are refused;
+the App does not request Actions/workflow permissions.
+
+The comparison baseline stays pinned. Later pushes use another new branch. Pull
+requests, merging and continuous synchronization remain GitHub-side actions; Wrenly
+does not perform them automatically. Publishing the running app still uses the
+separate Gitea/private-registry/Coolify workflow.
+
+## Check an interrupted push
+
+A **needs review** result means GitHub may have received a request whose reply was
+lost. Do not repeat it as a new push.
+
+1. Open the repository on GitHub and inspect the named branch.
+2. Wait until GitHub has finished processing the request.
+3. In **Recent source pushes**, confirm that you checked GitHub, then select
+   **Check saved push result**.
+
+Recovery only reads GitHub. If the exact saved commit and tree are present, it records
+success. If the branch is confirmed absent, it records a failed attempt and permits a
+new explicit review. A branch pointing elsewhere is recorded as a conflict; it is
+never overwritten. Reconnection may be needed if the old authorization expired.
+
+## Installation visibility for teams
+
+A private GitHub App can only be installed on its owning GitHub account. If an
+existing App needs installations on teammates' accounts, its owner can change its
+visibility in **GitHub → Settings → Developer settings → GitHub Apps → Edit**.
+Keep installations limited to selected repositories. App visibility does not bypass
+Wrenly sign-in or project sharing. See [GitHub's installation visibility guide](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/making-a-github-app-public-or-private).
+
+
+## Current import limits
+
+An imported app keeps its dependency versions. Current runtime families are Next.js
+15/16 and Laravel 12/13. Ordinary constraints such as `^16`, `16.x`, `^12.0` and
+`^12.0|^13.0` are accepted; importing does not rewrite them. Dependency installation
+and offline compilation still determine whether your particular app can run.
+
+| Resource | Default and maximum |
+| --- | --- |
+| Saved files | 1,000 |
+| One text file | 2 MiB |
+| Total text | 8 MiB |
+| One image/font | 4 MiB |
+| Total images/fonts | 12 MiB |
+
+The instance owner can choose smaller budgets in the root `.env`; restart the API
+for changes to take effect. If an older local setting is smaller, increase it up to
+these ceilings. These are Wrenly resource budgets, not GitHub account limits.
+
+```dotenv
+WRENLY_SOURCE_IMPORT_MAX_FILES=1000
+WRENLY_SOURCE_IMPORT_TEXT_FILE_BYTES=2097152
+WRENLY_SOURCE_IMPORT_TEXT_BYTES=8388608
+WRENLY_SOURCE_IMPORT_ASSET_FILE_BYTES=4194304
+WRENLY_SOURCE_IMPORT_ASSET_BYTES=12582912
+```
+
+Images/fonts remain separate from model-visible text. An edit receives complete text
+files within its input budget; large lockfiles, binary assets and other omitted files
+stay unchanged. Name a specific source path in your prompt to prioritize it. Wrenly
+rejects edits to omitted files rather than allowing a model to guess their contents.
+A single text file larger than the model input budget must be split before editing.
+This keeps an app importable without forcing its whole repository into every prompt.
+
+Download source includes the exact saved assets. GitHub pushes preserve existing
+binary objects through the reviewed baseline; creating/replacing binary assets from
+Wrenly is not supported in this slice. Publishing includes their original bytes.
+Unsupported or malformed assets are rejected explicitly rather than silently dropped.
+
+A GitHub 404 can mean a missing branch or repository access; it is not a size-limit
+error. A source-read failure can mean a connection failure or deadline. Use the
+specific message and API diagnostic category when reporting an import problem.
+
+## Test your connection
+
+1. Import a small supported app whose default branch is not necessarily `main`.
+   Search for the repository, leave the branch empty and review the pinned commit.
+2. Include a real `public/logo.png` or favicon. After validation, open its preview,
+   download the source and compare the asset with the GitHub version.
+3. Ask for one heading change. Verify that the logo, dependency version and lockfile
+   remain unchanged in the new revision.
+4. Review a push to a new `wrenly/` branch. Confirm the intended text change on GitHub,
+   unchanged assets and an untouched default branch.
+5. For a nested standalone app, repeat with **Application directory → apps/web**.
+   Its pushed paths must stay under `apps/web`; sibling applications must not change.
+
+Import never needs a public Wrenly URL for reading GitHub source. A 404 points to
+repository/branch access; size, unsupported format and build failures have separate
+messages. Check the failing stage rather than changing unrelated connection settings.

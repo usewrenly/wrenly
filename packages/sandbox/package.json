@@ -37,6 +37,7 @@
   "dependencies": {
     "@wrenly/db": "workspace:*",
     "dockerode": "^4.0.2",
+    "@wrenly/source-control": "workspace:*",
     "@wrenly/audio": "*",
     "@wrenly/inference": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.0"

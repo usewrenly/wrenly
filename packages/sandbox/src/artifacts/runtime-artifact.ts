@@ -1,3 +1,6 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 // Packages the selected source in a per-deployment Docker workspace.
 // Installation disables hooks; compilation is offline; only trusted copy commands
 // assemble the image. No runtime credentials are available during preparation.
@@ -17,7 +20,7 @@ const MAX_COMPILER_LOG_BYTES = 16 * 1024
 const COMPILER_LOG_DISK_LIMIT = '128k'
 const docker = new Docker({ socketPath: '/var/run/docker.sock', timeout: TIMEOUT_MS })
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes
 const MAX_BOOTSTRAP_BYTES = 2 * 1024 * 1024 // Same bound as trusted API worker bundles; never generated source.
 const LABEL = 'io.wrenly.deployment-id'
 const ROLE_LABEL = 'io.wrenly.artifact-role'
@@ -73,6 +76,7 @@ async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigra
     throw new Error('Runtime artifact source is invalid or oversized.')
   const laravel = input.stack === 'laravel'
   if (input.stack && !['nextjs', 'laravel'].includes(input.stack)) throw new Error('Unsupported runtime artifact stack.')
+  assertRevisionBudget(input.files)
   validateFilePaths(input.files)
   const database = readAppDatabaseManifest(input.files, laravel ? 'laravel' : 'nextjs')
   if (databaseMigrationDigest === undefined ? database !== null : !database || database.digest !== databaseMigrationDigest)
@@ -102,7 +106,7 @@ async function prepareRuntimeArtifact(input: RuntimeArtifactInput, databaseMigra
     for (const file of input.files) {
       const target = join(source, file.path)
       await mkdir(join(target, '..'), { recursive: true })
-      await writeFile(target, file.content, { mode: 0o644, flag: 'wx' })
+      await writeFile(target, materializeSourceFile(file), { mode: 0o644, flag: 'wx' })
     }
     await input.beforeEffect(); signal.throwIfAborted()
     const existingVolumes = await docker.listVolumes()

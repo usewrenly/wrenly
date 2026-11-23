@@ -10,7 +10,7 @@ API; Next.js hosts the web and documentation apps only.
 - `src/production-app.ts` connects server-only services; `src/index.ts` validates
   configuration and persistence before starting listeners and workers.
 - Apply all checked-in Drizzle migrations before startup; the current schema requirement
-  is through 0040. Do not treat an older feature's migration number as the startup minimum.
+  is through 0051. Do not treat an older feature's migration number as the startup minimum.
 - Keep files in their feature folders under `src/modules`. Reuse shared contracts rather
   than duplicating types. Do not import next/headers or next/server into API handlers.
 - Never inline environment values into bundles or print secrets in diagnostic output.

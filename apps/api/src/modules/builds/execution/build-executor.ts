@@ -1,3 +1,5 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { isSourceAsset, REVISION_LIMITS, type SourceAsset } from "@wrenly/source-control/revision";
 import {
   parseAttachmentSnapshot,
   type AttachmentSnapshot,
@@ -32,10 +34,10 @@ const MAX_ATTEMPTS = 3;
 const MAX_REPAIR_ERROR_CHARS = 6000;
 const MAX_DIAGNOSTIC_CHARS = 256_000;
 const FilesSchema = z
-  .array(z.object({ path: z.string().min(1), content: z.string() }))
+  .array(z.object({ path: z.string().min(1), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }))
   .min(1)
-  .max(1000);
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+  .max(REVISION_LIMITS.files);
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 
 export interface BuildExecutorDependencies {
   resolveAttachments?: (
@@ -59,6 +61,7 @@ export interface BuildExecutorDependencies {
 
 function validateFiles(value: unknown, stack: string): FileTree {
   const files = FilesSchema.parse(value);
+  assertRevisionBudget(files);
   const required =
     stack === "laravel"
       ? "composer.json"
@@ -112,6 +115,41 @@ export async function executeClaimedBuild(
     }
   };
   try {
+    // Imported source is an exact remote revision, not an instruction to regenerate it.
+    // A failed check preserves that source; repair requires a separate explicit prompt.
+    if (input.sourceValidationV1 !== undefined) {
+      abortIfRequested(signal);
+      if (
+        input.sourceValidationV1.version !== 1 ||
+        !/^[a-f0-9]{40}$/.test(input.sourceValidationV1.commitId) ||
+        !["nextjs", "laravel"].includes(input.stack) ||
+        input.databaseV1 !== undefined
+      )
+        throw new Error("Imported source validation settings could not be verified.");
+      const files = validateFiles(input.previousFiles, input.stack);
+      await dependencies.progress(claim, { type: "file_tree", attempt: 1, files });
+      await dependencies.progress(claim, {
+        type: "activity_v1", attempt: 1, operation: "source", state: "completed",
+      });
+      await dependencies.progress(claim, {
+        type: "status", attempt: 1, phase: "building",
+        message: "Validating the imported revision in Docker…",
+      });
+      const result = await dependencies.validate(files, claim, signal, 1);
+      await diagnostics(1, [
+        "Imported revision validation",
+        dependencies.streamsValidationLogs ? undefined : result.output,
+        result.error,
+      ].filter(Boolean).join("\n"));
+      if (result.success) return { status: "success" };
+      abortIfRequested(signal);
+      const detail = [result.error, result.output].filter(Boolean)
+        .join("\n").slice(-MAX_REPAIR_ERROR_CHARS);
+      return {
+        status: "failed",
+        error: `Imported source failed validation. Its files were preserved without model changes. ${detail}`,
+      };
+    }
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       abortIfRequested(signal);
       await dependencies.progress(claim, {

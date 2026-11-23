@@ -1,3 +1,7 @@
+import { assertRevisionBudget } from "@wrenly/source-control/revision";
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
+import type { RevisionFile } from "@wrenly/source-control/revision"
 import {inspectInstalledFramework, FrameworkInspectionCleanupError} from '../framework-tooling/runtime';
 import type {FrameworkInspectionReport} from '@wrenly/inference/framework-tooling';
 // Runs one build attempt in separate dependency-install and offline-validation containers.
@@ -14,7 +18,7 @@ import { validateFilePaths } from '../source-policy/file-paths'
 import { validateNextjsStyling } from '../source-policy/nextjs-styling'
 import { readAppDatabaseManifest } from '../databases/database-manifest'
 
-export type FileTree = Array<{ path: string; content: string }>
+export type FileTree = RevisionFile[]
 export interface SandboxInput {
   files: FileTree
   projectId: string
@@ -68,7 +72,7 @@ const MAX_LOG_CHARS = 256_000
 const CONTAINER_POLL_MS = 200
 const SANDBOX_PID_LIMIT = 256
 const MAX_FILES = 1000
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes
 const LOG_TRUNCATION_MARKER = '[Earlier sandbox output truncated]\n'
 const BUILD_LABEL = 'io.wrenly.build-id'
 const CLAIM_LABEL = 'io.wrenly.claim-token'
@@ -235,6 +239,7 @@ export async function runSandbox(input: SandboxInput): Promise<SandboxOutput> {
   try {
     if (input.signal?.aborted) onAbort()
     abortIfRequested(controller.signal)
+    assertRevisionBudget(input.files)
     validateFilePaths(input.files)
     if (!input.files.length || input.files.length > MAX_FILES || Buffer.byteLength(JSON.stringify(input.files)) > MAX_SOURCE_BYTES)
       throw new Error('Generated source exceeds sandbox file limits.')
@@ -264,7 +269,7 @@ export async function runSandbox(input: SandboxInput): Promise<SandboxOutput> {
     for (const file of input.files) {
       const target = path.join(workspace, file.path)
       fs.mkdirSync(path.dirname(target), { recursive: true })
-      fs.writeFileSync(target, file.content, { encoding: 'utf8', flag: 'wx' })
+      fs.writeFileSync(target, materializeSourceFile(file), { flag: 'wx' })
     }
     await ensureImage(config.image, controller.signal)
     const imageId = (await docker.getImage(config.image).inspect()).Id

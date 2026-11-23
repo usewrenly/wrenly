@@ -20,6 +20,7 @@ try {
   const environment = parseApiEnvironment(process.env)
   const { createProductionApp } = await import('./production-app')
   const { db } = await import('@wrenly/db')
+  const { startSourcePushWorker } = await import('./modules/source-control/pushes/push-worker')
   const { startProductionBuildWorker, verifyBuildWorkerSchema } = await import('./modules/builds/execution/production-build-worker')
   const { verifyConversationSchema, startProductionConversationWorker } = await import('./modules/conversations/execution/production-conversation-worker')
   const { verifySkillsSchema } = await import("./modules/skills/skill-store")
@@ -57,6 +58,8 @@ try {
   await verifyDraftSchema(db)
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")
   await verifyDatabaseSchema(db)
+  const { verifySourceControlSchema } = await import("./modules/source-control/schema")
+  await verifySourceControlSchema(db)
   const setupStatus = await getInstanceSetupStatus(db)
   const { promptAttachments, providerConnections } = await import('@wrenly/db/schema');
   try {
@@ -89,6 +92,7 @@ try {
   let productionCluster: ProductionDatabaseActivation | undefined
   let previews: PreviewLifecycle | undefined
   let gateway: ReturnType<typeof Bun.serve> | undefined
+  let sourceWorker: ReturnType<typeof startSourcePushWorker> | undefined
   let worker: Awaited<ReturnType<typeof startProductionBuildWorker>> | undefined
   try {
     if (environment.WRENLY_PREVIEW_ENABLED === 'true') {
@@ -143,9 +147,10 @@ try {
     }
     worker = await startProductionBuildWorker(db, { databaseValidation: environment.WRENLY_APP_DATABASES_ENABLED === 'true', frameworkInspection: environment.WRENLY_FRAMEWORK_INSPECTION_ENABLED === 'true' })
     conversationWorker = await startProductionConversationWorker(db, environment.WRENLY_MODEL_TIMEOUT_SECONDS, {enabled:environment.WRENLY_APP_DATABASES_ENABLED === 'true',directory:environment.WRENLY_DATA_DIR})
+    sourceWorker = startSourcePushWorker(db, environment.WRENLY_DATA_DIR)
     app = createProductionApp(environment, { productionDatabases: productionCluster, transcription })
   } catch (error) {
-    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
+    await Promise.allSettled([server.stop(true), gateway?.stop(true), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), worker?.stop(), conversationWorker?.stop(), publishing?.stop(), sourceWorker?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
     throw error
   }
   acceptingRequests = true
@@ -156,7 +161,7 @@ try {
     acceptingRequests = false
     try {
       await Promise.all([server.stop(true), gateway?.stop(true)])
-      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
+      const settled = await Promise.allSettled([worker?.stop(), previews?.stop(), databaseModule?.stop(), productionCluster?.stop(), conversationWorker?.stop(), publishing?.stop(), sourceWorker?.stop(), dictation?.stop(), attachmentCleanup?.stop()])
       if (settled.some(result => result.status === 'rejected')) throw new Error('Worker cleanup could not be confirmed. Inspect persisted state before restarting.')
       process.exit(0)
     } catch (error) {

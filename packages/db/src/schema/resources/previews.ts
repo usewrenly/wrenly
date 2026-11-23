@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 // Tracks preview lifecycle, claim-owned resources and hashed viewer access separately from builds.
 import { pgEnum, pgTable, uuid, text, integer, timestamp, jsonb, primaryKey } from 'drizzle-orm/pg-core'
 import { builds } from '../execution/builds'
@@ -20,7 +21,7 @@ export const previews = pgTable('previews', {
   buildId: uuid('build_id').notNull().references(() => builds.id, { onDelete: 'restrict' }),
   projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'restrict' }),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'restrict' }),
-  files: jsonb('files').$type<Array<{ path: string; content: string }>>().notNull(),
+  files: jsonb('files').$type<RevisionFile[]>().notNull(),
   status: previewStatusEnum('status').notNull().default('queued'),
   claimToken: uuid('claim_token'),
   leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),

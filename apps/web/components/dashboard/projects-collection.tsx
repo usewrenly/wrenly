@@ -1,5 +1,6 @@
 "use client";
 // Browsing never admits a build.
+import { GitHubImportButton } from "@/components/projects/source/github-import";
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowUpRightIcon, SettingsIcon, PlusIcon } from "lucide-react";
@@ -82,10 +83,11 @@ export function ProjectsCollection(): React.JSX.Element {
           <h1>Projects</h1>
           <p>A place for everything you’re building.</p>
         </div>
+        <div className="flex flex-wrap items-center gap-3"><GitHubImportButton />
         <Link className="projects-new" href="/#new-project">
           <PlusIcon size={16} aria-hidden="true" />
           New project
-        </Link>
+        </Link></div>
       </header>
       <nav className="projects-collection-nav" aria-label="Project collections">
         <Link href="/projects" aria-current="page">

@@ -71,6 +71,7 @@ jobs:
       WRENLY_TEST_SETUP_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_setup_test
       WRENLY_TEST_MEMBER_UPGRADE_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_member_upgrade_test
       WRENLY_TEST_PROVIDER_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_provider_test
+      WRENLY_TEST_SOURCE_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_source_test
       WRENLY_TEST_SKILLS_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_skills_test
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -87,7 +88,7 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          for database in wrenly_setup_test wrenly_member_upgrade_test wrenly_provider_test wrenly_skills_test; do
+          for database in wrenly_setup_test wrenly_member_upgrade_test wrenly_provider_test wrenly_skills_test wrenly_source_test; do
             docker exec "$POSTGRES_CONTAINER" createdb -U wrenly "$database"
           done
       - name: Verify documented migration command and safe repetition
@@ -102,7 +103,8 @@ jobs:
             packages/db/tests/integration/identity/instance-setup.integration.test.ts \
             packages/db/tests/integration/identity/member-access-upgrade.integration.test.ts \
             packages/db/tests/integration/configuration/provider-connections.integration.test.ts \
-            packages/db/tests/integration/configuration/skills.integration.test.ts
+            packages/db/tests/integration/configuration/skills.integration.test.ts \
+            packages/db/tests/integration/configuration/source-authorization.integration.test.ts
       - name: Verify private password recovery and first-prompt Skills
         env:
           WRENLY_TEST_PASSWORD_RECOVERY_DATABASE_URL: postgresql://wrenly:fixture-only@127.0.0.1:5432/wrenly_setup_test

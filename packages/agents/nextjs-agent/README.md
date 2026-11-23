@@ -34,6 +34,9 @@ tools rather than importing the generator implementation.
   and complete content, or `delete` with a path. Omitted files remain unchanged
   when the API merges the result. Duplicate/conflicting and unsafe paths fail.
 
+Editing preserves the existing framework version, including imported Next.js 15
+and 16 apps; it does not replace their manifest with the new-project starter.
+
 Editing receives the complete frozen source snapshot, limited to 128,000 serialized
 bytes and 1,000 files. It never truncates a file silently. Full replacement content
 is required for updated files. Larger revisions need future context/retrieval work;

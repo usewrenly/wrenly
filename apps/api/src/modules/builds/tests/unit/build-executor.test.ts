@@ -304,6 +304,39 @@ test("actual generation boundaries preserve attempt identity and persistence fai
   expect(failing.requests).toHaveLength(1);
 });
 
+describe("exact imported source validation", () => {
+  test("validates once without asking a model to rewrite the imported files", async () => {
+    const f = fixture();
+    f.claim.input.sourceValidationV1 = { version: 1, commitId: "a".repeat(40) };
+    let validations = 0;
+    f.dependencies.validate = async files => { validations++; expect(files).toEqual(f.claim.input.previousFiles); return { status: undefined, success: true, output: "Checked" }; };
+    expect(await executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).toEqual({ status: "success" });
+    expect(validations).toBe(1);
+    expect(f.requests).toHaveLength(0);
+    expect(f.events.some(event => event.type === "file_tree")).toBe(true);
+  });
+  test("compiler failure preserves source and never enters the generation repair loop", async () => {
+    const f = fixture();
+    f.claim.input.sourceValidationV1 = { version: 1, commitId: "a".repeat(40) };
+    let validations = 0;
+    f.dependencies.validate = async () => { validations++; return { success: false, output: "Compiler diagnostic" }; };
+    const outcome = await executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies);
+    expect(outcome.status).toBe("failed");
+    expect(outcome).toHaveProperty("error", expect.stringContaining("files were preserved"));
+    expect(validations).toBe(1);
+    expect(f.requests).toHaveLength(0);
+  });
+  test("unconfirmed cleanup and cancellation retain the existing worker recovery boundary", async () => {
+    const f = fixture();
+    f.claim.input.sourceValidationV1 = { version: 1, commitId: "a".repeat(40) };
+    f.dependencies.validate = async () => { throw new BuildExecutionInterruptedError(); };
+    await expect(executeClaimedBuild(f.claim, new AbortController().signal, f.dependencies)).rejects.toBeInstanceOf(BuildExecutionInterruptedError);
+    const controller = new AbortController(); controller.abort(new Error("Stopped"));
+    await expect(executeClaimedBuild(f.claim, controller.signal, f.dependencies)).rejects.toThrow("Stopped");
+    expect(f.requests).toHaveLength(0);
+  });
+});
+
 test("saved references resolve once and remain identical through repair attempts", async () => {
   const f = fixture();
   f.claim.input.attachmentsV1 = { version: 1, files: [{ id: crypto.randomUUID(), objectId: crypto.randomUUID(), name: "reference.txt", mediaType: "text/plain", byteLength: 1, sha256: "a".repeat(64) }] };

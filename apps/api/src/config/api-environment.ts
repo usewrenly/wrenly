@@ -1,3 +1,4 @@
+import { DEFAULT_REVISION_LIMITS, REVISION_LIMITS } from "@wrenly/source-control/revision";
 // COMPONENT: API startup configuration
 // PURPOSE: Reject missing API configuration before opening database/auth services.
 // INPUTS: Environment variables.
@@ -11,6 +12,11 @@ import { resolve, isAbsolute } from 'node:path'
 const OptionalPublishingString = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional())
 
 const ApiEnvironmentSchema = z.object({
+  WRENLY_SOURCE_IMPORT_MAX_FILES: z.coerce.number().int().min(1).max(REVISION_LIMITS.files).default(DEFAULT_REVISION_LIMITS.files),
+  WRENLY_SOURCE_IMPORT_TEXT_FILE_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.textFileBytes).default(DEFAULT_REVISION_LIMITS.textFileBytes),
+  WRENLY_SOURCE_IMPORT_TEXT_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.textBytes).default(DEFAULT_REVISION_LIMITS.textBytes),
+  WRENLY_SOURCE_IMPORT_ASSET_FILE_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.assetFileBytes).default(DEFAULT_REVISION_LIMITS.assetFileBytes),
+  WRENLY_SOURCE_IMPORT_ASSET_BYTES: z.coerce.number().int().min(1024).max(REVISION_LIMITS.assetBytes).default(DEFAULT_REVISION_LIMITS.assetBytes),
   WRENLY_DICTATION_ENABLED: z.enum(['true', 'false']).default('false'),
   WRENLY_DICTATION_MODEL_PATH: z.preprocess(value => value === '' ? undefined : value, z.string().refine(isAbsolute, 'Use an absolute model file path.').optional()),
   WRENLY_FRAMEWORK_INSPECTION_ENABLED: z.enum(['true','false']).default('false'),

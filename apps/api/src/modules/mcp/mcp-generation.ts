@@ -12,7 +12,7 @@ import { parseSkillGuidance } from "@wrenly/inference";
 // STEPS: Connect, call tool with signal, parse, close once, confirm process exit.
 // EDGE CASES: Abort before spawn starts no process; timeout covers initialization too.
 // ERROR STATES: Unconfirmed subprocess cleanup is explicit and cannot be treated as a model repair.
-import { applyFileEdits, validateEditContext } from "./file-edits";
+import { applyFileEdits, validateEditContext, selectEditContext } from "./file-edits";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { z } from "zod";
@@ -117,7 +117,13 @@ export async function generateWithMcp(
   const guidance = parseSkillGuidance(input.skills_v1);
   const attachments = parseAttachmentWireContent(input.attachments_v1);
   const editing = Boolean(input.previousFiles?.length);
-  if (editing) validateEditContext(input.previousFiles!);
+  const context = editing
+    ? selectEditContext(input.previousFiles!, input.prompt)
+    : undefined;
+  if (context) validateEditContext(context.files);
+  const includeInspection = Boolean(
+    input.framework_inspection_v1 && (!context || !context.omitted.length),
+  );
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0)
     throw new Error("Invalid MCP generation deadline.");
   if (signal?.aborted) throw signal.reason ?? new Error("Generation aborted.");
@@ -167,14 +173,14 @@ export async function generateWithMcp(
       editing ||
       guidance.skills.length ||
       attachments.length ||
-      Boolean(input.framework_inspection_v1)
+      includeInspection
     ) {
       const tools = await client.listTools(
         {},
         { signal: controller.signal, timeout: timeoutMs },
       );
       if (
-        input.framework_inspection_v1 &&
+        includeInspection &&
         !tools.tools.some(
           (tool) =>
             tool.name === "edit_app_v1" &&
@@ -231,13 +237,15 @@ export async function generateWithMcp(
           ? { attachments_v1: encodeAttachmentWireContent(attachments) }
           : {}),
         ...(guidance.skills.length ? { skills_v1: guidance } : {}),
-        ...(input.framework_inspection_v1
+        ...(includeInspection
           ? { framework_inspection_v1: input.framework_inspection_v1 }
           : {}),
-        prompt: input.prompt,
+        prompt: context?.omitted.length
+          ? `${input.prompt}\n\nOnly the complete text files supplied below are editable. Other saved files are preserved and must not be changed. Imported binary assets cannot be edited. Omitted paths: ${JSON.stringify(context.omitted).slice(0, 4000)}${JSON.stringify(context.omitted).length > 4000 ? " (additional paths omitted; all are preserved)" : ""}`
+          : input.prompt,
         previousErrors: input.previousErrors,
         attempt: input.attempt,
-        ...(editing ? { version: 1, files: input.previousFiles } : {}),
+        ...(editing ? { version: 1, files: context!.files } : {}),
       },
     };
     if (
@@ -275,6 +283,31 @@ export async function generateWithMcp(
     if (Buffer.byteLength(text.text) > MAX_MCP_RESULT_BYTES)
       throw new Error("MCP source response exceeds the artifact limits.");
     const output: unknown = JSON.parse(text.text);
+    if (
+      context &&
+      output &&
+      typeof output === "object" &&
+      "operations" in output &&
+      Array.isArray(output.operations)
+    ) {
+      const allowed = new Set(context.files.map((file) => file.path));
+      const omitted = new Set(context.omitted);
+      for (const operation of output.operations as unknown[]) {
+        if (
+          operation &&
+          typeof operation === "object" &&
+          "path" in operation &&
+          typeof operation.path === "string" &&
+          (omitted.has(operation.path) ||
+            ("type" in operation &&
+              operation.type !== "create" &&
+              !allowed.has(operation.path)))
+        )
+          throw new Error(
+            "The requested edit touches a file outside the supplied complete context. Name that file explicitly in your next request.",
+          );
+      }
+    }
     return editing
       ? { files: applyFileEdits(input.previousFiles!, output) }
       : OutputSchema.parse(output);

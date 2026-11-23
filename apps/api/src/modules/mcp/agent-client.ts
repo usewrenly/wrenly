@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 import { validateAttachmentExecution } from "../attachments/production-services";
 import type { AttachmentWireContent } from "@wrenly/inference";
 import type { FrameworkInspectionReport } from "@wrenly/inference/framework-tooling";
@@ -16,10 +17,7 @@ import { buildModelEnvironment } from "../models/environment/model-environment";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FileTree = Array<{
-  path: string;
-  content: string;
-}>;
+export type FileTree = RevisionFile[]
 
 export type AgentInput = {
   attachments_v1?: AttachmentWireContent;

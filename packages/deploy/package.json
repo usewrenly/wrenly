@@ -15,5 +15,8 @@
     "@repo/typescript-config": "*",
     "@types/node": "*",
     "typescript": "*"
+  },
+  "dependencies": {
+    "@wrenly/source-control": "workspace:*"
   }
 }

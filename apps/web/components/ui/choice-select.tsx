@@ -18,8 +18,10 @@ export function ChoiceSelect({
   displayValue,
   footer,
   description,
+  popupClassName,
 }: {
   label: string;
+  popupClassName?: string;
   description?: string;
   value: string | null;
   options: ChoiceOption[];
@@ -54,7 +56,7 @@ export function ChoiceSelect({
           className="choice-positioner"
           alignItemWithTrigger={false}
         >
-          <Select.Popup className="choice-popup">
+          <Select.Popup className={`choice-popup ${popupClassName ?? ""}`}>
             <Select.List>
               {options.map((option) => (
                 <Select.Item

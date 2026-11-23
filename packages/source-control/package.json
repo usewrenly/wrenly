@@ -1,0 +1,21 @@
+{
+  "name": "@wrenly/source-control",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./revision": "./src/revision/contracts.ts",
+    "./assets": "./src/revision/assets.ts",
+    "./framework-versions": "./src/revision/framework-versions.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@types/node": "*",
+    "typescript": "*"
+  }
+}

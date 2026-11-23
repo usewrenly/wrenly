@@ -1,3 +1,4 @@
+import type { GitHubConnectionHandlers } from "./modules/source-control/github/http"
 import type { AttachmentHttpHandlers } from "./modules/attachments/attachment-http";
 import type { createTranscriptionHttpHandlers } from "./modules/transcription/transcription-http";
 import type { DatabaseWorkflowHandlers } from "./modules/conversations/database-workflow/http";
@@ -43,6 +44,7 @@ type RequestHandler = (request: Request) => Promise<Response>
 type ProjectHandler = (request: Request, id: string) => Promise<Response>
 
 export interface ApiHandlers {
+  sourceGitHub?: GitHubConnectionHandlers
   attachments?: AttachmentHttpHandlers;
   runtimeMaintenanceControl?: OwnerRuntimeControlHandlers
   runtimeMaintenance?: MaintenanceHttpHandlers
@@ -125,6 +127,23 @@ export function createApp(
       timestamp: new Date().toISOString(),
     }),
   )
+  if (handlers.sourceGitHub) {
+    const source = handlers.sourceGitHub
+    app.get('/api/source/github/project', c => source.sourceProject(c.req.raw))
+    app.post('/api/source/github/bind', c => source.bindRepository(c.req.raw))
+    app.post('/api/source/github/push/review', c => source.reviewPush(c.req.raw))
+    app.post('/api/source/github/push/confirm', c => source.confirmPush(c.req.raw))
+    app.post('/api/source/github/push/recover', c => source.recoverPush(c.req.raw))
+    app.post('/api/source/github/import/review', c => source.prepareImport(c.req.raw))
+    app.post('/api/source/github/import/confirm', c => source.confirmImport(c.req.raw))
+    if (source.updateLimits) app.post('/api/source/github/limits', c => source.updateLimits!(c.req.raw))
+    app.get('/api/source/github', c => source.status(c.req.raw))
+    app.post('/api/source/github/start', c => source.start(c.req.raw))
+    app.post('/api/source/github/disconnect', c => source.disconnect(c.req.raw))
+    app.get('/api/source/github/repositories', c => source.repositories(c.req.raw))
+    app.get('/api/source/github/registration/callback', c => source.registrationCallback(c.req.raw))
+    app.get('/api/source/github/authorization/callback', c => source.authorizationCallback(c.req.raw))
+  }
   if (handlers.attachments) {
     const attachments = handlers.attachments;
     app.post('/api/attachments', c => attachments.upload(c.req.raw));

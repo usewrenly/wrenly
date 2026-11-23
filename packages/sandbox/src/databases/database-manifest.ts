@@ -1,3 +1,5 @@
+import { materializeSourceFile } from "@wrenly/source-control/assets";
+import { REVISION_LIMITS, assertRevisionBudget, type RevisionFile } from "@wrenly/source-control/revision";
 // Validates saved database declarations and migration-file identities as data.
 // Source never chooses provisioning commands or credentials; no resources start on import.
 // COMPONENT: Revision-bound migration identity
@@ -17,7 +19,7 @@ const MAX_MIGRATIONS = 128;
 const MAX_MIGRATION_BYTES = 512 * 1024;
 const MAX_PATH_BYTES = 256;
 const MAX_SOURCE_FILES = 1000;
-const MAX_LARAVEL_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_LARAVEL_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const DRIZZLE_JOURNAL_PATH = "drizzle/meta/_journal.json";
 export interface AppDatabaseManifest {
   version: 1;
@@ -52,13 +54,14 @@ export class AppDatabaseManifestError extends Error {
 
 /** Reads bounded declarations and hashes exact saved migration bytes without executing generated source. */
 export function readAppDatabaseManifest(
-  files: Array<{ path: string; content: string }>,
+  files: RevisionFile[],
   stack: string,
 ): AppDatabaseMigrationSet | null {
   if (files.length > MAX_SOURCE_FILES)
     throw new AppDatabaseManifestError(
       "Application source exceeds its file count limit.",
     );
+  try { assertRevisionBudget(files); } catch { throw new AppDatabaseManifestError("Application source exceeds its size limit."); }
   validateFilePaths(files);
   const manifestFile = files.find((file) => file.path === MANIFEST_PATH);
   if (!manifestFile) return null;
@@ -135,7 +138,7 @@ export function readAppDatabaseManifest(
     paths.push(path);
     migrationFiles.push({
       path,
-      sha256: createHash("sha256").update(file.content).digest("hex"),
+      sha256: createHash("sha256").update(materializeSourceFile(file)).digest("hex"),
     });
   }
   if (adapter === "drizzle-postgres") {
@@ -230,7 +233,7 @@ export function readAppDatabaseManifest(
     source = files
       .map((file) => ({
         path: file.path,
-        sha256: createHash("sha256").update(file.content).digest("hex"),
+        sha256: createHash("sha256").update(materializeSourceFile(file)).digest("hex"),
       }))
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }

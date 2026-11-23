@@ -16,6 +16,7 @@ const groups: { title: string; pages: [string, DocumentationIconName][] }[] = [
     title: "Workspace",
     pages: [
       ["/docs/guides/projects", "branch"],
+      ["/docs/guides/github", "branch"],
       ["/docs/architecture/conversations", "sparkles"],
       ["/docs/guides/project-settings", "layers"],
     ],

@@ -11,7 +11,7 @@ those servers' implementation. Hono handles HTTP; Bun runs the server and worker
 Follow [Install Wrenly](../docs/content/docs/guides/installation.mdx) from the repository
 root first. It covers private configuration, PostgreSQL, migrations and the web app.
 Apply all checked-in migrations before starting an updated API; current startup requires
-schema through **0035**. Do not delete an existing database to upgrade it.
+schema through **0051**. Do not delete an existing database to upgrade it.
 
 API commands use the **repository-root `.env`**, copied from the root `.env.example`.
 Do not create `apps/api/.env`: it is not loaded by the commands below. Migrations use

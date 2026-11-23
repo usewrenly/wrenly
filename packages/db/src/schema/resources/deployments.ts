@@ -1,3 +1,4 @@
+import type { RevisionFile } from "@wrenly/source-control/revision"
 import type { ProductionPublishingBinding, ProductionPublishingJournal } from "../../application-databases/production-publishing-contract";
 // Server-only deployment source snapshots, encrypted credentials and durable effect tracking.
 // Handlers must select safe public fields explicitly instead of spreading these records.
@@ -55,7 +56,7 @@ export const deployments = pgTable('deployments', {
   idempotencyKey: uuid('idempotency_key').notNull(),
   requestIdentity: text('request_identity').notNull(),
   stack: stackEnum('stack').notNull(),
-  files: jsonb('files').$type<Array<{ path: string; content: string }>>().notNull(),
+  files: jsonb('files').$type<RevisionFile[]>().notNull(),
   sourceSha256: text('source_sha256').notNull(),
   productionDatabaseBinding: jsonb('production_database_binding').$type<ProductionPublishingBinding>(),
   productionRuntimeJournal: jsonb('production_runtime_journal').$type<ProductionPublishingJournal>(),

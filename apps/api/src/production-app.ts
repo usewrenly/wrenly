@@ -1,3 +1,5 @@
+import { createGitHubConnectionHandlers } from "./modules/source-control/github/http";
+import { createGitHubConnectionService } from "./modules/source-control/github/service";
 import { createAttachmentHttpHandlers } from "./modules/attachments/attachment-http";
 import { attachmentObjects } from "./modules/attachments/production-services";
 import { decodeAttachmentImage } from "./modules/attachments/images/decoder";
@@ -138,6 +140,15 @@ export function createProductionApp(
   })
   return createApp(
     {
+      sourceGitHub: createGitHubConnectionHandlers({ webUrl: environment.WRENLY_WEB_URL,
+        principal: async headers => {
+          const userId = await getUserId(headers)
+          return userId ? accessContext.getStore()?.principal ?? null : null
+        }, service: createGitHubConnectionService(db, { webUrl: environment.WRENLY_WEB_URL, directory: environment.WRENLY_DATA_DIR, importLimits: {
+          files: environment.WRENLY_SOURCE_IMPORT_MAX_FILES, fileBytes: environment.WRENLY_SOURCE_IMPORT_TEXT_FILE_BYTES,
+          totalBytes: environment.WRENLY_SOURCE_IMPORT_TEXT_BYTES, assetFileBytes: environment.WRENLY_SOURCE_IMPORT_ASSET_FILE_BYTES,
+          assetBytes: environment.WRENLY_SOURCE_IMPORT_ASSET_BYTES,
+        } }) }),
       transcription: createTranscriptionHttpHandlers({ webUrl: environment.WRENLY_WEB_URL, userId: getUserId, adapter: transcription }),
       providerConfiguration: createProviderConfigurationHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, service: providerConfiguration }),
       catalog: createCatalogHandlers({ webUrl: environment.WRENLY_WEB_URL, session: getUserId, catalog: () => getAvailableCatalog(db), refresh: actorId => refreshProviderCatalog(db, actorId) }),

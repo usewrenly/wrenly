@@ -1,3 +1,4 @@
+import { REVISION_LIMITS } from "@wrenly/source-control/revision";
 /**
  * COMPONENT: Fresh application database rehearsal
  * PURPOSE: Check saved migrations and a prepared application without connecting to real app data.
@@ -23,7 +24,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const VALIDATION_TIMEOUT_MS = 300_000;
 const HTTP_TIMEOUT_MS = 60_000;
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 
 export interface DisposableValidationCleanup {
   assertHeld: () => Promise<void>;

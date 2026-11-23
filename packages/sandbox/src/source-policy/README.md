@@ -8,7 +8,7 @@ as data; they never import a generated config file into the API to inspect it.
   For example, `../outside.ts` cannot write beyond the workspace.
 - `nextjs-styling.ts` checks the Tailwind configuration and stylesheet wiring needed
   for supported Tailwind 3 output. Installing a package alone does not generate CSS.
-- `laravel-runtime.ts` checks Laravel 13 source and defines trusted installation and
+- `laravel-runtime.ts` checks Laravel 12/13 source on the PHP 8.4 toolchain and defines trusted installation and
   validation commands. Composer plugins/scripts and Bun install hooks stay disabled.
 
 These checks cannot prove an app is correct or harmless. Actual generated execution

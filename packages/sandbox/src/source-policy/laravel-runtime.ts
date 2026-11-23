@@ -1,3 +1,4 @@
+import { supportsImportedVersion } from "@wrenly/source-control/framework-versions";
 // COMPONENT: Laravel source policy and trusted runtime commands
 // Composer plugins/scripts and Bun lifecycle hooks stay disabled during installation.
 // Generated PHP and asset builds run only in the subsequent offline container.
@@ -31,7 +32,7 @@ export function validateLaravelSource(files: Array<{ path: string; content: stri
   const required = ['composer.json', 'artisan', 'bootstrap/app.php', 'bootstrap/providers.php', 'routes/web.php',
     'routes/console.php', 'public/index.php', 'config/app.php', 'config/session.php', 'config/cache.php', 'config/logging.php']
   if (required.some(name => !files.some(file => file.path === name)))
-    throw new Error('Laravel 13 source is missing required bootstrap, route or configuration files.')
+    throw new Error('Laravel source is missing required bootstrap, route or configuration files.')
   if (files.some(file => file.path.split('/').some(part => ['vendor', 'node_modules', '.git'].includes(part) ||
     part.startsWith('.env') && part !== '.env.example') || file.path.startsWith('bootstrap/cache/') || file.path.startsWith('storage/')))
     throw new Error('Laravel source cannot include installed dependencies, private environments or generated runtime caches.')
@@ -39,8 +40,8 @@ export function validateLaravelSource(files: Array<{ path: string; content: stri
     throw new Error('Laravel application keys are injected at runtime; do not define APP_KEY in generated source.')
   const composer: unknown = JSON.parse(files.find(file => file.path === 'composer.json')!.content)
   if (!record(composer) || !record(composer.require) || typeof composer.require['laravel/framework'] !== 'string' ||
-    !/^\^13\.\d+(?:\.\d+)?$/.test(composer.require['laravel/framework']))
-    throw new Error('This runtime requires Laravel ^13.0. Existing projects are not automatically upgraded.')
+    !supportsImportedVersion('laravel', composer.require['laravel/framework']))
+    throw new Error('This PHP 8.4 runtime accepts Laravel 12 or 13 with an explicit version range. Existing projects are not automatically upgraded.')
   if ('scripts' in composer || 'repositories' in composer || composer.type === 'composer-plugin' ||
     Object.keys(composer.require).some(name => name === 'composer-plugin-api' || name === 'composer-runtime-api') ||
     'config' in composer && (!record(composer.config) || Object.keys(composer.config).some(key =>

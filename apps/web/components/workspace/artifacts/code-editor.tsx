@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { FileCodeIcon, FolderIcon } from "lucide-react";
 import { buildSourceTree, type SourceNode } from "@/lib/source-browser/source-tree";
-interface FileItem {
-  path: string;
-  content: string;
-}
+type FileItem = import("@wrenly/source-control/revision").RevisionFile;
 interface CodeEditorProps {
   files: FileItem[];
   selectedFile: number;
@@ -81,7 +78,7 @@ export function CodeEditor({
             selected ? `Source for ${selected.path}` : "Generated source"
           }
         >
-          {selected?.content ?? "Select a generated file to read its source."}
+          {selected?.asset ? `Binary asset · ${selected.asset.mediaType} · ${selected.asset.byteLength.toLocaleString()} bytes\n\nPreserved in this revision and included in Download source.` : selected?.content ?? "Select a generated file to read its source."}
         </pre>
       </div>
     </div>

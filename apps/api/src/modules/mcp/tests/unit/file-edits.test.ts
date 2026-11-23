@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { REVISION_LIMITS } from '@wrenly/source-control/revision'
 import { applyFileEdits, validateEditContext } from '../../file-edits'
 const base = [{ path: 'package.json', content: '{}' }, { path: 'app/page.tsx', content: 'Original' }, { path: 'app/other.tsx', content: 'Keep me' }]
 
@@ -32,6 +33,33 @@ describe('revision-safe file edits', () => {
   })
   test('rejects oversize complete context before inference and oversize output before validation', () => {
     expect(() => validateEditContext([{ path: 'huge.ts', content: 'x'.repeat(128000) }])).toThrow('No source was truncated')
-    expect(() => applyFileEdits(base, { version: 1, operations: [{ type: 'update', path: 'app/page.tsx', content: 'x'.repeat(2 * 1024 * 1024) }] })).toThrow('artifact limits')
+    expect(() => applyFileEdits(base, { version: 1, operations: [{ type: 'update', path: 'app/page.tsx', content: 'x'.repeat(REVISION_LIMITS.textFileBytes + 1) }] })).toThrow('artifact limits')
   })
 })
+
+test('editing preserves imported paths containing spaces and route groups', () => {
+  const files = [
+    { path: 'app/(marketing)/page.tsx', content: 'original page' },
+    { path: 'docs/Getting started.md', content: 'keep these instructions' },
+  ]
+  const edited = applyFileEdits(files, { version: 1, operations: [
+    { type: 'update', path: 'app/(marketing)/page.tsx', content: 'updated page' },
+  ] })
+  expect(edited).toEqual([{ ...files[0]!, content: 'updated page' }, files[1]!])
+})
+
+test('bounded model context preserves assets and large omitted lockfiles through edits', async () => {
+  const { selectEditContext } = await import('../../file-edits');
+  const { createSourceAsset } = await import('@wrenly/source-control');
+  const image = { path: 'public/logo.png', content: '', asset: createSourceAsset('public/logo.png', Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPoLYj5DwAFQAJZssNTVgAAAABJRU5ErkJggg==', 'base64')) };
+  const lock = { path: 'bun.lock', content: 'x'.repeat(200_000) };
+  const source = [...base, image, lock];
+  const context=selectEditContext(source,'Change app/page.tsx');
+  expect(context.files.some(file => file.path === image.path)).toBe(false);
+  expect(context.omitted).toContain('bun.lock');
+  expect(JSON.stringify(context.files)).not.toContain(image.asset.base64);
+  const changed=applyFileEdits(source,{version:1,operations:[{type:'update',path:'app/page.tsx',content:'New heading'}]});
+  expect(changed.find(file=>file.path===image.path)).toEqual(image);
+  expect(changed.find(file=>file.path===lock.path)).toEqual(lock);
+  expect(() => applyFileEdits(source,{version:1,operations:[{type:'delete',path:image.path}]})).toThrow('binary');
+});

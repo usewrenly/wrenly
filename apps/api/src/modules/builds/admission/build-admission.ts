@@ -1,3 +1,4 @@
+import { isSourceAsset, type SourceAsset } from "@wrenly/source-control/revision";
 import { parseAttachmentSnapshot, type AttachmentSnapshot } from "@wrenly/inference";
 import { bindRequestAttachments } from "../../attachments/attachment-store";
 /**
@@ -39,7 +40,7 @@ const QUEUE_LOCK_ID = 1;
 const MAX_PENDING_BUILDS = 20;
 const MAX_RETRY_ERROR_CHARS = 6000;
 const FilesSchema = z.array(
-  z.object({ path: z.string(), content: z.string() }),
+  z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }),
 );
 
 type RequestInput = z.infer<typeof GenerateRequestSchema>;
@@ -370,6 +371,12 @@ export async function admitBuild(
             "This failed build has no recoverable source context. Select its base revision and submit a new request.",
           );
         parent = { ...parent, files: savedSource.data };
+      }
+      if (input.retryBuildId) {
+        const [sourceJob] = await transaction.select({ input: buildJobs.input }).from(buildJobs)
+          .where(eq(buildJobs.buildId, input.retryBuildId));
+        if (sourceJob?.input.sourceValidationV1 !== undefined)
+          throw new BuildAdmissionError(409, "Imported files are preserved. Submit a new prompt from this revision to request repairs; ordinary Retry must not rewrite an imported commit.");
       }
       let settings: { provider: string; model: string } | undefined;
       if (dependencies.resolveSelection || project.accessMode !== "private") {

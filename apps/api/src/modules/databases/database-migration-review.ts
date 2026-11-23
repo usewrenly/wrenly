@@ -1,3 +1,4 @@
+import { REVISION_LIMITS, isSourceAsset, type SourceAsset, type RevisionFile } from "@wrenly/source-control/revision";
 import { assertAppliedMigrationHistory } from "./migration-history";
 // Binds an owner-reviewed successful revision to an exact verified resource backup.
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -7,15 +8,15 @@ import { builds, appDatabaseBackups, appDatabaseOperations } from "@wrenly/db";
 import { readAppDatabaseManifest } from "@wrenly/sandbox/database-manifest";
 import { AppDatabaseError } from "./database-contract";
 
-const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SOURCE_BYTES = REVISION_LIMITS.serializedBytes;
 const Files = z
-  .array(z.object({ path: z.string(), content: z.string() }).strict())
+  .array(z.object({ path: z.string(), content: z.string(), asset: z.custom<SourceAsset>(isSourceAsset).optional() }).strict())
   .min(1)
-  .max(1000);
+  .max(REVISION_LIMITS.files);
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /** Bounds saved application bytes before manifest review; this never loads or executes source. */
-export function readDatabaseApplicationSource(value: unknown): Array<{ path: string; content: string }> {
+export function readDatabaseApplicationSource(value: unknown): RevisionFile[] {
   const files = Files.parse(value);
   if (Buffer.byteLength(JSON.stringify(files)) > MAX_SOURCE_BYTES)
     throw new Error("Saved database application source exceeds its bound");
@@ -28,7 +29,7 @@ export function readFrozenMigrationSource(
   expectedDigest: string,
   framework: "nextjs" | "laravel" = "nextjs",
 ): {
-  files: Array<{ path: string; content: string }>;
+  files: RevisionFile[];
   manifest: Array<{ path: string; sha256: string }>;
 } {
   const files = readDatabaseApplicationSource(value);

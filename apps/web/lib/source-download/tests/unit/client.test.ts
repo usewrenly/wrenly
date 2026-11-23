@@ -74,7 +74,7 @@ test("denied, running and substituted snapshots never fall back to locally visib
 test("oversized response cancels its reader before parsing or exporting", async () => {
   let cancelled = false;
   const body = new ReadableStream<Uint8Array>({
-    start(controller): void { controller.enqueue(new Uint8Array(32 * 1024 * 1024 + 1)); },
+    start(controller): void { controller.enqueue(new Uint8Array(64 * 1024 * 1024 + 1)); },
     cancel(): void { cancelled = true; },
   });
   await expect(loadSourceDownload(id, async () => new Response(body), new AbortController().signal))

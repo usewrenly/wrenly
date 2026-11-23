@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { REVISION_LIMITS } from '@wrenly/source-control/revision'
 import { parseApiEnvironment } from './api-environment'
 
 const BASE = {
@@ -101,6 +102,15 @@ test('Development databases require explicit opt-in and verified preview configu
   expect(() => parseApiEnvironment({ ...BASE, WRENLY_APP_DATABASES_ENABLED: 'true' })).toThrow('WRENLY_PREVIEW_ENABLED')
   expect(parseApiEnvironment({ ...BASE, WRENLY_AUTH_SECRET: 'a'.repeat(64), WRENLY_PREVIEW_ENABLED: 'true', WRENLY_APP_DATABASES_ENABLED: 'true' }).WRENLY_APP_DATABASES_ENABLED).toBe('true')
 })
+
+test('owner import budgets default consistently and cannot exceed runtime ceilings', () => {
+  const defaults=parseApiEnvironment(BASE);
+  expect(defaults.WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(1000);
+  expect(defaults.WRENLY_SOURCE_IMPORT_TEXT_BYTES).toBe(8*1024*1024);
+  expect(parseApiEnvironment({ ...BASE, WRENLY_SOURCE_IMPORT_MAX_FILES:'500' }).WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(500);
+  expect(parseApiEnvironment({ ...BASE, WRENLY_SOURCE_IMPORT_MAX_FILES:'3000' }).WRENLY_SOURCE_IMPORT_MAX_FILES).toBe(3000);
+  for (const value of ['0', String(REVISION_LIMITS.files + 1), 'Infinity', '1.5']) expect(()=>parseApiEnvironment({...BASE,WRENLY_SOURCE_IMPORT_MAX_FILES:value})).toThrow('WRENLY_SOURCE_IMPORT_MAX_FILES');
+});
 
 test('local dictation is optional and enabling it requires an absolute model artifact path', () => {
   expect(parseApiEnvironment(BASE).WRENLY_DICTATION_ENABLED).toBe('false')
