@@ -1,47 +1,38 @@
 ---
 title: Production database evaluation
-description: Prepare the experimental Production services in a test installation and understand what remains unverified.
+description: Configure and test Production app databases and database-backed deployments on a single Linux host.
 ---
 
 <StatusBadge state="development">Experimental · evaluation only</StatusBadge>
 
-A booking app can have test bookings in Development and different bookings after it
-is published. Production uses a separate database; Wrenly never copies Development
-rows or passwords into it automatically.
+Wrenly keeps **Development** and **Production** app data strictly isolated. Test rows, user
+accounts, and migrations created inside a project workspace remain in Development and are never
+copied automatically to Production.
 
-The setup screens, resource worker and publishing adapters are connected behind an
-explicit flag. **The complete Production lifecycle is not release-accepted yet.**
-Use disposable projects and infrastructure while evaluating it. Keep existing users
-on the supported [Development workflow](/docs/guides/app-databases).
+- **Development database:** Ephemeral workspace PostgreSQL database attached to sandbox previews.
+- **Production database:** Separate TLS-verified PostgreSQL 17 server used exclusively by
+  published deployments.
 
-## Prerequisites
+## Single-host evaluation
 
-You need all of the following before enabling the flag:
+You do not need multiple servers or cloud infrastructure to evaluate Production databases end to end.
+The complete topology runs on one Linux host:
 
-- A supported Linux Wrenly installation with local Docker, current migrations and
-  working Development databases, previews and private publishing.
-- A dedicated PostgreSQL 17 server for generated apps, separate from Wrenly's own
-  control database server. It must have a private reachable address, a valid TLS
-  certificate matching its hostname and an independently verified certificate authority.
-- The database management credentials required by the setup check. These belong to
-  the dedicated app server; never enter Wrenly's control-database credentials.
-- A private SSH connection to the same deployment host selected in Coolify, with a
-  verified Ed25519 host key and an account allowed to access its local Docker socket.
-  Docker access is powerful: use a dedicated, reviewed account and protect its key.
-- The exact trusted broker image and Wrenly host helper installed on that deployment
-  host. The host must also be able to pull the private app and HTTP relay images.
+| Component | Role | Single-host location |
+| --- | --- | --- |
+| **Wrenly control DB** | Stores Wrenly accounts, projects, and build logs | Existing PostgreSQL instance on port `65432` |
+| **Production app DB server** | Hosts isolated app databases over TLS | Separate Docker container on port `5434` |
+| **Deployment target** | Coolify host running published containers | Local host (`127.0.0.1`) over SSH |
+| **Runtime broker & ingress** | Enforces Unix-socket DB access and ingress isolation | Local Docker images built from this repository |
 
-Coolify adds service metadata automatically. Leave those generated fields intact;
-Wrenly checks their identity separately from the application image. Adding passwords,
-custom runtime variables or changing image settings causes verification to stop.
-Database credentials use the protected host connection, not Coolify environment fields.
+Because `@wrenly/cli` does not run `sudo`, alter system SSH configuration, or provision external
+TLS database servers, Production database evaluation is configured explicitly below. Use
+disposable test projects while this feature remains **Experimental**.
 
-Public hosted database connectors are not part of this path. Do not substitute a
-public endpoint, disable TLS verification or grant generated code network access.
+## Step 1 · Build local runtime images
 
-## 1. Build the trusted toolchains
-
-Run from the Wrenly repository root on the API host:
+Complete [Set up publishing](/docs/guides/publishing-setup) (Gitea, local registry on `5001`,
+and Coolify) first, then build the required images and `@wrenly/api` from the repository root:
 
 ```bash
 docker build -t wrenly/postgres-runtime:17 packages/sandbox/images/postgres
@@ -51,72 +42,78 @@ docker build -t wrenly/deployment-ingress:1 packages/sandbox/images/deployment-i
 bun run --filter @wrenly/api build
 ```
 
-The separate `:1` and `:2` broker tags serve Development and Production respectively.
-Keep both. Configure the registry using [publishing setup](/docs/guides/publishing-setup),
-then explicitly upload the trusted relay:
+Upload the trusted broker and ingress images to your local private registry:
 
 ```bash
 bun run prepare-production-images --confirm-private-upload
 ```
 
-Copy the three non-secret settings printed by that command into the repository-root
-`.env`. They identify the exact installed broker and relay images and the verified
-private relay reference. Do not invent image IDs or use an unverified mutable tag.
+Copy the three environment variables printed by the command into your root `.env`
+(`WRENLY_PRODUCTION_BROKER_IMAGE_ID`, `WRENLY_DEPLOYMENT_INGRESS_IMAGE_ID`, and
+`WRENLY_DEPLOYMENT_INGRESS_IMAGE`).
 
-## 2. Install the deployment-host helper
+## Step 2 · Install the host runtime helper
 
-The API build creates `apps/api/dist/runtime-host.js`. Transfer this file to the
-reviewed deployment host through your existing authenticated SSH connection. On that
-host, install the same Bun runtime supported by your Wrenly checkout and confirm
-`docker --host unix:///var/run/docker.sock info` works for the SSH account.
-
-Install the bundle in a protected location:
+Wrenly executes read-only Docker inspection and socket lifecycle operations on the deployment host
+through a dedicated helper binary. Install the built bundle into `/usr/local/lib/wrenly`:
 
 ```bash
 sudo install -d -m 0755 /usr/local/lib/wrenly
-sudo install -m 0644 runtime-host.js /usr/local/lib/wrenly/runtime-host.js
+sudo install -m 0644 apps/api/dist/runtime-host.js /usr/local/lib/wrenly/runtime-host.js
 ```
 
-Create `/usr/local/bin/wrenly-runtime-host` with this content. Replace
-`/ABSOLUTE/PATH/TO/bun` with the actual result of `command -v bun` on that host;
-remote SSH commands may not load your interactive shell's PATH.
-
-```sh
-#!/bin/sh
-exec /ABSOLUTE/PATH/TO/bun --no-env-file /usr/local/lib/wrenly/runtime-host.js
-```
-
-Make the wrapper executable and keep both files owned by the account responsible
-for installing trusted server software:
+Inspect `command -v bun` and create `/usr/local/bin/wrenly-runtime-host` pointing to your Bun
+binary (replace `/home/YOUR_USER/.bun/bin/bun` with the output of `command -v bun`):
 
 ```bash
+sudo tee /usr/local/bin/wrenly-runtime-host >/dev/null <<'EOF'
+#!/bin/sh
+exec /home/YOUR_USER/.bun/bin/bun --no-env-file /usr/local/lib/wrenly/runtime-host.js
+EOF
 sudo chmod 0755 /usr/local/bin/wrenly-runtime-host
 sudo chown root:root /usr/local/bin/wrenly-runtime-host /usr/local/lib/wrenly/runtime-host.js
 ```
 
-Do not make the helper writable by generated apps. It accepts bounded Wrenly requests
-on standard input; running it with no request is not a connection check.
+> If deploying to a separate remote host instead of `127.0.0.1`, copy `runtime-host.js`, load
+> `docker save wrenly/database-socket:2` onto that host, and confirm its `docker image inspect`
+> ID matches `WRENLY_PRODUCTION_BROKER_IMAGE_ID`.
 
-Transfer the exact locally built Production broker image as well:
+## Step 3 · Start an isolated TLS PostgreSQL 17 server
+
+Production app databases require a dedicated PostgreSQL 17 server with TLS enabled (never
+Wrenly's control database). For single-host evaluation, start an isolated container on port `5434`
+with a self-signed certificate:
 
 ```bash
-docker save wrenly/database-socket:2 -o production-broker.tar
+mkdir -p .local/prod-pg/certs
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout .local/prod-pg/certs/server.key \
+  -out .local/prod-pg/certs/server.crt \
+  -subj "/CN=127.0.0.1" \
+  -addext "subjectAltName=IP:127.0.0.1,DNS:localhost"
+chmod 600 .local/prod-pg/certs/server.key
+chmod 644 .local/prod-pg/certs/server.crt
+
+docker run -d --name wrenly-eval-app-pg \
+  --restart unless-stopped \
+  -p 127.0.0.1:5434:5432 \
+  -e POSTGRES_USER=wrenly_admin \
+  -e POSTGRES_PASSWORD=EVAL_ADMIN_PASS_CHANGE_ME \
+  -e POSTGRES_DB=postgres \
+  -v "$PWD/.local/prod-pg/certs:/certs:ro" \
+  postgres:17 \
+  -c ssl=on \
+  -c ssl_cert_file=/certs/server.crt \
+  -c ssl_key_file=/certs/server.key
 ```
 
-Copy that archive to the reviewed deployment host, then run there:
+> If you already run a separate private PostgreSQL 17 instance with TLS, skip Step 3 and supply
+> its host, port, admin credentials, and CA certificate in Step 5. Never target Wrenly's own
+> control database.
 
-```bash
-docker load -i production-broker.tar
-docker image inspect wrenly/database-socket:2 --format '{{.Id}}'
-```
+## Step 4 · Enable flags in `.env`
 
-Its image ID must match `WRENLY_PRODUCTION_BROKER_IMAGE_ID` on the API host. Rebuilding
-independently is not proof that the image is identical. The archive contains trusted
-toolchain code, not project database passwords. Remove the transfer copy when done.
-
-## 3. Enable and verify the connections
-
-Keep the three image settings from step 1 and enable these root `.env` settings:
+Add these flags to your root `.env` and restart Wrenly (`bun dev` or `@wrenly/cli start`):
 
 ```dotenv
 WRENLY_PREVIEW_ENABLED=true
@@ -125,153 +122,42 @@ WRENLY_PUBLISHING_ENABLED=true
 WRENLY_PRODUCTION_DATABASES_ENABLED=true
 ```
 
-Restart the API. Missing prerequisites stop startup with an error; they are not
-silently skipped. Sign in as the instance owner and open **Settings → Connections**.
-Use **Production database server** to review the private PostgreSQL connection and
-its TLS certificate. Review the deployment-host connection separately, including its
-SSH host key and the selected Coolify server. Wait for verified results.
+## Step 5 · Register the server and host in Settings → Connections
 
-A verified server connection is not yet a project database. In a disposable project,
-open **Database → Production** and explicitly request setup. Wrenly creates the
-project's database and restricted accounts through saved work. After a lost response,
-check the same saved request instead of submitting another setup action.
+Sign in as the instance owner and open **Settings → Connections**:
 
-## 4. Evaluate with test data
+1. **Production database server:**
+   - **Host:** `127.0.0.1` (or your private PostgreSQL hostname)
+   - **Port:** `5434`
+   - **Admin credentials:** `wrenly_admin` and the password set in Step 3
+   - **CA certificate:** contents of `.local/prod-pg/certs/server.crt`
+   - Click **Save & verify** and confirm verified status.
+2. **Deployment host (Coolify target):**
+   - Select the matching Coolify server (`localhost`)
+   - **SSH host:** `127.0.0.1`, **SSH user:** local Linux account with Docker permissions
+   - **Ed25519 host key** (`ssh-keyscan -t ed25519 127.0.0.1`) and an authorized private SSH key
+   - Click **Save & verify** and confirm verified status.
 
-1. Create the Production resource and wait for Ready. Confirm another project has
-   its own resource and cannot browse this project's rows.
-2. Use a successful database-backed saved revision, create a verified backup and
-   review its migrations before confirming changes to saved data.
-3. Inspect schema and test rows through the read-only viewer. There is no SQL console.
-4. Stop and start only that project's database. Its records must remain; the shared
-   PostgreSQL server and unrelated projects must stay available.
-5. Evaluate publishing only with the exact reviewed resource, host and image settings.
-   Verify the deployed app's public URL and a real create/read/update operation.
-   A green Coolify status alone does not establish that the correct app is reachable.
+## Step 6 · Verify end-to-end with an application
 
-Database changes still need review. This is intentional protection for saved data,
-not an instruction to manually create tables or copy passwords into code.
+1. Open a working database-backed Next.js or Laravel project in Wrenly.
+2. Open **Database → Production** and click **Create Production database**. Wait for **Ready**.
+3. Create an initial backup when prompted, review the application's migrations, and apply them
+   to Production.
+4. Confirm in **Database → Production → Browse data** that Production starts empty and contains no
+   Development rows.
+5. Click **Publish**, wait for deployment verification, open the live application URL, create or
+   modify a record, and confirm the persisted row appears in **Database → Production → Browse data**.
 
-## What remains to be accepted
+## Runtime checks and recovery
 
-Native disposable tests cover both framework runtimes, real database reads/writes,
-explicit app stop/start, resource operations and selected recovery paths. They do
-not establish all of the following:
-
-- Actual Coolify private image pulling, composition and public routing together.
-- Automatic recovery after the deployment host or database broker reboots.
-- Final combined acceptance of publishing, maintenance and recovery on the isolated deployment.
-
-Until these pass, retain the Experimental label. Do not configure automatic container
-restarts as a workaround: runtime credentials are deliberately delivered through a
-verified handoff rather than persisted in Docker environment variables.
-
-An interrupted final route check has a narrow [read-only reconciliation command](/docs/reference/publishing-operations#verify-an-interrupted-production-database-publication).
-It does not recover an earlier uncertain service creation, credential delivery or SQL
-operation. Keep those blockers and saved evidence intact; do not replay unknown work.
-
-## Restart verification and its limits
-
-A published app needs its database connection even after its owner's browser closes.
-Wrenly uses a separately confirmed maintenance permission and an
-independent restart journal. It can inspect the original broker and app, restart
-those exact stopped containers and verify the original published revision. It refuses
-replacement containers and never resends credentials to an already-running process.
-
-Native acceptance covers both Next.js and Laravel with private TLS PostgreSQL:
-create a record, update it, stop the exact app and broker, restore them and read the
-same record. Runtime passwords stay out of Docker configuration. This proves the
-framework and host-helper path; it does not complete real Coolify acceptance.
-
-## Choose whether Wrenly may maintain a publication
-
-Production evaluation includes optional maintenance controls. Permission starts off
-for every publication. After publishing a database-backed app successfully:
-
-1. Open **Projects → Deployments**, then **Runtime maintenance** for that publication.
-   Only the project owner sees this control.
-2. Read the saved permission and latest check. Choose **Enable maintenance** and
-   confirm. The decision applies only to that exact published revision and its saved
-   containers, images, database and deployment host.
-3. Wrenly checks enabled publications in bounded background batches, about once a
-   minute for a small installation. Closing the browser or signing out does not stop
-   the checks. Suspension, archive, changed infrastructure or unresolved work blocks them.
-4. To stop automatic checks, choose **Pause maintenance** and confirm. Resume requires
-   another owner confirmation. **Revoke permission** is final for that publication;
-   a later publication needs its own permission. These permission changes leave the
-   currently running app untouched.
-
-If a response is lost, keep the pending decision. **Check saved decision** looks up
-its receipt without sending it again. **Retry same decision** preserves its original
-request identifier and reviewed values. A missing receipt does not prove nothing saved.
-
-A check that needs review is not retried automatically. Preserve the saved attempt;
-repeated publishing, credential delivery or SQL execution cannot safely clear it.
-Do not promise unattended recovery from every failure: unknown effects require an owner review, and disposable real Coolify acceptance remains a release gate.
-
-Keep Production evaluation opt-in and retain the Experimental label. Apply all
-checked-in migrations first; 0047 and 0048 add permission receipts and restart attempts.
-
-
-## Recover a failed disposable rehearsal
-
-Before changing Production tables, Wrenly tries the change on a separate disposable
-copy of a verified backup. If that rehearsal fails, the original migration remains
-failed; recovery does not turn it into a successful migration.
-
-When **Manage resource** offers **Resolve rehearsal**, review and confirm that action.
-Wrenly removes only the rehearsal's temporary resources, then checks the original
-Production database over its saved private TLS connection. Its roles, schema and
-migration history must still match the saved state before the blocker is released.
-It does not rerun SQL, restore over your data or start a stopped Production database.
-
-This action appears only when the saved evidence proves the failure happened on the
-disposable copy before any persistent migration began. Missing evidence, an unreachable
-server or changed schema keeps recovery blocked. Preserve that evidence for inspection;
-submitting the old migration again cannot establish that it is safe.
-
-
-## Recover interrupted Production backup or migration cleanup
-
-A lost reply can leave a temporary database client behind even when the database
-server has finished. Wrenly keeps that action blocked until it can independently
-check what happened.
-
-1. Open the project’s **Database → Production → Manage resource**.
-2. Choose **Resolve Production operation**, then review the saved operation.
-3. Confirm the recovery. Wrenly removes only that operation’s verified temporary
-   clients and disposable resources, closes its socket and ends its scoped migration
-   sessions. It never replays the migration or captures another backup.
-4. Wrenly checks the original cluster, project roles, schema and native migration
-   history over the saved private TLS connection. A migration becomes complete only
-   if that history matches its verified rehearsal. Partial or different results stay
-   blocked. An interrupted backup remains failed; create a fresh backup only after
-   recovery completes.
-
-Keep a pending recovery request after a lost response and check its saved result.
-Cleanup acknowledgement alone does not establish that the original SQL succeeded.
-No recovery action restores a backup over your saved data.
-
-## Stop or inspect the published runtime
-
-Open **Projects → Deployments → Runtime maintenance** for the successful publication.
-Only its current project owner can use these actions.
-
-- **Stop published app** pauses maintenance before stopping the exact app and
-  database-connection broker. It keeps the containers, storage and database records.
-  It does not delete the app or revoke permission permanently.
-- **Inspect saved runtime** checks the original running containers and published
-  revision without starting anything or resending database credentials. Use this
-  after an interrupted restart. If only part of the runtime is running, review and
-  confirm Stop to establish a stopped outcome instead.
-
-After a lost response, use **Check saved action**. Retrying the same saved action
-looks up its receipt rather than repeating an uncertain Stop. Preserve an interrupted
-result, return to the controls and explicitly review a new inspection or Stop.
-An active worker, changed resource, unknown container or unavailable host keeps the
-blocker; changing permission does not dismiss it.
-
-To start the preserved runtime again, separately enable maintenance after all
-unfinished work has been resolved. Revoked permission cannot be enabled again for
-that publication. Install the matching current deployment-host helper before using
-new runtime actions; an older helper refuses commands it does not recognize.
+- **Automatic runtime checks (`Deployments → Runtime maintenance`):** Disabled by default.
+  Enabling **Enable maintenance** on a live deployment periodically verifies the running
+  application and database broker containers without resending credentials. You can **Pause**,
+  **Stop published app**, **Inspect saved runtime**, or **Revoke permission** at any time.
+- **Interrupted rehearsal or network timeout:** Open **Database → Production → Manage resource**
+  and select **Resolve rehearsal**, **Resolve Production operation**, or **Check saved action**.
+  Wrenly removes stale temporary containers, verifies existing Production tables over TLS, and
+  avoids replaying unconfirmed SQL.
+- **Database schema version:** Ensure `bun run db:migrate` has been run in `packages/db`
+  (migrations `0048+` are required for Production runtime maintenance).
