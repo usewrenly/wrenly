@@ -19,6 +19,8 @@ export const InstallationState = z
     previews: z.boolean(),
     laravel: z.boolean(),
     databases: z.boolean().default(false),
+    inspection: z.boolean().default(false),
+    dictation: z.boolean().default(false),
     phase: z.enum(["prepared", "installing", "ready", "stopped", "attention"]),
     steps: z.record(
       z.string(),

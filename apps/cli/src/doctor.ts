@@ -174,6 +174,12 @@ export async function inspectInstallation(
       options.databases
         ? "Development app databases: enabled with previews. Builds trusted PostgreSQL and database-socket images; projects still require owner approval before creating storage or applying migrations. Production remains off."
         : "Development app databases: off. Add --databases to prepare their toolchains and isolated previews.",
+      options.inspection
+        ? "Official framework inspection: enabled. Prepares the Laravel toolchain and builds isolated Laravel Boost and Next.js DevTools MCP images."
+        : "Official framework inspection: off. Add --inspection to build Laravel Boost and Next.js DevTools MCP images.",
+      options.dictation
+        ? "Local voice dictation: enabled. Downloads checksum-verified Whisper model weights and builds the isolated transcription image."
+        : "Local voice dictation: off. Add --dictation to download verified Whisper weights and build the isolated transcription image.",
       "First-owner credentials will be chosen in protected browser setup.",
       "This command only checks and plans. It downloads nothing, writes no configuration and starts no services. Run install to apply a reviewed plan.",
     ];

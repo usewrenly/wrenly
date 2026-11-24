@@ -119,3 +119,35 @@ test("databases option enables preview checks and explains the development workf
     ),
   ).toBe(2);
 });
+test("inspection and dictation options update the installation plan and reject non-install commands", async () => {
+  let output = "";
+  expect(
+    await runCli(
+      [
+        "plan",
+        "--json",
+        "--inspection",
+        "--dictation",
+        "--directory",
+        "/tmp/new-wrenly",
+      ],
+      (text) => (output += text),
+      probes(),
+    ),
+  ).toBe(0);
+  const report: Report = JSON.parse(output);
+  expect(report.ready).toBe(true);
+  expect(report.checks).toHaveLength(12);
+  expect(report.plan?.join(" ")).toContain(
+    "Official framework inspection: enabled.",
+  );
+  expect(report.plan?.join(" ")).toContain("Local voice dictation: enabled.");
+  for (const args of [
+    ["status", "--inspection"],
+    ["status", "--dictation"],
+    ["start", "--inspection"],
+    ["stop", "--dictation"],
+  ]) {
+    expect(await runCli(args, () => {}, probes())).toBe(2);
+  }
+});
