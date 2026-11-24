@@ -92,7 +92,10 @@ export async function getProjectSharing(
       .from(projectModels)
       .innerJoin(
         providerConnections,
-        eq(providerConnections.id, projectModels.connectionId),
+        and(
+          eq(providerConnections.id, projectModels.connectionId),
+          isNull(providerConnections.deletedAt),
+        ),
       )
       .where(eq(projectModels.projectId, projectId));
     const common = {

@@ -45,7 +45,7 @@ import { listEnvironmentProviders, resolveEnvironmentProvider } from './modules/
 import { resolveInferenceSelection } from './modules/models/selection/saved-providers'
 import { createProviderConfigurationHandlers } from './modules/models/configuration/provider-configuration-http'
 import { createProviderConfigurationService } from './modules/models/configuration/provider-configuration-service'
-import { assertProviderConfigurationOwner, listProviderConnections, getInstanceModelDefault, createProviderConnection, updateProviderConnection, saveInstanceModelDefault, resolveSavedProviderConnection } from './modules/models/configuration/provider-connection-store'
+import { assertProviderConfigurationOwner, listProviderConnections, getInstanceModelDefault, createProviderConnection, updateProviderConnection, deleteProviderConnection, saveInstanceModelDefault, resolveSavedProviderConnection } from './modules/models/configuration/provider-connection-store'
 import { resolveProviderDestination } from './modules/models/transport/provider-destination'
 import { readProviderModelList } from './modules/models/transport/provider-probe'
 import { createCatalogHandlers } from './modules/models/catalog/provider-catalog-http'
@@ -111,7 +111,8 @@ export function createProductionApp(
     owner: actorId => assertProviderConfigurationOwner(db, actorId), catalog: () => getAvailableCatalog(db),
     list: actorId => listProviderConnections(db, actorId), getDefault: actorId => getInstanceModelDefault(db, actorId),
     create: (actorId, input) => createProviderConnection(db, actorId, input, environment.WRENLY_DATA_DIR),
-    update: (actorId, input) => updateProviderConnection(db, actorId, input, environment.WRENLY_DATA_DIR),
+    update: (actorId, input) => updateProviderConnection(db, actorId, input, environment.WRENLY_DATA_DIR, resolveProviderDestination),
+    remove: (actorId, input) => deleteProviderConnection(db, actorId, input),
     saveDefault: (actorId, input) => saveInstanceModelDefault(db, actorId, input),
     resolve: id => resolveSavedProviderConnection(db, id, environment.WRENLY_DATA_DIR),
     destination: resolveProviderDestination, probe: readProviderModelList,

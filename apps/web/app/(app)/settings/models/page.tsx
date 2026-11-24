@@ -299,9 +299,14 @@ export default function ModelPreferencesPage(): React.JSX.Element {
                 </span>
                 <strong>{option.label}</strong>
                 <span className="models-choice-id">{option.id}</span>
-                <span className="models-choice-footer">
-                  <span>{option.kind === "local" ? "Local" : "Cloud"}</span>
-                  <span className="models-choice-check">{isSelected && <CheckIcon size={13} aria-hidden="true" />}<span className="sr-only">{isSelected ? "Selected" : "Use model"}</span></span>
+                <span className="models-choice-kind">
+                  {option.kind === "local" ? "Local" : "Cloud"}
+                </span>
+                <span className="models-choice-check">
+                  {isSelected && <CheckIcon size={13} aria-hidden="true" />}
+                  <span className="sr-only">
+                    {isSelected ? "Selected" : "Use model"}
+                  </span>
                 </span>
               </button>
             );

@@ -72,6 +72,10 @@ function fixture(probeError?: ProviderProbeError) {
     update: async () => {
       writes++;
     },
+    remove: async () => {
+      writes++;
+      return { deleted: true as const, clearedInstanceDefault: true };
+    },
     saveDefault: async () => {
       writes++;
     },
@@ -109,6 +113,15 @@ test("owner authorization precedes destination checks, decryption and writes", a
     "Only the owner",
   );
   await expect(f.service.probe("member", { id: f.savedId })).rejects.toThrow(
+    "Only the owner",
+  );
+  await expect(f.service.update("member", { id: f.savedId, label: "New" })).rejects.toThrow(
+    "Only the owner",
+  );
+  await expect(f.service.update("member", { id: f.savedId, endpoint: "https://provider.example/v2" })).rejects.toThrow(
+    "Only the owner",
+  );
+  await expect(f.service.remove("member", { id: f.savedId })).rejects.toThrow(
     "Only the owner",
   );
   await expect(f.service.saveDefault("member", {})).rejects.toThrow(
@@ -247,4 +260,44 @@ test("legacy metadata refuses credential-bearing URLs instead of returning them 
       apiKey: "secret",
     }),
   ).toThrow("credential-free");
+});
+
+test("connection deletion requires session, trusted origin and owner before mutating", async () => {
+  const f = fixture();
+  let actor: string | null = null;
+  const handlers = createProviderConfigurationHandlers({
+    webUrl: "http://localhost:3000",
+    session: async () => actor,
+    service: f.service,
+  });
+  const deleteRequest = (
+    body = JSON.stringify({ id: f.savedId }),
+    origin = "http://localhost:3000",
+  ): Request =>
+    new Request("http://localhost:3002/api/models/connections", {
+      method: "DELETE",
+      headers: { Origin: origin, "Content-Type": "application/json" },
+      body,
+    });
+  expect((await handlers.remove(deleteRequest())).status).toBe(401);
+  actor = "owner";
+  expect(
+    (await handlers.remove(deleteRequest(JSON.stringify({ id: f.savedId }), "http://attacker.test"))).status,
+  ).toBe(403);
+  expect(
+    (await handlers.remove(deleteRequest("x".repeat(16 * 1024 + 1)))).status,
+  ).toBe(400);
+  expect((await handlers.remove(deleteRequest("{"))).status).toBe(400);
+  actor = "member";
+  expect((await handlers.remove(deleteRequest())).status).toBe(403);
+  expect(f.counters().writes).toBe(0);
+  actor = "owner";
+  const removed = await handlers.remove(deleteRequest());
+  expect(removed.status).toBe(200);
+  expect(await removed.json()).toEqual({
+    deleted: true,
+    clearedInstanceDefault: true,
+  });
+  expect(removed.headers.get("cache-control")).toContain("no-store");
+  expect(f.counters().writes).toBe(1);
 });

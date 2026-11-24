@@ -20,7 +20,8 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import { migrate } from 'drizzle-orm/postgres-js/migrator'
 import { eq } from 'drizzle-orm'
 import * as schema from '../../../src/schema'
-import { createProviderConnection, updateProviderConnection, listProviderConnections, saveInstanceModelDefault, resolveSavedProviderConnection, assertProviderConfigurationOwner, getInstanceModelDefault } from '../../../../../apps/api/src/modules/models/configuration/provider-connection-store'
+import { discoverConfiguredModels } from '../../../../../apps/api/src/modules/models/discovery/configured-discovery'
+import { createProviderConnection, updateProviderConnection, deleteProviderConnection, listProviderConnections, saveInstanceModelDefault, resolveSavedProviderConnection, assertProviderConfigurationOwner, getInstanceModelDefault } from '../../../../../apps/api/src/modules/models/configuration/provider-connection-store'
 const url = process.env.WRENLY_TEST_PROVIDER_DATABASE_URL
 if (url) { const parsed = new URL(url); if (!['localhost', '127.0.0.1'].includes(parsed.hostname) || parsed.pathname !== '/wrenly_provider_test') throw new Error('Use only a disposable local wrenly_provider_test database.') }
 const integration = url ? describe : describe.skip
@@ -62,13 +63,27 @@ integration('encrypted provider connection persistence', () => {
     const metadata = await listProviderConnections(database, 'owner')
     expect(metadata[0]?.tokenConfigured).toBe(true); expect(JSON.stringify(metadata)).not.toContain('ciphertext'); expect(JSON.stringify(metadata)).not.toContain(input.token)
     await expect(listProviderConnections(database, 'member')).rejects.toThrow('Only the instance owner')
-    await expect(updateProviderConnection(database, 'owner', { id: saved.id, endpoint: 'https://changed.example/v1' }, path)).rejects.toThrow('new connection')
+    await expect(updateProviderConnection(database, 'owner', { id: saved.id, protocol: 'ollama' }, path)).rejects.toThrow('protocol or network scope')
+    await expect(updateProviderConnection(database, 'owner', { id: saved.id, endpoint: 'https://changed.example/v1' }, path)).rejects.toThrow('different host')
+    await updateProviderConnection(database, 'owner', { id: saved.id, endpoint: 'https://provider.example/v2' }, path)
+    const afterSameHost = await resolveSavedProviderConnection(database, saved.id, path)
+    expect(afterSameHost.endpoint).toBe('https://provider.example/v2')
+    expect(afterSameHost.version).not.toBe(saved.version)
+    expect(afterSameHost.token).toBe(input.token)
+    await updateProviderConnection(database, 'owner', { id: saved.id, endpoint: 'https://changed.example/v1', token: 'retargeted-token' }, path)
+    const afterCrossHost = await resolveSavedProviderConnection(database, saved.id, path)
+    expect(afterCrossHost.endpoint).toBe('https://changed.example/v1')
+    expect(afterCrossHost.version).not.toBe(afterSameHost.version)
+    expect(afterCrossHost.token).toBe('retargeted-token')
     await updateProviderConnection(database, 'owner', { id: saved.id, token: '', label: 'Renamed' }, path)
-    expect((await resolveSavedProviderConnection(database, saved.id, path)).token).toBe(input.token)
+    expect((await resolveSavedProviderConnection(database, saved.id, path)).token).toBe('retargeted-token')
     await updateProviderConnection(database, 'owner', { id: saved.id, token: 'replacement-token' }, path)
     const resolved = await resolveSavedProviderConnection(database, saved.id, path)
-    expect(resolved.token).toBe('replacement-token'); expect(resolved.version).toBe(saved.version); expect(resolved.endpoint).toBe(input.endpoint)
-    expect(JSON.stringify(await database.select().from(schema.providerConnectionAudit))).not.toContain('replacement-token')
+    expect(resolved.token).toBe('replacement-token'); expect(resolved.version).toBe(afterCrossHost.version); expect(resolved.endpoint).toBe('https://changed.example/v1')
+    const audits = await database.select().from(schema.providerConnectionAudit)
+    expect(audits.map((entry) => entry.action)).toContain('endpoint_updated')
+    expect(JSON.stringify(audits)).not.toContain('replacement-token')
+    expect(JSON.stringify(audits)).not.toContain('retargeted-token')
   })
   test('defaults require owner and enabled connections; disabling never silently reroutes lookup', async () => {
     const path = await fixture(), saved = await createProviderConnection(database, 'owner', input, path)
@@ -122,6 +137,7 @@ integration('encrypted provider connection persistence', () => {
       const service = createProviderConfigurationService({ owner: actorId => assertProviderConfigurationOwner(database, actorId), catalog: () => getAvailableCatalog(database),
         list: actorId => listProviderConnections(database, actorId), getDefault: actorId => getInstanceModelDefault(database, actorId),
         create: (actorId, input) => createProviderConnection(database, actorId, input, path), update: (actorId, input) => updateProviderConnection(database, actorId, input, path),
+        remove: (actorId, input) => deleteProviderConnection(database, actorId, input),
         saveDefault: (actorId, input) => saveInstanceModelDefault(database, actorId, input), resolve: id => resolveSavedProviderConnection(database, id, path), destination: resolveProviderDestination, probe: readProviderModelList })
       let actor = 'owner'
       const handlers = createProviderConfigurationHandlers({ webUrl: 'http://localhost:3000', session: async () => actor, service })
@@ -229,6 +245,88 @@ integration('encrypted provider connection persistence', () => {
     expect(JSON.stringify(member)).not.toContain('summary-fixture-token'); expect(JSON.stringify(member)).not.toContain('localhost'); expect(JSON.stringify(member)).not.toContain('ownerId')
     await updateProviderConnection(database, 'owner', { id: saved.id, enabled: false }, path)
     expect((await getSetupSummary(database, 'member', configuration)).defaultModel.state).toBe('disabled')
+  })
+
+  test('owner deletion blocks active work or bound shared projects, wipes credentials, preserves audit and allows environment re-import', async () => {
+    const path = await fixture()
+    const requestId = crypto.randomUUID()
+    const saved = await createProviderConnection(database, 'owner', { ...input, requestId, envSourceId: 'openai' }, path)
+    await saveInstanceModelDefault(database, 'owner', { connectionId: saved.id, modelId: 'gpt-fixture' })
+
+    await expect(deleteProviderConnection(database, 'member', { id: saved.id })).rejects.toThrow('Only the instance owner')
+    await expect(deleteProviderConnection(database, 'owner', { id: crypto.randomUUID() })).rejects.toThrow('not found')
+
+    const projectId = crypto.randomUUID()
+    await database.insert(schema.projects).values({ id: projectId, userId: 'owner', name: 'Secret Project Name' })
+    const buildId = crypto.randomUUID()
+    await database.insert(schema.builds).values({ id: buildId, projectId, userId: 'owner', prompt: 'Fixture build', status: 'building' })
+    await database.insert(schema.buildJobs).values({
+      buildId,
+      projectId,
+      userId: 'owner',
+      idempotencyKey: crypto.randomUUID(),
+      requestIdentity: 'fixture',
+      status: 'running',
+      input: { prompt: 'Fixture build', stack: 'nextjs', model: 'gpt-fixture', provider: savedProviderIdentity(saved.id, saved.version), previousFiles: [], previousErrors: [] },
+    })
+    await expect(deleteProviderConnection(database, 'owner', { id: saved.id })).rejects.toThrow('active conversations and builds')
+    await expect(updateProviderConnection(database, 'owner', { id: saved.id, endpoint: 'https://provider.example/v2' }, path)).rejects.toThrow('active conversations and builds')
+    await database.update(schema.buildJobs).set({ status: 'success' }).where(eq(schema.buildJobs.buildId, buildId))
+    await database.update(schema.builds).set({ status: 'success' }).where(eq(schema.builds.id, buildId))
+
+    await database.insert(schema.conversations).values({ id: projectId, projectId })
+    const turnId = crypto.randomUUID()
+    await database.insert(schema.conversationTurns).values({
+      id: turnId,
+      conversationId: projectId,
+      actorId: 'owner',
+      idempotencyKey: crypto.randomUUID(),
+      requestIdentity: 'turn',
+      mode: 'plan',
+      prompt: 'Plan',
+      model: 'gpt-fixture',
+      provider: savedProviderIdentity(saved.id, saved.version),
+      status: 'queued',
+    })
+    await expect(deleteProviderConnection(database, 'owner', { id: saved.id })).rejects.toThrow('active conversations and builds')
+    await database.update(schema.conversationTurns).set({ status: 'completed' }).where(eq(schema.conversationTurns.id, turnId))
+
+    await database.insert(schema.projectModels).values({ projectId, connectionId: saved.id, modelId: 'gpt-fixture' })
+    expect((await listProviderConnections(database, 'owner'))[0]?.boundProjectCount).toBe(1)
+    let boundMessage = ''
+    try {
+      await deleteProviderConnection(database, 'owner', { id: saved.id })
+    } catch (error) {
+      boundMessage = error instanceof Error ? error.message : String(error)
+    }
+    expect(boundMessage).toContain('1 project')
+    expect(boundMessage).not.toContain('Secret Project Name')
+    await database.delete(schema.projectModels).where(eq(schema.projectModels.projectId, projectId))
+
+    const removed = await deleteProviderConnection(database, 'owner', { id: saved.id })
+    expect(removed).toEqual({ deleted: true, clearedInstanceDefault: true })
+    await expect(deleteProviderConnection(database, 'owner', { id: saved.id })).rejects.toThrow('not found')
+
+    expect(await listProviderConnections(database, 'owner')).toHaveLength(0)
+    expect(await getInstanceModelDefault(database, 'owner')).toBeNull()
+    await expect(resolveSavedProviderConnection(database, saved.id, path)).rejects.toThrow('unavailable')
+    await expect(resolveExecutionProvider(database, savedProviderIdentity(saved.id, saved.version), path)).rejects.toThrow('no fallback')
+    expect((await getSetupSummary(database, 'member', { previewEnabled: true, publishingEnabled: false })).defaultModel.state).toBe('missing')
+    expect((await discoverConfiguredModels(database, path)).providers.some((p) => p.id.includes(saved.id))).toBe(false)
+
+    const [tombstone] = await database.select().from(schema.providerConnections).where(eq(schema.providerConnections.id, saved.id))
+    expect(tombstone?.deletedAt).toBeTruthy()
+    expect(tombstone?.enabled).toBe(false)
+    expect(tombstone?.credential).toBeNull()
+    expect(tombstone?.envSourceId).toBeNull()
+
+    const audits = await database.select().from(schema.providerConnectionAudit).where(eq(schema.providerConnectionAudit.connectionId, saved.id))
+    expect(audits.map((row) => row.action)).toContain('deleted')
+
+    await expect(createProviderConnection(database, 'owner', { ...input, requestId }, path)).rejects.toThrow('removed provider connection')
+    const reimported = await createProviderConnection(database, 'owner', { ...input, requestId: crypto.randomUUID(), envSourceId: 'openai' }, path)
+    expect(reimported.id).not.toBe(saved.id)
+    expect(await listProviderConnections(database, 'owner')).toHaveLength(1)
   })
 
 })

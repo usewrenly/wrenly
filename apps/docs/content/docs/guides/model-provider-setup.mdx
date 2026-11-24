@@ -70,15 +70,15 @@ The owner can explicitly refresh metadata without retargeting saved credentials.
 
 ## Manage a saved connection
 
-Replace its token or disable/re-enable it from **Providers**. Empty token edits retain
-the saved token. Destination changes require a new connection so queued work cannot be
-retargeted. Tokens clear from successful form saves and are not returned to the browser.
-Members use enabled connections without viewing credentials; hosted usage consumes the
-configured provider account's quota.
+Saved connections under **02 · Choose a model** can be searched, filtered by status or scope (`All`, `Local`, `Hosted`, `Disabled`), and viewed as **Cards** or a compact **Table**.
 
-Admitted work retains its connection version/model. Token rotation supplies a replacement
-credential for that same connection. Disabled connections stop execution rather than
-selecting a replacement automatically.
+Select **Models** to check served or catalog models and set the instance default, **Edit** to update the display name, endpoint URL, replacement token, enabled state, or image-input models in one dialog, **Disable / Enable** directly, or **Remove** to delete an unused connection.
+
+Fixing a typo on the same host (for example changing `/v2` to `/v1`) keeps your saved encrypted token intact while rotating the connection's version so queued work keeps its original endpoint. Moving a connection to a different host requires re-entering the API token so saved credentials are never sent to an unreviewed host. Protocol and network-scope changes still require creating a new connection, and endpoint edits are blocked while active conversations or builds use that connection. Tokens clear from successful form saves and are not returned to the browser. Members use enabled connections without viewing credentials; hosted usage consumes the configured provider account's quota.
+
+Removing a connection permanently erases its saved encrypted credentials while preserving an audit record of the removal. If the removed connection held the instance default, the default is cleared for new requests. Removal is blocked while active conversations or builds depend on the connection, or while shared projects remain assigned to it in **Project Settings**. Removing an imported environment connection clears its import binding; if those environment variables stay configured on the server, the read-only environment compatibility entry will reappear.
+
+Admitted work retains its connection version/model. Token rotation supplies a replacement credential for that same connection. Disabled connections stop execution rather than selecting a replacement automatically.
 
 ## Import existing server configuration
 

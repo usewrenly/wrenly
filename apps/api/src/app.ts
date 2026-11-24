@@ -312,6 +312,7 @@ export function createApp(
     app.get('/api/models/connections', c => configuration.list(c.req.raw))
     app.post('/api/models/connections', c => configuration.create(c.req.raw))
     app.patch('/api/models/connections', c => configuration.update(c.req.raw))
+    app.delete('/api/models/connections', c => configuration.remove(c.req.raw))
     app.post('/api/models/connections/probe', c => configuration.probe(c.req.raw))
     app.put('/api/models/default', c => configuration.saveDefault(c.req.raw))
   }

@@ -3,7 +3,7 @@
  * Checks only saved/environment services under bounded concurrency/deadline, with safe unavailable states.
  * Registry entries are not installed models; discovery never changes defaults or redirects saved credentials.
  */
-import { eq } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import type { db } from "@wrenly/db";
 import {
   providerConnections,
@@ -57,6 +57,7 @@ export async function discoverConfiguredModels(
         enabled: providerConnections.enabled,
       })
       .from(providerConnections)
+      .where(isNull(providerConnections.deletedAt))
       .limit(MAX_CONNECTIONS);
     const suppressed = new Set(
       saved

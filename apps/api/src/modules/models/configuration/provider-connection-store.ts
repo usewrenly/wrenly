@@ -5,7 +5,7 @@
  * Tokens decrypt only for server execution/probes and cannot be transplanted across connections.
  */
 import { timingSafeEqual } from "node:crypto";
-import { and, count, eq, isNotNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { db } from "@wrenly/db";
 import {
@@ -13,6 +13,11 @@ import {
   providerConnections,
   providerConnectionAudit,
   instanceModelDefault,
+  conversationQueue,
+  buildQueue,
+  buildJobs,
+  conversationTurns,
+  projectModels,
 } from "../../../../../../packages/db/src/schema";
 import {
   loadProviderKey,
@@ -20,8 +25,13 @@ import {
   decryptProviderToken,
   ProviderKeyError,
 } from "../credentials/provider-secrets";
+import { ProviderDestinationError } from "../transport/provider-destination";
 import { logger } from "../../../lib/logger";
 const MAX_CONNECTIONS = 20;
+const QUEUE_LOCK_ID = 1;
+const MAX_ERROR_CAUSE_DEPTH = 6;
+const ACTIVE_BUILD_JOB_STATUSES = ["queued", "running"] as const;
+const ACTIVE_TURN_STATUSES = ["queued", "running", "waiting_build"] as const;
 const Create = z
   .object({
     requestId: z.string().uuid().optional(),
@@ -38,12 +48,14 @@ const Update = z
   .object({
     id: z.string().uuid(),
     label: z.string().trim().min(1).max(100).optional(),
+    endpoint: z.url().max(2048).optional(),
     token: z.string().trim().max(8192).optional(),
     enabled: z.boolean().optional(),
     imageModelIds: z.array(z.string().trim().min(1).max(512)).max(100).refine(ids => new Set(ids).size === ids.length).optional(),
     expectedImageInputRevision: z.string().uuid().optional(),
   })
   .strict();
+const Remove = z.object({ id: z.string().uuid() }).strict();
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export class ProviderConnectionError extends Error {
   constructor(
@@ -58,15 +70,32 @@ async function operation<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (error instanceof ProviderConnectionError) throw error;
+    if (
+      error instanceof ProviderConnectionError ||
+      error instanceof ProviderDestinationError
+    )
+      throw error;
     if (error instanceof ProviderKeyError)
       throw new ProviderConnectionError(503, error.message);
+    let cause: unknown = error;
+    for (
+      let depth = 0;
+      depth < MAX_ERROR_CAUSE_DEPTH && cause && typeof cause === "object";
+      depth++
+    ) {
+      if ("code" in cause && ["55P03", "40P01"].includes(String(cause.code)))
+        throw new ProviderConnectionError(
+          409,
+          "Provider settings are busy. Wait for active work, then try again.",
+        );
+      cause = "cause" in cause ? cause.cause : null;
+    }
     logger.error("Provider connection persistence failed", {
       errorName: error instanceof Error ? error.name : "UnknownError",
     });
     throw new ProviderConnectionError(
       503,
-      "Provider configuration is unavailable. Check PostgreSQL and migrations through 0017.",
+      "Provider configuration is unavailable. Check PostgreSQL and migrations through 0052.",
     );
   }
 }
@@ -92,14 +121,23 @@ async function keyForWrite(
       credential: providerConnections.credential,
     })
     .from(providerConnections)
-    .where(isNotNull(providerConnections.credential))
+    .where(
+      and(
+        isNotNull(providerConnections.credential),
+        isNull(providerConnections.deletedAt),
+      ),
+    )
     .limit(1);
   const key = await loadProviderKey(dataDirectory, Boolean(row));
   // A valid but wrong key file must not create a database containing mixed keys.
   if (row) decryptProviderToken(row.credential, key, row.id);
   return key;
 }
-function endpointIdentity(input: z.infer<typeof Create>): string {
+function endpointIdentity(input: {
+  protocol: string;
+  kind: string;
+  endpoint: string;
+}): string {
   const url = new URL(input.endpoint);
   if (
     url.username ||
@@ -152,6 +190,7 @@ export interface ProviderConnectionMetadata {
   imageModelIds?: string[];
   imageInputRevision?: string;
   envSourceId?: string | null;
+  boundProjectCount?: number;
 }
 /** Owner-only safe projection; saved tokens and their encrypted envelopes are never returned to the browser. */
 export function listProviderConnections(
@@ -167,10 +206,22 @@ export function listProviderConnections(
           credentialPresent: isNotNull(providerConnections.credential),
         })
         .from(providerConnections)
+        .where(isNull(providerConnections.deletedAt))
         .limit(MAX_CONNECTIONS);
+      const boundRows = await tx
+        .select({
+          connectionId: projectModels.connectionId,
+          value: count(),
+        })
+        .from(projectModels)
+        .groupBy(projectModels.connectionId);
+      const boundCounts = new Map(
+        boundRows.map((entry) => [entry.connectionId, entry.value]),
+      );
       return rows.map(({ credentialPresent, ...metadata }) => ({
         ...metadata,
         tokenConfigured: credentialPresent === true,
+        boundProjectCount: boundCounts.get(metadata.id) ?? 0,
       }));
     }),
   );
@@ -202,7 +253,12 @@ export function createProviderConnection(
         const [prior] = await tx
           .select()
           .from(providerConnections)
-          .where(eq(providerConnections.envSourceId, input.envSourceId));
+          .where(
+            and(
+              eq(providerConnections.envSourceId, input.envSourceId),
+              isNull(providerConnections.deletedAt),
+            ),
+          );
         if (prior) {
           if (
             prior.endpoint !== endpoint ||
@@ -222,6 +278,11 @@ export function createProviderConnection(
           .from(providerConnections)
           .where(eq(providerConnections.createRequestId, input.requestId));
         if (prior) {
+          if (prior.deletedAt !== null)
+            throw new ProviderConnectionError(
+              409,
+              "This request identity belongs to a removed provider connection.",
+            );
           const priorToken = prior.credential
             ? decryptProviderToken(
                 prior.credential,
@@ -255,7 +316,8 @@ export function createProviderConnection(
       }
       const [existing] = await tx
         .select({ value: count() })
-        .from(providerConnections);
+        .from(providerConnections)
+        .where(isNull(providerConnections.deletedAt));
       if ((existing?.value ?? 0) >= MAX_CONNECTIONS)
         throw new ProviderConnectionError(
           409,
@@ -295,38 +357,154 @@ export function createProviderConnection(
     });
   });
 }
-/** Rotates tokens or changes safe metadata; endpoint/protocol mutation is deliberately not accepted. */
+async function lockQueueTables(tx: Transaction): Promise<void> {
+  for (const table of [conversationQueue, buildQueue]) {
+    await tx.insert(table).values({ id: QUEUE_LOCK_ID }).onConflictDoNothing();
+    await tx
+      .select()
+      .from(table)
+      .where(eq(table.id, QUEUE_LOCK_ID))
+      .for("update", { noWait: true });
+  }
+}
+
+async function assertNoActiveConnectionWork(
+  tx: Transaction,
+  connectionId: string,
+  message: string,
+): Promise<void> {
+  const activeJobs = await tx
+    .select({ input: buildJobs.input })
+    .from(buildJobs)
+    .where(inArray(buildJobs.status, [...ACTIVE_BUILD_JOB_STATUSES]));
+  const activeTurns = await tx
+    .select({ provider: conversationTurns.provider })
+    .from(conversationTurns)
+    .where(inArray(conversationTurns.status, [...ACTIVE_TURN_STATUSES]));
+  if (
+    activeJobs.some((job) =>
+      matchesConnectionIdentity(job.input.provider, connectionId),
+    ) ||
+    activeTurns.some((turn) =>
+      matchesConnectionIdentity(turn.provider, connectionId),
+    )
+  )
+    throw new ProviderConnectionError(409, message);
+}
+
+/** Rotates tokens or updates safe settings; changing endpoints rotates the connection version and preserves tokens only on the same origin. */
 export function updateProviderConnection(
   database: typeof db,
   actorId: string,
   raw: unknown,
   dataDirectory: string,
+  validateDestination?: (
+    endpoint: string,
+    kind: "local" | "cloud",
+  ) => Promise<unknown>,
 ): Promise<void> {
   return operation(async () => {
     const parsed = Update.safeParse(raw);
     if (!parsed.success)
       throw new ProviderConnectionError(
         400,
-        "Only label, token, enabled state and reviewed image models can be changed; use a new connection for another endpoint or protocol.",
+        "Only label, endpoint, token, enabled state and reviewed image models can be changed; use a new connection for another protocol or network scope.",
       );
     const input = parsed.data;
+    if (input.endpoint !== undefined) {
+      await assertProviderConfigurationOwner(database, actorId);
+      const [current] = await database
+        .select({
+          protocol: providerConnections.protocol,
+          kind: providerConnections.kind,
+          endpoint: providerConnections.endpoint,
+        })
+        .from(providerConnections)
+        .where(
+          and(
+            eq(providerConnections.id, input.id),
+            isNull(providerConnections.deletedAt),
+          ),
+        );
+      if (!current)
+        throw new ProviderConnectionError(
+          409,
+          "Provider connection not found.",
+        );
+      const normalized = endpointIdentity({
+        protocol: current.protocol,
+        kind: current.kind,
+        endpoint: input.endpoint,
+      });
+      if (normalized !== current.endpoint && validateDestination)
+        await validateDestination(
+          normalized,
+          current.kind as "local" | "cloud",
+        );
+    }
     await database.transaction(async (tx) => {
+      if (input.endpoint !== undefined) await lockQueueTables(tx);
       await requireOwner(tx, actorId);
       const [row] = await tx
         .select()
         .from(providerConnections)
-        .where(eq(providerConnections.id, input.id))
+        .where(
+          and(
+            eq(providerConnections.id, input.id),
+            isNull(providerConnections.deletedAt),
+          ),
+        )
         .for("update");
       if (!row)
         throw new ProviderConnectionError(
           409,
           "Provider connection not found.",
         );
-      if (input.imageModelIds !== undefined && input.expectedImageInputRevision !== row.imageInputRevision) {
-        throw new ProviderConnectionError(409, "Image input settings changed. Refresh the connection before saving.");
+      const nextEndpoint =
+        input.endpoint !== undefined
+          ? endpointIdentity({
+              protocol: row.protocol,
+              kind: row.kind,
+              endpoint: input.endpoint,
+            })
+          : undefined;
+      const endpointChanged =
+        nextEndpoint !== undefined && nextEndpoint !== row.endpoint;
+      if (endpointChanged) {
+        await assertNoActiveConnectionWork(
+          tx,
+          row.id,
+          "Wait for active conversations and builds using this provider connection to finish or cancel them before changing its endpoint.",
+        );
+        const originChanged =
+          new URL(nextEndpoint).origin !== new URL(row.endpoint).origin;
+        if (
+          originChanged &&
+          (row.credential !== null || row.kind === "cloud") &&
+          !input.token?.trim()
+        )
+          throw new ProviderConnectionError(
+            400,
+            "Enter the API token again when changing a connection to a different host so saved credentials are never redirected.",
+          );
       }
-      if (input.expectedImageInputRevision !== undefined && input.imageModelIds === undefined)
-        throw new ProviderConnectionError(400, "Provide the reviewed image model list.");
+      if (
+        input.imageModelIds !== undefined &&
+        input.expectedImageInputRevision !== row.imageInputRevision
+      ) {
+        throw new ProviderConnectionError(
+          409,
+          "Image input settings changed. Refresh the connection before saving.",
+        );
+      }
+      if (
+        input.expectedImageInputRevision !== undefined &&
+        input.imageModelIds === undefined
+      )
+        throw new ProviderConnectionError(
+          400,
+          "Provide the reviewed image model list.",
+        );
       const replacement = input.token
         ? encryptProviderToken(
             input.token,
@@ -338,25 +516,35 @@ export function updateProviderConnection(
         .update(providerConnections)
         .set({
           ...(input.label !== undefined ? { label: input.label } : {}),
-          ...(input.imageModelIds !== undefined ? { imageModelIds: input.imageModelIds, imageInputRevision: crypto.randomUUID() } : {}),
+          ...(endpointChanged
+            ? { endpoint: nextEndpoint, version: crypto.randomUUID() }
+            : {}),
+          ...(input.imageModelIds !== undefined
+            ? {
+                imageModelIds: input.imageModelIds,
+                imageInputRevision: crypto.randomUUID(),
+              }
+            : {}),
           ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
           ...(replacement ? { credential: replacement } : {}),
           updatedAt: new Date(),
         })
         .where(eq(providerConnections.id, row.id));
-      await tx
-        .insert(providerConnectionAudit)
-        .values({
-          actorId,
-          connectionId: row.id,
-          action: input.imageModelIds !== undefined ? "image_inputs_reviewed" : replacement
-            ? "token_replaced"
-            : input.enabled !== undefined
-              ? input.enabled
-                ? "enabled"
-                : "disabled"
-              : "metadata_updated",
-        });
+      await tx.insert(providerConnectionAudit).values({
+        actorId,
+        connectionId: row.id,
+        action: endpointChanged
+          ? "endpoint_updated"
+          : input.imageModelIds !== undefined
+            ? "image_inputs_reviewed"
+            : replacement
+              ? "token_replaced"
+              : input.enabled !== undefined
+                ? input.enabled
+                  ? "enabled"
+                  : "disabled"
+                : "metadata_updated",
+      });
     });
   });
 }
@@ -388,6 +576,7 @@ export function saveInstanceModelDefault(
           and(
             eq(providerConnections.id, input.data.connectionId),
             eq(providerConnections.enabled, true),
+            isNull(providerConnections.deletedAt),
           ),
         )
         .for("update");
@@ -409,6 +598,95 @@ export function saveInstanceModelDefault(
     });
   });
 }
+function matchesConnectionIdentity(
+  provider: string,
+  connectionId: string,
+): boolean {
+  return (
+    provider === connectionId || provider.startsWith(`saved:${connectionId}:`)
+  );
+}
+
+/**
+ * Safely tombstones an unused provider connection, immediately destroying encrypted
+ * credentials and preserving immutable audit history while fencing against active work.
+ */
+export function deleteProviderConnection(
+  database: typeof db,
+  actorId: string,
+  raw: unknown,
+): Promise<{ deleted: true; clearedInstanceDefault: boolean }> {
+  return operation(async () => {
+    const parsed = Remove.safeParse(raw);
+    if (!parsed.success)
+      throw new ProviderConnectionError(
+        400,
+        "Choose a saved provider connection to remove.",
+      );
+    const input = parsed.data;
+    return database.transaction(async (tx) => {
+      await lockQueueTables(tx);
+      await requireOwner(tx, actorId);
+      const [row] = await tx
+        .select()
+        .from(providerConnections)
+        .where(
+          and(
+            eq(providerConnections.id, input.id),
+            isNull(providerConnections.deletedAt),
+          ),
+        )
+        .for("update");
+      if (!row)
+        throw new ProviderConnectionError(409, "Provider connection not found.");
+      await assertNoActiveConnectionWork(
+        tx,
+        row.id,
+        "Wait for active conversations and builds using this provider connection to finish or cancel them before removing it.",
+      );
+      const [bound] = await tx
+        .select({ value: count() })
+        .from(projectModels)
+        .where(eq(projectModels.connectionId, row.id));
+      const boundCount = bound?.value ?? 0;
+      if (boundCount > 0)
+        throw new ProviderConnectionError(
+          409,
+          `This provider connection is assigned as the project model for ${boundCount} ${boundCount === 1 ? "project" : "projects"}. Switch ${boundCount === 1 ? "that project" : "those projects"} to another model in Project Settings before removing it.`,
+        );
+      const cleared = await tx
+        .delete(instanceModelDefault)
+        .where(
+          and(
+            eq(instanceModelDefault.id, 1),
+            eq(instanceModelDefault.connectionId, row.id),
+          ),
+        )
+        .returning({ id: instanceModelDefault.id });
+      const now = new Date();
+      await tx
+        .update(providerConnections)
+        .set({
+          deletedAt: now,
+          enabled: false,
+          credential: null,
+          envSourceId: null,
+          updatedAt: now,
+        })
+        .where(eq(providerConnections.id, row.id));
+      await tx.insert(providerConnectionAudit).values({
+        actorId,
+        connectionId: row.id,
+        action: "deleted",
+      });
+      return {
+        deleted: true as const,
+        clearedInstanceDefault: cleared.length > 0,
+      };
+    });
+  });
+}
+
 /** Server-only credential lookup for exact connection identity; no fallback and no endpoint retargeting. */
 export function resolveSavedProviderConnection(
   database: typeof db,
@@ -427,7 +705,12 @@ export function resolveSavedProviderConnection(
     const [row] = await database
       .select()
       .from(providerConnections)
-      .where(eq(providerConnections.id, id));
+      .where(
+        and(
+          eq(providerConnections.id, id),
+          isNull(providerConnections.deletedAt),
+        ),
+      );
     if (!row || !row.enabled)
       throw new ProviderConnectionError(
         409,
@@ -460,7 +743,7 @@ export async function verifyProviderConnectionSchema(
     await database.select().from(instanceModelDefault).limit(0);
   } catch {
     throw new Error(
-      "Provider configuration requires migrations through 0017. Check PostgreSQL before starting the API.",
+      "Provider configuration requires migrations through 0052. Check PostgreSQL before starting the API.",
     );
   }
 }

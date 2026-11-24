@@ -15,6 +15,7 @@ export interface ProviderConnection {
   imageModelIds?: string[];
   imageInputRevision?: string;
   envSourceId?: string | null;
+  boundProjectCount?: number;
 }
 export interface EnvironmentProvider {
   id: string;
@@ -122,6 +123,16 @@ export function parseProviderSettings(value: unknown): ProviderSettings {
         envSourceId: row.envSourceId == null ? null : text(row.envSourceId),
         catalogProviderId:
           row.catalogProviderId === null ? null : text(row.catalogProviderId),
+        boundProjectCount:
+          row.boundProjectCount === undefined
+            ? 0
+            : typeof row.boundProjectCount === "number" &&
+                Number.isInteger(row.boundProjectCount) &&
+                row.boundProjectCount >= 0
+              ? row.boundProjectCount
+              : (() => {
+                  throw new Error("Saved connection project count is invalid.");
+                })(),
       };
     }),
     default:
@@ -193,6 +204,22 @@ export function parseConnectionProbe(value: unknown): ConnectionProbe {
     ...(data.error
       ? { error: { message: text(record(data.error).message) } }
       : {}),
+  };
+}
+/** Validates server acknowledgement after removing a provider connection. */
+export function parseProviderRemoval(value: unknown): {
+  deleted: true;
+  clearedInstanceDefault: boolean;
+} {
+  const data = record(value);
+  if (
+    data.deleted !== true ||
+    typeof data.clearedInstanceDefault !== "boolean"
+  )
+    throw new Error("The connection removal response could not be read.");
+  return {
+    deleted: true,
+    clearedInstanceDefault: data.clearedInstanceDefault,
   };
 }
 export class ProviderSettingsError extends Error {

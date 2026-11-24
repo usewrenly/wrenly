@@ -1,463 +1,275 @@
 "use client";
-// Checks never start inference; catalog/manual IDs remain distinct from served models.
-import { useState } from "react";
-import { CheckIcon } from "lucide-react";
-import { ChoiceSelect } from "@/components/ui/choice-select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+// Presentational grid card and table row for saved provider connections with a shared compact action menu.
 import {
-  parseCatalogResult,
-  parseConnectionProbe,
-  providerSettingsRequest,
-  type ConnectionProbe,
-  type ProviderConnection,
-} from "@/lib/models/provider-settings";
+  CpuIcon,
+  GlobeIcon,
+  ImageIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PowerIcon,
+  SlidersHorizontalIcon,
+  Trash2Icon,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { ProviderConnection } from "@/lib/models/provider-settings";
+import type { ProviderDialogTab } from "./provider-connection-dialog";
 
-function parseImageModelIds(raw: string): string[] {
-  const seen = new Set<string>();
-  for (const part of raw.split(/[\r\n,]+/)) {
-    const trimmed = part.trim();
-    if (trimmed) seen.add(trimmed);
-  }
-  return [...seen];
+function ConnectionActionsMenu({
+  connection,
+  busy,
+  onEdit,
+  onToggleEnabled,
+  onRequestRemove,
+}: {
+  connection: ProviderConnection;
+  busy: boolean;
+  onEdit: (tab: ProviderDialogTab) => void;
+  onToggleEnabled: () => void;
+  onRequestRemove: () => void;
+}): React.JSX.Element {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            disabled={busy}
+            aria-label={`Actions for ${connection.label}`}
+          />
+        }
+      >
+        <MoreHorizontalIcon size={16} aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-44 bg-[var(--color-surface)] text-[var(--color-text-1)] ring-[var(--color-border-2)]"
+      >
+        <DropdownMenuItem onClick={() => onEdit("models")}>
+          <SlidersHorizontalIcon size={14} aria-hidden="true" />
+          Models &amp; default
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit("general")}>
+          <PencilIcon size={14} aria-hidden="true" />
+          Edit settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit("images")}>
+          <ImageIcon size={14} aria-hidden="true" />
+          Image inputs
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onToggleEnabled}>
+          <PowerIcon size={14} aria-hidden="true" />
+          {connection.enabled ? "Disable" : "Enable"}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={onRequestRemove}>
+          <Trash2Icon size={14} aria-hidden="true" />
+          Remove
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
-/** Manages one immutable destination and its model selection without reading its saved token. */
+
+/** Renders one uncluttered saved provider connection card in a 2-column grid. */
 export function ProviderConnectionCard({
   connection,
   defaultModel,
-  onChanged,
+  busy,
+  onEdit,
+  onToggleEnabled,
+  onRequestRemove,
 }: {
   connection: ProviderConnection;
   defaultModel: string | null;
-  onChanged: () => void;
+  busy: boolean;
+  onEdit: (tab: ProviderDialogTab) => void;
+  onToggleEnabled: () => void;
+  onRequestRemove: () => void;
 }): React.JSX.Element {
-  const [probe, setProbe] = useState<ConnectionProbe | null>(null);
-  const [model, setModel] = useState(defaultModel ?? "");
-  const [token, setToken] = useState("");
-  const [imageRevision, setImageRevision] = useState(
-    connection.imageInputRevision,
-  );
-  const [imageModels, setImageModels] = useState(
-    (connection.imageModelIds ?? []).join("\n"),
-  );
-  const [catalogModels, setCatalogModels] = useState<
-    Array<{ id: string; name: string }>
-  >([]);
-  const [catalogQuery, setCatalogQuery] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const run = async (action: () => Promise<void>): Promise<void> => {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      await action();
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Connection settings could not be updated.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-  const check = (): Promise<void> =>
-    run(async () => {
-      setProbe(null);
-      setProbe(
-        parseConnectionProbe(
-          await providerSettingsRequest(
-            "/api/models/connections/probe",
-            "POST",
-            { id: connection.id },
-          ),
-        ),
-      );
-    });
-  const saveDefault = (event: React.FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    void run(async () => {
-      await providerSettingsRequest("/api/models/default", "PUT", {
-        connectionId: connection.id,
-        modelId: model.trim(),
-      });
-      setNotice(
-        "Instance default saved. New requests use it unless a device or composer choice overrides it.",
-      );
-      onChanged();
-    });
-  };
-  const searchModels = (event: React.FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    void run(async () => {
-      const result = parseCatalogResult(
-        await providerSettingsRequest(
-          `/api/models/catalog?provider=${encodeURIComponent(connection.catalogProviderId!)}&q=${encodeURIComponent(catalogQuery)}&limit=40`,
-        ),
-      );
-      setCatalogModels(result.models);
-      setNotice(
-        `${result.totalModels} catalog matches. These are metadata, not proof of access for your token. Narrow the search if the model is not in the first 40 results.`,
-      );
-    });
-  };
-  const selectedImageSet = new Set(parseImageModelIds(imageModels));
-  const availableImageModels = [
-    ...new Set([
-      ...(probe?.state === "ready" ? probe.models : []),
-      ...(defaultModel ? [defaultModel] : []),
-      ...catalogModels.map((item) => item.id),
-    ]),
-  ];
-  const toggleImageModel = (id: string): void => {
-    const next = new Set(selectedImageSet);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setImageModels([...next].join("\n"));
-  };
+  const boundProjectCount = connection.boundProjectCount ?? 0;
   return (
-    <article className="provider-saved-card space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-semibold">{connection.label}</h3>
-          <p className="mt-1 text-xs text-[var(--color-text-3)]">
-            {connection.kind === "local" ? "Local service" : "Hosted service"} ·{" "}
-            {connection.enabled ? "Enabled" : "Disabled"} ·{" "}
-            {connection.tokenConfigured ? "Token saved" : "No token saved"}
-          </p>
-        </div>
-        {defaultModel && (
-          <span className="rounded-full border border-[var(--color-border)] px-2 py-1 text-xs">
-            Instance default
+    <article
+      className="provider-grid-card"
+      data-enabled={connection.enabled}
+      data-default={Boolean(defaultModel)}
+    >
+      <div className="provider-grid-card-top">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="model-provider-icon" aria-hidden="true">
+            {connection.kind === "local" ? (
+              <CpuIcon size={16} />
+            ) : (
+              <GlobeIcon size={16} />
+            )}
           </span>
-        )}
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-[var(--color-text-1)]">
+              {connection.label}
+            </h3>
+            <p className="text-xs text-[var(--color-text-3)]">
+              {connection.kind === "local" ? "Local" : "Hosted"} ·{" "}
+              {connection.tokenConfigured ? "Token saved" : "No token"}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span
+            className="provider-saved-badge"
+            data-state={connection.enabled ? "enabled" : "disabled"}
+          >
+            {connection.enabled ? "Enabled" : "Disabled"}
+          </span>
+          <ConnectionActionsMenu
+            connection={connection}
+            busy={busy}
+            onEdit={onEdit}
+            onToggleEnabled={onToggleEnabled}
+            onRequestRemove={onRequestRemove}
+          />
+        </div>
       </div>
-      <p className="break-all font-mono text-xs text-[var(--color-text-2)]">
+
+      <p
+        className="truncate font-mono text-xs text-[var(--color-text-2)]"
+        title={connection.endpoint}
+      >
         {connection.endpoint}
       </p>
-      {defaultModel && (
-        <p className="text-sm">
-          Default model: <code className="break-all">{defaultModel}</code>
-          {!connection.enabled &&
-            " · disabled; requests cannot use this default until you enable it or choose another connection."}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
+
+      <div className="provider-grid-card-footer">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          {defaultModel ? (
+            <span
+              className="provider-saved-badge max-w-full"
+              data-default="true"
+              title={defaultModel}
+            >
+              <span className="truncate">
+                Default: <code>{defaultModel}</code>
+              </span>
+            </span>
+          ) : (
+            <span className="text-xs text-[var(--color-text-3)]">
+              No default model
+            </span>
+          )}
+          {boundProjectCount > 0 && (
+            <span className="provider-saved-badge">
+              {boundProjectCount} bound{" "}
+              {boundProjectCount === 1 ? "project" : "projects"}
+            </span>
+          )}
+        </div>
         <Button
+          type="button"
           variant="outline"
-          disabled={busy || !connection.enabled}
-          onClick={() => {
-            void check();
-          }}
-        >
-          Check connection
-        </Button>
-        <Button
-          variant="ghost"
+          size="xs"
           disabled={busy}
-          onClick={() => {
-            void run(async () => {
-              await providerSettingsRequest(
-                "/api/models/connections",
-                "PATCH",
-                { id: connection.id, enabled: !connection.enabled },
-              );
-              setProbe(null);
-              setNotice(
-                connection.enabled
-                  ? "Connection disabled. Queued work cannot switch to another provider."
-                  : "Connection enabled.",
-              );
-              onChanged();
-            });
-          }}
+          onClick={() => onEdit("models")}
         >
-          {connection.enabled ? "Disable" : "Enable"}
+          Models
         </Button>
       </div>
-      {probe && (
-        <div
-          className="space-y-2 rounded-lg bg-[var(--color-surface-2)] p-3 text-sm"
-          role="status"
-        >
-          {probe.state === "error" ? (
-            <p>{probe.error?.message ?? "The connection check failed."}</p>
-          ) : probe.state === "empty" ? (
-            <p>
-              {connection.protocol === "ollama"
-                ? "Ollama is reachable but has no installed models. On the Ollama server, run ollama pull <model-name>, then check again."
-                : "The service is reachable but did not list models. Check your account access or enter an explicit model ID below."}
-            </p>
-          ) : (
-            <>
-              <p>
-                {probe.models.length}{" "}
-                {connection.protocol === "ollama" ? "installed" : "served"}{" "}
-                models found. A connection check does not generate an app.
-              </p>
-              <label className="block space-y-2">
-                <span>
-                  Choose a{" "}
-                  {connection.protocol === "ollama" ? "local" : "served"} model
-                </span>
-                <ChoiceSelect
-                  label={
-                    connection.protocol === "ollama"
-                      ? "Choose a local model"
-                      : "Choose a served model"
-                  }
-                  searchable
-                  searchPlaceholder="Search models…"
-                  emptySearchText="No matching models found."
-                  value={probe.models.includes(model) ? model : null}
-                  disabled={busy}
-                  onChange={setModel}
-                  displayValue={
-                    probe.models.includes(model) ? model : "Select a model"
-                  }
-                  options={probe.models.map((id) => ({ value: id, label: id }))}
-                />
-              </label>
-            </>
-          )}
-        </div>
-      )}
-      {connection.enabled && (
-        <div className="space-y-4 border-t border-[var(--color-border)] pt-4">
-          {connection.catalogProviderId && (
-            <form onSubmit={searchModels} className="space-y-2">
-              <label className="block space-y-2 text-sm">
-                <span>Search this provider&apos;s catalog models</span>
-                <Input
-                  value={catalogQuery}
-                  maxLength={200}
-                  disabled={busy}
-                  onChange={(event) => setCatalogQuery(event.target.value)}
-                  placeholder="Model name or ID"
-                />
-              </label>
-              <Button type="submit" variant="outline" size="sm" disabled={busy}>
-                Search catalog models
-              </Button>
-              {!!catalogModels.length && (
-                <label className="block space-y-2 text-sm">
-                  <span>Catalog choices · access not verified</span>
-                  <ChoiceSelect
-                    label="Catalog choices · access not verified"
-                    searchable
-                    searchPlaceholder="Search catalog models…"
-                    emptySearchText="No matching catalog models found."
-                    value={
-                      catalogModels.some((item) => item.id === model)
-                        ? model
-                        : null
-                    }
-                    displayValue={
-                      catalogModels.find((item) => item.id === model)?.name ??
-                      "Select a catalog model"
-                    }
-                    disabled={busy}
-                    onChange={setModel}
-                    options={catalogModels.map((item) => ({
-                      value: item.id,
-                      label: item.name,
-                      description: item.id,
-                    }))}
-                  />
-                </label>
-              )}
-            </form>
-          )}
-          <form
-            onSubmit={saveDefault}
-            className="provider-default-form space-y-3"
-          >
-            <label className="block space-y-2 text-sm">
-              <span>Model ID for the instance default</span>
-              <Input
-                value={model}
-                required
-                maxLength={512}
-                disabled={busy}
-                onChange={(event) => setModel(event.target.value)}
-                placeholder="Choose above or enter an exact model ID"
-              />
-            </label>
-            <p className="text-xs text-[var(--color-text-3)]">
-              Use the exact ID from this service. A manual or catalog ID is not
-              live-verified; model access is checked when you send a request.
-            </p>
-            <Button type="submit" disabled={busy || !model.trim()}>
-              Set instance default
-            </Button>
-          </form>
-        </div>
-      )}
-      <details className="rounded-lg border border-[var(--color-border)] p-3">
-        <summary className="cursor-pointer text-sm">Replace API token</summary>
-        <form
-          className="mt-3 space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run(async () => {
-              await providerSettingsRequest(
-                "/api/models/connections",
-                "PATCH",
-                { id: connection.id, token },
-              );
-              setToken("");
-              setProbe(null);
-              setNotice("Token replaced. Check the connection again.");
-              onChanged();
-            });
-          }}
-        >
-          <label className="block space-y-2 text-sm">
-            <span>New token</span>
-            <Input
-              type="password"
-              autoComplete="new-password"
-              value={token}
-              maxLength={8192}
-              disabled={busy}
-              onChange={(event) => setToken(event.target.value)}
-            />
-          </label>
-          <p className="text-xs text-[var(--color-text-3)]">
-            The saved token is never shown. Leaving this blank keeps it
-            unchanged. The destination stays fixed; add a new connection to
-            change its address.
-          </p>
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={busy || !token.trim()}
-          >
-            Replace token
-          </Button>
-        </form>
-      </details>
-      <details className="rounded-lg border border-[var(--color-border)] p-4">
-        <summary className="cursor-pointer text-sm font-medium">
-          Image input support
-        </summary>
-        <form
-          className="mt-4 space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run(async () => {
-              const ids = parseImageModelIds(imageModels);
-              await providerSettingsRequest(
-                "/api/models/connections",
-                "PATCH",
-                {
-                  id: connection.id,
-                  imageModelIds: ids,
-                  expectedImageInputRevision: imageRevision,
-                },
-              );
-              setNotice(
-                "Image support saved. Only these exact model IDs can receive reference images.",
-              );
-              onChanged();
-            });
-          }}
-        >
-          <p className="text-xs leading-relaxed text-[var(--color-text-3)]">
-            Plain text files (.txt, .md) work with any model. Because
-            OpenAI-compatible endpoints do not reliably report vision support,
-            select or list the exact model IDs on this connection that accept
-            images (one per line or comma-separated).
-          </p>
-          {availableImageModels.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-[var(--color-text-2)]">
-                Quick-toggle models on this connection
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {availableImageModels.map((id) => {
-                  const active = selectedImageSet.has(id);
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      aria-pressed={active}
-                      disabled={busy}
-                      onClick={() => toggleImageModel(id)}
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-50 ${
-                        active
-                          ? "border-[var(--color-primary)] bg-[var(--color-primary)] text-[var(--color-on-primary)]"
-                          : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-2)] hover:text-[var(--color-text-1)]"
-                      }`}
-                    >
-                      {active && <CheckIcon size={12} aria-hidden="true" />}
-                      <span className="font-mono">{id}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {probe?.state !== "ready" && (
-                <p className="text-xs text-[var(--color-text-3)]">
-                  Click Check connection above to list all models from this
-                  service.
-                </p>
-              )}
-            </div>
-          )}
-          <label className="block space-y-2 text-sm">
-            <span>Models that accept images</span>
-            {imageRevision !== connection.imageInputRevision && (
-              <button
-                type="button"
-                className="block text-xs underline"
-                onClick={() => {
-                  setImageModels((connection.imageModelIds ?? []).join("\n"));
-                  setImageRevision(connection.imageInputRevision);
-                }}
-              >
-                Load the updated image settings before editing again
-              </button>
-            )}
-            <textarea
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
-              rows={3}
-              maxLength={51300}
-              value={imageModels}
-              disabled={busy}
-              onChange={(event) => setImageModels(event.target.value)}
-              placeholder="Exact model ID, one per line or comma-separated"
-            />
-          </label>
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={
-              busy ||
-              !imageRevision ||
-              imageRevision !== connection.imageInputRevision
-            }
-          >
-            Save image support
-          </Button>
-        </form>
-      </details>
-      {busy && (
-        <p role="status" className="text-sm">
-          Updating connection…
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-sm">
-          {error}
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="text-sm">
-          {notice}
-        </p>
-      )}
     </article>
+  );
+}
+
+/** Renders one compact, overflow-free table row with a single menu trigger. */
+export function ProviderConnectionTableRow({
+  connection,
+  defaultModel,
+  busy,
+  onEdit,
+  onToggleEnabled,
+  onRequestRemove,
+}: {
+  connection: ProviderConnection;
+  defaultModel: string | null;
+  busy: boolean;
+  onEdit: (tab: ProviderDialogTab) => void;
+  onToggleEnabled: () => void;
+  onRequestRemove: () => void;
+}): React.JSX.Element {
+  const boundProjectCount = connection.boundProjectCount ?? 0;
+  return (
+    <tr className="provider-table-row">
+      <td>
+        <div className="flex min-w-0 items-center gap-2.5">
+          {connection.kind === "local" ? (
+            <CpuIcon
+              size={15}
+              className="shrink-0 text-[var(--color-text-2)]"
+              aria-hidden="true"
+            />
+          ) : (
+            <GlobeIcon
+              size={15}
+              className="shrink-0 text-[var(--color-text-2)]"
+              aria-hidden="true"
+            />
+          )}
+          <div className="min-w-0">
+            <p className="truncate font-medium text-[var(--color-text-1)]">
+              {connection.label}
+            </p>
+            {defaultModel && (
+              <p
+                className="truncate font-mono text-[11px] text-[var(--color-text-3)]"
+                title={defaultModel}
+              >
+                Default: {defaultModel}
+              </p>
+            )}
+          </div>
+        </div>
+      </td>
+      <td className="whitespace-nowrap text-xs text-[var(--color-text-2)]">
+        {connection.kind === "local" ? "Local" : "Hosted"}
+      </td>
+      <td>
+        <span
+          className="block truncate font-mono text-xs text-[var(--color-text-2)]"
+          title={connection.endpoint}
+        >
+          {connection.endpoint}
+        </span>
+      </td>
+      <td>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className="provider-saved-badge"
+            data-state={connection.enabled ? "enabled" : "disabled"}
+          >
+            {connection.enabled ? "Enabled" : "Disabled"}
+          </span>
+          {boundProjectCount > 0 && (
+            <span className="provider-saved-badge">
+              {boundProjectCount}{" "}
+              {boundProjectCount === 1 ? "project" : "projects"}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="text-right">
+        <div className="inline-flex justify-end">
+          <ConnectionActionsMenu
+            connection={connection}
+            busy={busy}
+            onEdit={onEdit}
+            onToggleEnabled={onToggleEnabled}
+            onRequestRemove={onRequestRemove}
+          />
+        </div>
+      </td>
+    </tr>
   );
 }
