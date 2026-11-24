@@ -59,6 +59,17 @@ export async function readProviderModelList(
         (input.protocol === "ollama" ? "/api/tags" : "/models"),
     );
     return await new Promise<unknown>((resolve, reject) => {
+      let settled = false;
+      const finishResolve = (value: unknown): void => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const finishReject = (reason: unknown): void => {
+        if (settled) return;
+        settled = true;
+        reject(reason);
+      };
       const headers: Record<string, string> = { Accept: "application/json" };
       if (input.token) headers.Authorization = `Bearer ${input.token}`;
       const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
@@ -84,8 +95,17 @@ export async function readProviderModelList(
             message: string,
           ): void => {
             response.destroy();
-            reject(new ProviderProbeError(category, message));
+            finishReject(new ProviderProbeError(category, message));
           };
+          // Keep persistent error listeners: Bun's node:_http_client can emit 'error' more than once on refused/aborted sockets.
+          response.on("error", () =>
+            finishReject(
+              new ProviderProbeError(
+                deadline.aborted ? "timeout" : "network",
+                "The provider connection ended before its model list was received.",
+              ),
+            ),
+          );
           if (status >= 300 && status < 400)
             return fail(
               "redirect",
@@ -134,11 +154,11 @@ export async function readProviderModelList(
           });
           response.once("end", () => {
             try {
-              resolve(
+              finishResolve(
                 JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
               );
             } catch {
-              reject(
+              finishReject(
                 new ProviderProbeError(
                   "invalid-response",
                   "The provider model-list response could not be read.",
@@ -146,18 +166,10 @@ export async function readProviderModelList(
               );
             }
           });
-          response.once("error", () =>
-            reject(
-              new ProviderProbeError(
-                deadline.aborted ? "timeout" : "network",
-                "The provider connection ended before its model list was received.",
-              ),
-            ),
-          );
         },
       );
-      request.once("error", () =>
-        reject(
+      request.on("error", () =>
+        finishReject(
           new ProviderProbeError(
             deadline.aborted ? "timeout" : "network",
             deadline.aborted
