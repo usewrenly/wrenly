@@ -9,6 +9,7 @@ import type { InstanceProductionHttpHandlers } from "./modules/databases/product
 import type { RuntimeHostHttpHandlers } from "./modules/databases/production-targets/deployment-hosts/http"
 import type { SkillHandlers, ProjectSkillHandlers } from "./modules/skills/skill-http"
 import type { ProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
+import type { ProjectPinHandlers } from "./modules/projects/pins/pin-http"
 import type { DraftHandlers } from "./modules/projects/drafts/draft-http"
 import type { PreviewMediaHandlers } from './modules/previews/media/preview-media-http'
 import type { SharingHandlers } from './modules/projects/sharing/sharing-http'
@@ -55,6 +56,7 @@ export interface ApiHandlers {
   skills?: SkillHandlers
   projectSkills?: ProjectSkillHandlers
   projectArchive?: ProjectArchiveHandlers
+  projectPins?: ProjectPinHandlers
   drafts?: DraftHandlers
   previewMedia?: PreviewMediaHandlers
   memberAccess?: MemberAccessHandlers
@@ -213,6 +215,9 @@ export function createApp(
   if (handlers.projectArchive) {
     app.get('/api/projects/:id/archive', c => handlers.projectArchive!.get(c.req.raw, c.req.param('id')))
     app.patch('/api/projects/:id/archive', c => handlers.projectArchive!.save(c.req.raw, c.req.param('id')))
+  }
+  if (handlers.projectPins) {
+    app.patch('/api/projects/:id/pin', c => handlers.projectPins!.save(c.req.raw, c.req.param('id')))
   }
   if (handlers.transcription) {
     app.get('/api/transcription', c => handlers.transcription!.capability(c.req.raw))

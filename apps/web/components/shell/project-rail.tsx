@@ -5,6 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ProjectListError, useProjects } from "@/hooks/use-projects";
+import { useProjectPin } from "@/hooks/use-project-pin";
 import { relativeTime } from "@/lib/format";
 import { WrenlyMark } from "@/components/wrenly-mark";
 import {
@@ -12,6 +13,8 @@ import {
   HouseIcon,
   CircleDotIcon,
   LayersIcon,
+  PinIcon,
+  PlusIcon,
   SearchIcon,
   SettingsIcon,
 } from "lucide-react";
@@ -51,6 +54,7 @@ export function ProjectRail({
     error,
     refetch,
   } = useProjects();
+  const pin = useProjectPin();
   const matching = projects
     .filter((project) =>
       project.name.toLowerCase().includes(search.trim().toLowerCase()),
@@ -62,7 +66,13 @@ export function ProjectRail({
           ? ACTIVE_STATUSES.has(project.latestBuild?.status ?? "")
           : project.latestBuild?.status === "failed"),
     )
-    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+    .sort((a, b) => {
+      const aPinned = a.pinnedAt ? Date.parse(a.pinnedAt) : 0;
+      const bPinned = b.pinnedAt ? Date.parse(b.pinnedAt) : 0;
+      if (Boolean(aPinned) !== Boolean(bPinned)) return bPinned - aPinned;
+      if (aPinned && bPinned && aPinned !== bPinned) return bPinned - aPinned;
+      return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    });
   const visible = matching.slice(0, SIDEBAR_PROJECT_LIMIT);
   return (
     <nav className="app-rail" aria-label="Workspace navigation">
@@ -111,7 +121,18 @@ export function ProjectRail({
       )}
       <div className="app-rail-heading">
         <h2>{search.trim() ? "Search results" : "Recent projects"}</h2>
-        <span>{isPending || isError ? "—" : projects.length}</span>
+        <div className="app-rail-heading-actions">
+          <span>{isPending || isError ? "—" : projects.length}</span>
+          <Link
+            href="/#new-project"
+            onClick={onNavigate}
+            className="app-rail-new"
+            aria-label="New project"
+            title="Start a new project"
+          >
+            <PlusIcon size={13} aria-hidden="true" />
+          </Link>
+        </div>
       </div>
       <div className="app-project-filters" aria-label="Project filters">
         {FILTERS.map((item) => (
@@ -126,6 +147,11 @@ export function ProjectRail({
         ))}
       </div>
       <div className="app-project-list">
+        {pin.error && (
+          <p role="alert" className="app-rail-notice">
+            {pin.error}
+          </p>
+        )}
         {isPending && (
           <p role="status" className="app-rail-notice">
             Loading projects…
@@ -189,6 +215,7 @@ export function ProjectRail({
                   <span className="app-project-label">
                     <span>{project.name}</span>
                     <span>
+                      {project.pinnedAt ? "Pinned · " : ""}
                       {project.accessMode && project.accessMode !== "private"
                         ? "Shared · "
                         : ""}
@@ -196,6 +223,24 @@ export function ProjectRail({
                     </span>
                   </span>
                 </Link>
+                <button
+                  type="button"
+                  className="app-project-pin"
+                  data-pinned={Boolean(project.pinnedAt)}
+                  aria-pressed={Boolean(project.pinnedAt)}
+                  aria-label={
+                    project.pinnedAt
+                      ? `Unpin ${project.name}`
+                      : `Pin ${project.name}`
+                  }
+                  title={project.pinnedAt ? "Unpin project" : "Pin project"}
+                  disabled={pin.pendingId === project.id}
+                  onClick={() =>
+                    void pin.togglePin(project.id, !project.pinnedAt)
+                  }
+                >
+                  <PinIcon size={13} aria-hidden="true" />
+                </button>
                 {project.latestBuild?.deployedUrl && (
                   <a
                     href={project.latestBuild.deployedUrl}

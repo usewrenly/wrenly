@@ -3,8 +3,9 @@
 import { GitHubImportButton } from "@/components/projects/source/github-import";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, SettingsIcon, PlusIcon } from "lucide-react";
+import { ArrowUpRightIcon, PinIcon, SettingsIcon, PlusIcon } from "lucide-react";
 import { ProjectListError, useProjects } from "@/hooks/use-projects";
+import { useProjectPin } from "@/hooks/use-project-pin";
 import { ChoiceSelect } from "@/components/ui/choice-select";
 import { StackBadge } from "@/components/shell/stack-badge";
 import { StatusPill } from "@/components/shell/status-pill";
@@ -35,6 +36,7 @@ export function ProjectsCollection(): React.JSX.Element {
     error,
     refetch,
   } = useProjects(archived);
+  const pin = useProjectPin();
   const [search, setSearch] = useState("");
   const [scope, setScope] = useState("all");
   const [status, setStatus] = useState("all");
@@ -61,6 +63,7 @@ export function ProjectsCollection(): React.JSX.Element {
           .toLocaleLowerCase()
           .includes(search.trim().toLocaleLowerCase()) &&
         (scope === "all" ||
+          (scope === "pinned" && Boolean(project.pinnedAt)) ||
           (scope === "owned" && project.owned !== false) ||
           (scope === "shared" && project.owned === false)) &&
         (framework === "all" || project.stack === framework) &&
@@ -70,11 +73,15 @@ export function ProjectsCollection(): React.JSX.Element {
             : buildStatus === status))
       );
     })
-    .sort((a, b) =>
-      sort === "name"
+    .sort((a, b) => {
+      const aPinned = a.pinnedAt ? Date.parse(a.pinnedAt) : 0;
+      const bPinned = b.pinnedAt ? Date.parse(b.pinnedAt) : 0;
+      if (Boolean(aPinned) !== Boolean(bPinned)) return bPinned - aPinned;
+      if (aPinned && bPinned && aPinned !== bPinned) return bPinned - aPinned;
+      return sort === "name"
         ? a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-        : b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id),
-    );
+        : b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id);
+    });
   return (
     <div className="projects-page">
       <header className="projects-heading">
@@ -129,6 +136,7 @@ export function ProjectsCollection(): React.JSX.Element {
           onChange={(value) => change(setScope, value)}
           options={[
             { value: "all", label: "All projects" },
+            { value: "pinned", label: "Pinned" },
             { value: "owned", label: "Owned by you" },
             { value: "shared", label: "Shared with you" },
           ]}
@@ -209,6 +217,11 @@ export function ProjectsCollection(): React.JSX.Element {
           <p className="projects-count" role="status">
             {filtered.length} of {projects.length} projects
           </p>
+          {pin.error && (
+            <p role="alert" className="mb-4 text-xs text-red-700">
+              {pin.error}
+            </p>
+          )}
           {filtered.length === 0 ? (
             <div className="home-empty">
               <p>No projects match these filters.</p>
@@ -257,6 +270,24 @@ export function ProjectsCollection(): React.JSX.Element {
                       </div>
                     </Link>
                     <footer>
+                      <button
+                        type="button"
+                        className="project-card-pin"
+                        data-pinned={Boolean(project.pinnedAt)}
+                        aria-pressed={Boolean(project.pinnedAt)}
+                        aria-label={
+                          project.pinnedAt
+                            ? `Unpin ${project.name}`
+                            : `Pin ${project.name}`
+                        }
+                        disabled={pin.pendingId === project.id}
+                        onClick={() =>
+                          void pin.togglePin(project.id, !project.pinnedAt)
+                        }
+                      >
+                        <PinIcon size={14} aria-hidden="true" />
+                        {project.pinnedAt ? "Pinned" : "Pin"}
+                      </button>
                       <Link
                         href={`/p/${project.id}/settings`}
                         aria-label={`Settings for ${project.name}`}

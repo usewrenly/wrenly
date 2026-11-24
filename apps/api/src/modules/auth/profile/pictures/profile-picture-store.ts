@@ -8,11 +8,12 @@ import {
   conversationMessages,
   conversations,
   projects,
+  projectMembers,
   buildJobs,
 } from "@wrenly/db";
 import { assertActiveAccount } from "../../access/access-policy";
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import {
   type db,
@@ -200,6 +201,81 @@ export async function readProfilePicture(
         )
         .limit(1);
       row = buildAuthor;
+    }
+    if (!row?.bytes) {
+      const [projectOwner] = await database
+        .select({ bytes: profilePictures.imageBase64 })
+        .from(profilePictures)
+        .innerJoin(user, eq(user.id, profilePictures.userId))
+        .innerJoin(projects, eq(projects.userId, profilePictures.userId))
+        .where(
+          and(
+            eq(profilePictures.userId, targetId),
+            eq(profilePictures.revision, revision),
+            eq(user.banned, false),
+            ne(projects.accessMode, "private"),
+            readableProjectPredicate(database, actorId),
+          ),
+        )
+        .limit(1);
+      row = projectOwner;
+    }
+    if (!row?.bytes) {
+      const [selectedCollaborator] = await database
+        .select({ bytes: profilePictures.imageBase64 })
+        .from(profilePictures)
+        .innerJoin(user, eq(user.id, profilePictures.userId))
+        .innerJoin(member, eq(member.userId, profilePictures.userId))
+        .innerJoin(
+          instanceSetup,
+          and(
+            eq(instanceSetup.id, 1),
+            isNotNull(instanceSetup.initializedAt),
+            eq(instanceSetup.organizationId, member.organizationId),
+          ),
+        )
+        .innerJoin(
+          projectMembers,
+          eq(projectMembers.userId, profilePictures.userId),
+        )
+        .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+        .where(
+          and(
+            eq(profilePictures.userId, targetId),
+            eq(profilePictures.revision, revision),
+            eq(user.banned, false),
+            eq(projects.accessMode, "selected"),
+            readableProjectPredicate(database, actorId),
+          ),
+        )
+        .limit(1);
+      row = selectedCollaborator;
+    }
+    if (!row?.bytes) {
+      const [instanceCollaborator] = await database
+        .select({ bytes: profilePictures.imageBase64 })
+        .from(profilePictures)
+        .innerJoin(user, eq(user.id, profilePictures.userId))
+        .innerJoin(member, eq(member.userId, profilePictures.userId))
+        .innerJoin(
+          instanceSetup,
+          and(
+            eq(instanceSetup.id, 1),
+            isNotNull(instanceSetup.initializedAt),
+            eq(instanceSetup.organizationId, member.organizationId),
+          ),
+        )
+        .innerJoin(projects, eq(projects.accessMode, "instance"))
+        .where(
+          and(
+            eq(profilePictures.userId, targetId),
+            eq(profilePictures.revision, revision),
+            eq(user.banned, false),
+            readableProjectPredicate(database, actorId),
+          ),
+        )
+        .limit(1);
+      row = instanceCollaborator;
     }
   }
   if (!row?.bytes) throw new ProfilePictureError(404, "Picture unavailable.");

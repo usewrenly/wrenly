@@ -4,6 +4,7 @@
  * Retains failed artifacts for reload and resolves actual authors without provider credentials.
  */
 import { getProjectAuthors } from "./project-authors";
+import { getProjectCollaborators } from "./project-collaborators";
 import {
   readableProjectPredicate,
   readProjectCapabilities,
@@ -20,6 +21,7 @@ import {
   builds,
   buildJobs,
   projectModels,
+  projectPins,
   providerConnections,
   sourceProjectOrigins,
 } from "@wrenly/db";
@@ -108,6 +110,12 @@ export async function getProject(
     .from(sourceProjectOrigins)
     .where(eq(sourceProjectOrigins.projectId, id))
     .limit(1);
+  const [pin] = await db
+    .select({ pinnedAt: projectPins.pinnedAt })
+    .from(projectPins)
+    .where(and(eq(projectPins.projectId, id), eq(projectPins.userId, userId)))
+    .limit(1);
+  const collaboratorSummary = await getProjectCollaborators(db, project);
   const authors = await getProjectAuthors(
     db,
     buildRows.map((row) => row.actorId ?? project.userId),
@@ -115,6 +123,9 @@ export async function getProject(
   return Response.json(
     {
       features: { developmentDatabases: dependencies?.developmentDatabases === true },
+      pinned: Boolean(pin),
+      collaborators: collaboratorSummary.collaborators,
+      collaboratorCount: collaboratorSummary.collaboratorCount,
       projectModel: projectModel ?? null,
       sourceOrigin: sourceOrigin ?? null,
       project,

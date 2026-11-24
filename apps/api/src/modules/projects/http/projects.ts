@@ -15,9 +15,8 @@ import { assertActiveAccount } from "../../auth/access/access-policy";
 
 import { z } from "zod";
 import { requireUserId } from "../../auth/access/session";
-import { db } from "@wrenly/db";
-import { projects, builds } from "@wrenly/db";
-import { desc, inArray, and, isNull, isNotNull } from "drizzle-orm";
+import { db, projects, builds, projectPins } from "@wrenly/db";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 // ─── GET /api/projects ────────────────────────────────────────────────────────
 
@@ -41,9 +40,19 @@ export async function listProjects(
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userProjects = await database
-    .select()
+  const rows = await database
+    .select({
+      project: projects,
+      pinnedAt: projectPins.pinnedAt,
+    })
     .from(projects)
+    .leftJoin(
+      projectPins,
+      and(
+        eq(projectPins.projectId, projects.id),
+        eq(projectPins.userId, userId),
+      ),
+    )
     .where(
       and(
         readableProjectPredicate(database, userId),
@@ -53,6 +62,15 @@ export async function listProjects(
       ),
     )
     .orderBy(desc(projects.updatedAt));
+
+  // Keep user-pinned projects first (newest pin first), preserving updatedAt order after.
+  const ordered = [...rows].sort((a, b) => {
+    const aPinned = a.pinnedAt ? a.pinnedAt.getTime() : 0;
+    const bPinned = b.pinnedAt ? b.pinnedAt.getTime() : 0;
+    if (Boolean(aPinned) !== Boolean(bPinned)) return bPinned - aPinned;
+    if (aPinned && bPinned && aPinned !== bPinned) return bPinned - aPinned;
+    return b.project.updatedAt.getTime() - a.project.updatedAt.getTime();
+  });
 
   // Latest build per project — status pills, live URL and attempt counts on
   // the dashboard need it without shipping files/build logs (payload-heavy).
@@ -67,8 +85,8 @@ export async function listProjects(
     }
   >();
 
-  if (userProjects.length > 0) {
-    const projectIds = userProjects.map((p) => p.id);
+  if (ordered.length > 0) {
+    const projectIds = ordered.map((row) => row.project.id);
     const recentBuilds = await database
       .select({
         id: builds.id,
@@ -91,10 +109,11 @@ export async function listProjects(
   }
 
   return Response.json({
-    projects: userProjects.map((p) => ({
-      ...p,
-      owned: p.userId === userId,
-      latestBuild: latestByProject.get(p.id) ?? null,
+    projects: ordered.map(({ project, pinnedAt }) => ({
+      ...project,
+      owned: project.userId === userId,
+      pinnedAt: pinnedAt ? pinnedAt.toISOString() : null,
+      latestBuild: latestByProject.get(project.id) ?? null,
     })),
   });
 }

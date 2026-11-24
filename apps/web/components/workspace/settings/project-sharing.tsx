@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { ChoiceSelect } from "@/components/ui/choice-select";
 import { useModels } from "@/lib/models/discovery";
 import { ProfileAvatar } from "@/components/account/profile-avatar";
+import { resolveSuggestedProjectModel } from "./suggested-project-model";
 import { ProjectArchiveControls } from "./project-archive-controls";
 import { ProjectSkills } from "./project-skills";
 import { ProjectSettings } from "./project-settings";
@@ -83,9 +84,11 @@ export function ProjectAccessSettings({
     [review, setReview] = useState(false),
     [uncertain, setUncertain] = useState(false),
     [canRetry, setCanRetry] = useState(false),
-    [modelValue, setModelValue] = useState("");
+    [modelValue, setModelValue] = useState(""),
+    [suggestedModelApplied, setSuggestedModelApplied] = useState(false);
   const frozen = useRef<FrozenChange | null>(null),
-    lock = useRef(false);
+    lock = useRef(false),
+    preselectedModel = useRef(false);
   const reviewRegion = useRef<HTMLDivElement>(null),
     reviewButton = useRef<HTMLButtonElement>(null),
     wasReviewing = useRef(false);
@@ -106,12 +109,23 @@ export function ProjectAccessSettings({
           role: person.role ?? "viewer",
         })),
       });
-      if (data.model)
+      if (data.model) {
         setModelValue(
           JSON.stringify([data.model.connectionId, data.model.modelId]),
         );
+        setSuggestedModelApplied(false);
+      }
     }
   }, [data, baseline]);
+  useEffect(() => {
+    if (!data || data.model || modelValue || preselectedModel.current || !models.data)
+      return;
+    preselectedModel.current = true;
+    const suggested = resolveSuggestedProjectModel(models.data);
+    if (!suggested) return;
+    setModelValue(suggested);
+    setSuggestedModelApplied(true);
+  }, [data, modelValue, models.data]);
   const refresh = async (): Promise<void> => {
     const result = await query.refetch();
     if (result.isError || !result.data)
@@ -133,6 +147,7 @@ export function ProjectAccessSettings({
           ])
         : "",
     );
+    setSuggestedModelApplied(false);
     setReview(false);
     setUncertain(false);
     setCanRetry(false);
@@ -580,7 +595,10 @@ export function ProjectAccessSettings({
               emptySearchText="No matching models found."
               value={modelValue}
               disabled={blocked}
-              onChange={setModelValue}
+              onChange={(value) => {
+                setModelValue(value);
+                setSuggestedModelApplied(false);
+              }}
               options={savedModels}
               displayValue={
                 savedModels.find((model) => model.value === modelValue)
@@ -597,6 +615,12 @@ export function ProjectAccessSettings({
               Save project model
             </button>
           </div>
+          {!data.model && suggestedModelApplied && (
+            <p className="mt-2 text-xs text-[var(--color-text-2)]" role="status">
+              Pre-selected from your active model. Click Save project model to
+              apply it for collaborators, or choose another.
+            </p>
+          )}
           <p className="project-sharing-note">
             Environment providers need the existing dashboard import first. Ask
             the instance administrator if a saved connection is missing.

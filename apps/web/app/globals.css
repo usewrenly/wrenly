@@ -217,8 +217,11 @@ code, pre, .font-mono {
 .app-nav-links a[aria-current], .app-rail-footer a[aria-current] { color: var(--color-text-1); background: var(--color-surface-2); font-weight: 550; }
 .app-nav-links a:hover, .app-rail-footer a:hover { background: var(--color-surface-2); }
 .app-nav-links svg, .app-rail-footer svg { width: 16px; height: 16px; }
-.app-rail-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 28px 26px 10px; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-2); }
+.app-rail-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 28px 20px 10px 26px; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-2); }
 .app-rail-heading h2 { text-transform: uppercase; letter-spacing: .07em; font-weight: 400; }
+.app-rail-heading-actions { display: inline-flex; align-items: center; gap: 6px; }
+.app-rail-new { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-2); transition: color .15s, border-color .15s, background-color .15s; }
+.app-rail-new:hover { color: var(--color-text-1); border-color: var(--color-border-2); background: var(--color-surface-2); }
 .app-project-filters { display: flex; gap: 3px; padding: 0 20px 12px; }
 .app-project-filters button { min-height: 32px; padding: 4px 7px; border-radius: 4px; font-size: 10px; color: var(--color-text-2); }
 .app-project-filters button[aria-pressed="true"] { background: var(--color-surface-2); color: var(--color-text-1); }
@@ -235,6 +238,10 @@ code, pre, .font-mono {
 .app-project-dot[data-status="failed"] { background: var(--color-error); }
 .app-project-live { display: grid; place-items: center; min-width: 32px; min-height: 40px; color: var(--color-text-2); }
 .app-project-live svg { width: 14px; height: 14px; }
+.app-project-pin { display: grid; place-items: center; min-width: 28px; min-height: 36px; border-radius: 5px; color: var(--color-text-3); opacity: 0; transition: opacity .15s, color .15s; flex-shrink: 0; }
+.app-project-row:hover .app-project-pin, .app-project-row:focus-within .app-project-pin, .app-project-pin[data-pinned="true"] { opacity: 1; }
+.app-project-pin:hover { color: var(--color-text-1); }
+.app-project-pin[data-pinned="true"] { color: var(--color-primary); }
 .app-rail-notice { padding: 14px 12px; color: var(--color-text-2); font-size: 12px; line-height: 1.7; }
 .app-rail-notice button { margin-top: 8px; text-decoration: underline; text-underline-offset: 4px; }
 .app-rail-footer { padding: 14px; margin-top: auto; border-top: 1px solid var(--color-border); }
@@ -501,8 +508,10 @@ code, pre, .font-mono {
 .project-card-art { height: 88px; position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 100%, var(--color-surface-2), transparent 75%); }
 .project-card-art svg { position: absolute; width: 65px; height: 65px; bottom: -10px; right: 18px; color: var(--color-text-1); opacity: .045; transform: rotate(-12deg); }
 .project-card-plate { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 13px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); box-shadow: 0 8px 22px #00000005; color: var(--color-text-2); font-size: 11px; }
-.project-card footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--color-border); padding: 13px 22px; }
-.project-card footer a { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-2); min-height: 24px; }
+.project-card footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--color-border); padding: 13px 22px; }
+.project-card footer a, .project-card footer button { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-2); min-height: 24px; }
+.project-card footer button:hover { color: var(--color-text-1); }
+.project-card-pin[data-pinned="true"] { color: var(--color-primary); font-weight: 550; }
 .projects-more { display: flex; margin: 28px auto 0; cursor: pointer; }
 .home-project-continuation { height: 46px; background: repeating-linear-gradient(to bottom, transparent 0 20px, var(--color-border) 20px 21px); mask-image: linear-gradient(black, transparent); pointer-events: none; }
 .home-page { padding-bottom: 80px; }
@@ -752,6 +761,12 @@ code, pre, .font-mono {
 @media(max-width:600px){.project-sharing-page{padding:16px}.project-sharing-modes{grid-template-columns:minmax(0,1fr)}.project-sharing-panel{padding:16px}.project-sharing-person{flex-wrap:wrap}.project-sharing-person>div:first-child{flex-basis:100%}}
 .project-sharing-modes input{accent-color:var(--color-text-1)}
 .workspace-toolbar .workspace-share-link{margin-left:0}.workspace-toolbar .workspace-swap{margin-left:auto}
+.workspace-member-stack { display: inline-flex; align-items: center; padding-left: 6px; flex-shrink: 0; }
+.workspace-avatar { width: 26px; height: 26px; margin-left: -6px; border: 2px solid var(--color-surface); border-radius: 50%; background: var(--color-surface-2); color: var(--color-text-1); font-size: 10px; font-weight: 550; display: inline-grid; place-items: center; }
+.workspace-pin-button, .workspace-new-link { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 6px 9px; border: 1px solid var(--color-border); border-radius: 5px; background: var(--color-surface); color: var(--color-text-2); font-size: 12px; white-space: nowrap; flex-shrink: 0; transition: color .15s, border-color .15s, background-color .15s; }
+.workspace-pin-button:hover, .workspace-new-link:hover { color: var(--color-text-1); border-color: var(--color-border-2); background: var(--color-surface-2); }
+.workspace-pin-button[data-pinned="true"] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border)); background: var(--color-surface-2); }
+@media (max-width: 899px) { .workspace-new-link span { display: none; } }
 .project-sharing-avatar{width:32px;height:32px;flex-shrink:0;border:1px solid var(--color-border);background:var(--color-surface-2);border-radius:50%;display:grid;place-items:center;font-size:11px}
 .project-sharing-person>.project-sharing-identity{flex:1;min-width:0;overflow-wrap:anywhere}@media(max-width:600px){.project-sharing-person>.project-sharing-identity{flex-basis:calc(100% - 44px)}}
 
