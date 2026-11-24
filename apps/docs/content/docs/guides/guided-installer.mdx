@@ -54,11 +54,13 @@ bunx @wrenly/cli@beta install \
 - `--previews` prepares the Next.js preview runtime image (`oven/bun:alpine`).
 - `--laravel` builds the repository's Laravel 13 FrankenPHP toolchain (`wrenly/laravel-runtime:13-php8.4`) and should be paired with `--previews` for Laravel previews.
 - `--databases` enables Development app databases alongside isolated previews and builds the trusted PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images. Production app databases and publishing require a separate server/host connection setup and remain disabled by default.
+- `--inspection` enables official framework inspection (`WRENLY_FRAMEWORK_INSPECTION_ENABLED=true`) and builds `wrenly/laravel-runtime:13-php8.4`, `wrenly/framework-inspection-laravel:1`, and `wrenly/framework-inspection-nextjs:1`.
+- `--dictation` enables local voice dictation (`WRENLY_DICTATION_ENABLED=true`), downloads checksum-verified Whisper `ggml-base.bin` weights from Hugging Face into `.wrenly/speech/`, and builds `wrenly/transcription-runtime:1`.
 
 ## Create your owner account
 
 After an interactive install, the CLI prints a private setup link. On a local desktop
-session, it also offers to open the public `/setup` page in your browser without
+session, it automatically opens the public `/setup` page in your browser without
 passing the one-time token in browser arguments; use the private `#setup=` link printed
 in the terminal to finish creating your owner account within ten minutes. Do not share
 or record that link. A non-interactive installation prints instructions to run:
@@ -117,7 +119,7 @@ archive alone is not a backup of accounts or projects.
 
 ## Release integrity and scope
 
-This CLI pins public commit `d04c82bd1e2b052e80c114fca7883eca2ddd1300` and checks the
+This CLI pins public commit `4b5c742e221b9f0752fb9bcfd447e3b576fe0b67` and checks the
 archive's SHA-256 before extracting or executing source. It rejects links, unsafe paths,
 collisions, and oversized archives. `--archive /absolute/source.tgz` accepts only those
 same pinned bytes; it does not allow arbitrary code or a moving branch. The checksum
