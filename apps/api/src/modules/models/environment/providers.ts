@@ -26,6 +26,7 @@ export interface ModelOption {
   label: string;
   kind: ProviderKind;
   provider: string;
+  supportsImages?: boolean;
 }
 
 export interface ProviderStatus {

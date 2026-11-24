@@ -19,9 +19,22 @@ test('an older response without provider identity never selects the first paid m
   expect(resolveSelection({ providers: [], models: [{ id: 'paid', label: 'Paid', kind: 'cloud', provider: 'paid-provider' }], envDefault: 'paid' }, null)).toBeNull()
 })
 
-test('discovery rejects malformed metadata and strips unrelated credential fields', () => {
-  const valid = { providers: [], models: [{ id: 'model', label: 'Model', kind: 'cloud', provider: 'provider', token: 'not-for-browser-state' }], envDefault: 'model', defaultProvider: 'provider' }
-  expect(parseModelsResponse(valid).models[0]).not.toHaveProperty('token')
+test('discovery preserves optional image capability, rejects malformed metadata, and strips credential fields', () => {
+  const valid = {
+    providers: [],
+    models: [
+      { id: 'vision-model', label: 'Vision', kind: 'cloud', provider: 'provider', supportsImages: true, token: 'not-for-browser-state' },
+      { id: 'text-model', label: 'Text', kind: 'cloud', provider: 'provider', supportsImages: false },
+      { id: 'legacy-model', label: 'Legacy', kind: 'local', provider: 'ollama' },
+    ],
+    envDefault: 'vision-model',
+    defaultProvider: 'provider',
+  }
+  const parsed = parseModelsResponse(valid)
+  expect(parsed.models[0]).not.toHaveProperty('token')
+  expect(parsed.models[0]?.supportsImages).toBe(true)
+  expect(parsed.models[1]?.supportsImages).toBe(false)
+  expect(parsed.models[2]?.supportsImages).toBeUndefined()
   expect(() => parseModelsResponse({ ...valid, models: [{ id: 'model', kind: 'cloud' }] })).toThrow('unreadable response')
   expect(() => parseModelsResponse({ ...valid, providers: [{ reachable: 'true' }] })).toThrow('unreadable response')
 })

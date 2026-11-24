@@ -15,7 +15,9 @@ uploads it privately to your instance; **Send** is what includes it in a model r
 
 Remove a chip to leave that file out. If an upload fails, use its **Retry** control or
 remove it. Send stays disabled while a selected upload is incomplete. Files appear
-with the saved conversation so collaborators can understand the same reference.
+with the saved conversation—images render as inline thumbnails with a click-to-preview
+viewer and text files appear as reference chips—so collaborators can understand the same
+reference.
 
 ## Formats and limits
 
@@ -36,9 +38,11 @@ Wrenly reports this before starting the model request; use fewer or smaller imag
 ## Choose a model that accepts images
 
 Text references work with text models. Images need a model and endpoint that accept
-OpenAI-compatible image messages. The instance owner opens **Settings → Providers →
-Image input support** on a saved connection and lists the exact supported model IDs.
-A catalog listing alone does not establish that an endpoint supports images.
+OpenAI-compatible image messages. If you are an instance owner and attach an image while a
+saved model is not yet marked for images, the composer prompts you to enable image inputs for
+that model right in place. You can also manage the exact list of supported model IDs under
+**Settings → Providers → Edit → Images** on a saved connection. A catalog listing alone does
+not establish that an endpoint supports images.
 
 Wrenly checks this setting when accepting the prompt and again before contacting the
 model. It does not silently switch models or discard an image. If the setting changes,

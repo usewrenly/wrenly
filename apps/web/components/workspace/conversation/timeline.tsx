@@ -10,6 +10,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { CopyMessage } from "./copy-message";
+import { SavedAttachmentList } from "./saved-attachment-list";
 import { ProfileAvatar } from "@/components/account/profile-avatar";
 import type { PromptAttachment } from "@/lib/attachments/contracts";
 import { relativeTime } from "@/lib/format";
@@ -44,7 +45,7 @@ export function PromptRow({
           {timestamp && <span>· {relativeTime(timestamp)}</span>}
         </div>
         <p>{content}</p>
-        {attachments?.length ? <ul className="mt-3 flex flex-wrap gap-2" aria-label="Saved reference files">{attachments.map(file => <li key={file.id}><a className="inline-flex items-center gap-1 rounded-lg border border-[var(--color-border)] px-2 py-1 text-xs underline" href={`/api/attachments/${encodeURIComponent(file.id)}`} target="_blank" rel="noopener noreferrer">{file.name}<ArrowUpRightIcon size={12} aria-hidden="true" /></a></li>)}</ul> : null}
+        <SavedAttachmentList attachments={attachments} />
         <div className="workspace-prompt-actions">
           <CopyMessage content={content} />
           {onRevise && (

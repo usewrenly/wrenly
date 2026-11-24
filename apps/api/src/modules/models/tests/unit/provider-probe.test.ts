@@ -142,3 +142,37 @@ integration(
     }
   },
 );
+
+test("unreachable local provider rejects once without leaking secondary socket errors", async () => {
+  const closed = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(): Response {
+      return new Response("ok");
+    },
+  });
+  const port = closed.port;
+  await closed.stop(true);
+
+  const resolver = async (): Promise<
+    Array<{ address: string; family: number }>
+  > => [
+    { address: "127.0.0.1", family: 4 },
+    { address: "::1", family: 6 },
+  ];
+
+  await expect(
+    readProviderModelList(
+      {
+        endpoint: `http://provider.fixture:${port}`,
+        protocol: "ollama",
+        kind: "local",
+        token: null,
+      },
+      undefined,
+      resolver,
+    ),
+  ).rejects.toThrow("could not be reached");
+
+  await Bun.sleep(50);
+});
