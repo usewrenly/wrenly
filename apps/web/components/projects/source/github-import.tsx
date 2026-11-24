@@ -564,6 +564,9 @@ function ImportFlow({
                   <label className={styles.fieldLabel}>Framework</label>
                   <ChoiceSelect
                     label="Framework"
+                    searchable
+                    searchPlaceholder="Search frameworks…"
+                    emptySearchText="No matching frameworks found."
                     value={stack}
                     options={[
                       { value: "auto", label: "Detect automatically" },

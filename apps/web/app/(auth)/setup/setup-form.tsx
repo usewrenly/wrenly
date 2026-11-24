@@ -96,14 +96,29 @@ export function SetupForm({
               Private setup link received. Your code will be checked when you
               create the owner account.
             </p>
+            <div className="entry-field">
+              <Label htmlFor="proof">Setup code</Label>
+              <Input
+                className="entry-control"
+                id="proof"
+                type="password"
+                value={proof}
+                readOnly
+                aria-readonly="true"
+                disabled={loading}
+                autoComplete="off"
+              />
+            </div>
             <button
               type="button"
               className="entry-text-action self-start text-xs"
-              onClick={() => setManualProof(true)}
+              onClick={() => {
+                setProof("");
+                setManualProof(true);
+              }}
             >
               Enter a setup code manually
             </button>
-            <input id="proof" type="hidden" value={proof} />
           </>
         ) : (
           <>
@@ -125,6 +140,18 @@ export function SetupForm({
                 required
               />
             </div>
+            {initialProof && (
+              <button
+                type="button"
+                className="entry-text-action self-start text-xs"
+                onClick={() => {
+                  setProof(initialProof);
+                  setManualProof(false);
+                }}
+              >
+                Use code from setup link
+              </button>
+            )}
           </>
         )}
       </div>
