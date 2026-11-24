@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { inspectArchive } from "./archive";
 import { verifyRelease, type Release } from "./release";
+import { SPEECH_MODEL_FILENAME } from "./speech-model";
 import {
   InstallationState,
   verifyDirectoryPath,
@@ -22,6 +23,8 @@ export interface Settings {
   previews: boolean;
   laravel: boolean;
   databases?: boolean;
+  inspection?: boolean;
+  dictation?: boolean;
 }
 export function createState(settings: Settings, release: Release): State {
   return InstallationState.parse({
@@ -31,8 +34,10 @@ export function createState(settings: Settings, release: Release): State {
     databasePort: settings.databasePort,
     previewPort: settings.previewPort,
     previews: settings.previews || Boolean(settings.databases),
-    laravel: settings.laravel,
+    laravel: settings.laravel || Boolean(settings.inspection),
     databases: settings.databases ?? false,
+    inspection: settings.inspection ?? false,
+    dictation: settings.dictation ?? false,
     ...release,
     version: 1,
     id: crypto.randomUUID(),
@@ -145,6 +150,13 @@ export async function prepareInstallation(
       "WRENLY_PUBLISHING_ENABLED=false",
       `WRENLY_APP_DATABASES_ENABLED=${state.databases}`,
       "WRENLY_PRODUCTION_DATABASES_ENABLED=false",
+      `WRENLY_FRAMEWORK_INSPECTION_ENABLED=${state.inspection}`,
+      `WRENLY_DICTATION_ENABLED=${state.dictation}`,
+      ...(state.dictation
+        ? [
+            `WRENLY_DICTATION_MODEL_PATH=${join(state.directory, ".wrenly", "speech", SPEECH_MODEL_FILENAME)}`,
+          ]
+        : []),
       "WRENLY_SINGLE_USER_MODE=false",
       "",
     ].join("\n"),

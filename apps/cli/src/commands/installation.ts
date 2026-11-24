@@ -8,6 +8,7 @@ import {
   MAX_ARCHIVE_BYTES,
 } from "../install/release";
 import { prepareInstallation, type Settings } from "../install/prepare";
+import { ensureVerifiedSpeechModel } from "../install/speech-model";
 import {
   readState,
   saveState,
@@ -187,6 +188,77 @@ export async function resumeInstallation(
           ),
         write,
       );
+    if (state.inspection) {
+      for (const [name, target, image] of [
+        [
+          "Laravel inspection image",
+          "laravel",
+          "wrenly/framework-inspection-laravel:1",
+        ],
+        [
+          "Next.js inspection image",
+          "nextjs",
+          "wrenly/framework-inspection-nextjs:1",
+        ],
+      ] as const) {
+        await step(
+          state,
+          name,
+          () =>
+            trustedStep(
+              state,
+              [
+                "docker",
+                "--host",
+                "unix:///var/run/docker.sock",
+                "build",
+                "--target",
+                target,
+                "-t",
+                image,
+                "-f",
+                "packages/sandbox/images/framework-inspection/Dockerfile",
+                ".",
+              ],
+              directory,
+              IMAGE_BUILD_TIMEOUT_MS,
+            ),
+          write,
+        );
+      }
+    }
+    if (state.dictation) {
+      await step(
+        state,
+        "voice dictation model",
+        async () => {
+          await ensureVerifiedSpeechModel(directory);
+        },
+        write,
+      );
+      await step(
+        state,
+        "voice dictation image",
+        () =>
+          trustedStep(
+            state,
+            [
+              "docker",
+              "--host",
+              "unix:///var/run/docker.sock",
+              "build",
+              "-t",
+              "wrenly/transcription-runtime:1",
+              "-f",
+              "packages/sandbox/images/transcription/Dockerfile",
+              ".",
+            ],
+            directory,
+            IMAGE_BUILD_TIMEOUT_MS,
+          ),
+        write,
+      );
+    }
     if (state.previews)
       await step(
         state,

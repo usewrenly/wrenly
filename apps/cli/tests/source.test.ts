@@ -113,6 +113,43 @@ test("databases option enables preview settings and persists development flag", 
     expect(env).toContain("WRENLY_PREVIEW_ENABLED=true\n");
     expect(env).toContain("WRENLY_APP_DATABASES_ENABLED=true\n");
     expect(env).toContain("WRENLY_PRODUCTION_DATABASES_ENABLED=false\n");
+    expect(env).toContain("WRENLY_FRAMEWORK_INSPECTION_ENABLED=false\n");
+    expect(env).toContain("WRENLY_DICTATION_ENABLED=false\n");
+    await verifyConfiguration(state);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test("inspection and dictation options enable Laravel, write env configuration, and pass verification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "wrenly-runtime-source-"));
+  try {
+    const directory = join(root, "instance"),
+      fixture = tarFixture();
+    const state = await prepareInstallation(
+      {
+        directory,
+        webPort: 41000,
+        apiPort: 41001,
+        databasePort: 41002,
+        previewPort: 41003,
+        previews: false,
+        laravel: false,
+        inspection: true,
+        dictation: true,
+      },
+      fixture.release,
+      fixture.bytes,
+    );
+    const saved = await readState(directory);
+    expect(saved.inspection).toBe(true);
+    expect(saved.laravel).toBe(true);
+    expect(saved.dictation).toBe(true);
+    const env = await readFile(join(directory, ".env"), "utf8");
+    expect(env).toContain("WRENLY_FRAMEWORK_INSPECTION_ENABLED=true\n");
+    expect(env).toContain("WRENLY_DICTATION_ENABLED=true\n");
+    expect(env).toContain(
+      `WRENLY_DICTATION_MODEL_PATH=${join(directory, ".wrenly", "speech", "ggml-base.bin")}\n`,
+    );
     await verifyConfiguration(state);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -123,9 +160,6 @@ test("browser handoff opens only the public setup route without tokens", async (
   let output = "";
   await offerSetupBrowserHandoff(41000, {
     desktop: false,
-    ask: async () => {
-      throw Error("must not prompt without desktop");
-    },
     open: async (url) => {
       opened.push(url);
       return true;
@@ -141,7 +175,6 @@ test("browser handoff opens only the public setup route without tokens", async (
   output = "";
   await offerSetupBrowserHandoff(41000, {
     desktop: true,
-    ask: async () => "n",
     open: async (url) => {
       opened.push(url);
       return true;
@@ -150,11 +183,14 @@ test("browser handoff opens only the public setup route without tokens", async (
       output += text;
     },
   });
-  expect(opened).toHaveLength(0);
+  expect(opened).toEqual(["http://localhost:41000/setup"]);
+  expect(output).toContain("Opened http://localhost:41000/setup in your browser");
+  expect(output).not.toContain("#setup=");
 
+  opened.length = 0;
+  output = "";
   await offerSetupBrowserHandoff(41000, {
     desktop: true,
-    ask: async () => "y",
     open: async (url) => {
       opened.push(url);
       return false;

@@ -39,6 +39,8 @@ const HELP = `Wrenly · guided local setup
     --preview-port <port>    Preview gateway port (default: 3003)
     --laravel                Build the Laravel 13 FrankenPHP runtime image
     --databases              Prepare Development app databases (enables previews)
+    --inspection             Build official Laravel & Next.js MCP inspection images
+    --dictation              Download Whisper weights and build dictation runtime
     --archive <file>         Use a pre-downloaded verified release tarball
     --json                   Output structured JSON (doctor, plan, status)
     --yes                    Confirm non-interactive execution after reviewing plan
@@ -159,7 +161,7 @@ export async function runCli(
     await confirm("install", options.yes);
     const state = await installNew(options, import.meta.path, write);
     write(
-      `\nWrenly is running: http://localhost:${state.webPort}\nConfiguration: ${join(state.directory, ".env")} (keep this private and back it up).\n${state.databases ? "Development app databases are prepared. Approve project storage and migration changes in the conversation." : "Development app databases are off; choose --databases during a new installation to prepare them."}\nProduction databases and publishing require separate connection setup.\nOptional major updates: https://www.usewrenly.org/#join (subscribe in your browser).\n`,
+      `\nWrenly is running: http://localhost:${state.webPort}\nConfiguration: ${join(state.directory, ".env")} (keep this private and back it up).\n${state.databases ? "Development app databases are prepared. Approve project storage and migration changes in the conversation." : "Development app databases are off; choose --databases during a new installation to prepare them."}\n${state.inspection ? "Official framework inspection is prepared." : "Official framework inspection is off; choose --inspection during a new installation to enable it."}\n${state.dictation ? "Local voice dictation is prepared." : "Local voice dictation is off; choose --dictation during a new installation to enable it."}\nProduction databases and publishing require separate connection setup.\nOptional major updates: https://www.usewrenly.org/#join (subscribe in your browser).\n`,
     );
     if (process.stdin.isTTY && process.stdout.isTTY)
       await openOwnerSetup(state.directory, true, write);
@@ -188,26 +190,42 @@ async function wizard(write: (text: string) => void): Promise<string[]> {
     const directory =
       (
         await terminal.question(
-          `◆  1/5  Installation folder [${join(homedir(), "wrenly")}]: `,
+          `◆  1/7  Installation folder [${join(homedir(), "wrenly")}]: `,
         )
       ).trim() || join(homedir(), "wrenly");
     const web =
-      (await terminal.question("│  2/5  Browser port [3000]: ")).trim() || "3000";
+      (await terminal.question("│  2/7  Browser port [3000]: ")).trim() || "3000";
     const api =
       (await terminal.question("│       API port [3002]: ")).trim() || "3002";
     const database =
       (await terminal.question("│       Wrenly database port [65433]: ")).trim() ||
       "65433";
     const previews =
-      (await terminal.question("│  3/5  Prepare local previews? [y/N]: "))
+      (await terminal.question("│  3/7  Prepare local previews? [y/N]: "))
         .trim()
         .toLowerCase() === "y";
     const laravel =
-      (await terminal.question("│  4/5  Prepare the Laravel toolchain? [y/N]: "))
+      (await terminal.question("│  4/7  Prepare the Laravel toolchain? [y/N]: "))
+        .trim()
+        .toLowerCase() === "y";
+    const inspection =
+      (
+        await terminal.question(
+          "│  5/7  Prepare official framework inspection (Laravel Boost & Next.js DevTools; includes Laravel toolchain)? [y/N]: ",
+        )
+      )
+        .trim()
+        .toLowerCase() === "y";
+    const dictation =
+      (
+        await terminal.question(
+          "│  6/7  Prepare local voice dictation (downloads ~148 MB Whisper weights)? [y/N]: ",
+        )
+      )
         .trim()
         .toLowerCase() === "y";
     const databases =
-      (await terminal.question("◆  5/5  Prepare Development app databases (includes previews)? [y/N]: "))
+      (await terminal.question("◆  7/7  Prepare Development app databases (includes previews)? [y/N]: "))
         .trim().toLowerCase() === "y";
     return [
       "install",
@@ -221,6 +239,8 @@ async function wizard(write: (text: string) => void): Promise<string[]> {
       database,
       ...(previews ? ["--previews"] : []),
       ...(laravel ? ["--laravel"] : []),
+      ...(inspection ? ["--inspection"] : []),
+      ...(dictation ? ["--dictation"] : []),
       ...(databases ? ["--databases"] : []),
     ];
   } finally {

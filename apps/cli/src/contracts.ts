@@ -21,6 +21,8 @@ export interface Options {
   previews: boolean;
   laravel: boolean;
   databases: boolean;
+  inspection: boolean;
+  dictation: boolean;
 }
 export interface Check {
   name: string;

@@ -49,7 +49,12 @@ parent directory. Existing destinations and symlink ancestors are refused. `--pr
 prepares the Next.js preview image; `--laravel` builds the repository's Laravel toolchain
 and should be paired with `--previews` if you want Laravel previews; `--databases`
 enables Development app databases alongside isolated previews and builds the trusted
-PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images.
+PostgreSQL (`wrenly/postgres-runtime:17`) and socket (`wrenly/database-socket:1`) images;
+`--inspection` enables official framework inspection (`WRENLY_FRAMEWORK_INSPECTION_ENABLED=true`)
+and builds `wrenly/laravel-runtime:13-php8.4`, `wrenly/framework-inspection-laravel:1`, and
+`wrenly/framework-inspection-nextjs:1`; `--dictation` enables local voice dictation
+(`WRENLY_DICTATION_ENABLED=true`), downloads checksum-verified Whisper `ggml-base.bin` weights
+from Hugging Face into `.wrenly/speech/`, and builds `wrenly/transcription-runtime:1`.
 Production app databases and publishing require a separate server/host connection setup
 and stay disabled by default. Downloads require internet during setup. No Wrenly cloud
 account is required.
@@ -57,7 +62,7 @@ account is required.
 ## Create your owner account
 
 After an interactive install, the CLI prints a private setup link. On a local desktop
-session, it also offers to open the public `/setup` page in your browser without
+session, it automatically opens the public `/setup` page in your browser without
 passing the one-time token in browser arguments; copy or keep the private `#setup=`
 link printed in the terminal to finish creating your owner account within ten minutes.
 Do not share or record that link. A non-interactive installation prints instructions to run:

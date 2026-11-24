@@ -9,6 +9,7 @@ import {
   saveState,
   type State,
 } from "../install/state";
+import { SPEECH_MODEL_FILENAME } from "../install/speech-model";
 import { runtimeRequest, type Reply } from "../runtime/control";
 import { cleanEnvironment, runCommand } from "../runtime/process";
 import {
@@ -31,7 +32,6 @@ const SAFE_DESKTOP_ENVIRONMENT = [
 
 export interface BrowserHandoff {
   desktop: boolean;
-  ask(question: string): Promise<string>;
   open(url: string): Promise<boolean>;
   write(text: string): void;
 }
@@ -77,6 +77,18 @@ export async function verifyConfiguration(state: State): Promise<void> {
     WRENLY_PREVIEW_ENABLED: String(state.previews),
     WRENLY_PREVIEW_GATEWAY_PORT: String(state.previewPort),
     WRENLY_APP_DATABASES_ENABLED: String(state.databases),
+    WRENLY_FRAMEWORK_INSPECTION_ENABLED: String(state.inspection),
+    WRENLY_DICTATION_ENABLED: String(state.dictation),
+    ...(state.dictation
+      ? {
+          WRENLY_DICTATION_MODEL_PATH: join(
+            state.directory,
+            ".wrenly",
+            "speech",
+            SPEECH_MODEL_FILENAME,
+          ),
+        }
+      : {}),
   }))
     if (values.get(name) !== value)
       throw new Error(
@@ -214,7 +226,7 @@ function publicSetupUrl(webPort: number): string {
     throw new Error("Setup browser URL must not carry parameters or tokens.");
   return url.href;
 }
-/** Offer to open only the public setup page so the one-time token never enters desktop command arguments. */
+/** Automatically open only the token-free public setup page on local desktops so the one-time token never enters opener command arguments. */
 export async function offerSetupBrowserHandoff(
   webPort: number,
   handoff: BrowserHandoff,
@@ -226,16 +238,12 @@ export async function offerSetupBrowserHandoff(
     );
     return;
   }
-  const answer = (
-    await handoff.ask(
-      `Open ${url} in your browser now? (Keep the private link above to complete setup) [y/N]: `,
-    )
-  )
-    .trim()
-    .toLowerCase();
-  if (answer !== "y") return;
   const opened = await handoff.open(url);
-  if (!opened)
+  if (opened)
+    handoff.write(
+      `Opened ${url} in your browser. Keep the private setup link printed above to complete setup.\n`,
+    );
+  else
     handoff.write(
       `Could not open a browser automatically. Open ${url} and use the private setup link printed above.\n`,
     );
@@ -307,20 +315,6 @@ export async function openOwnerSetup(
         process.stdout.isTTY &&
         (process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
     ),
-    ask: async (question) => {
-      const { createInterface } = await import("node:readline/promises");
-      const terminal = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      try {
-        return await terminal.question(question);
-      } catch {
-        return "";
-      } finally {
-        terminal.close();
-      }
-    },
     open: (url) => openPublicSetupBrowser(url, state.directory),
     write,
   });

@@ -38,17 +38,30 @@ export function parseArguments(
     previews: false,
     laravel: false,
     databases: false,
+    inspection: false,
+    dictation: false,
   };
   const seen = new Set<string>();
   for (let index = 1; index < args.length; index++) {
     const flag = args[index]!;
     if (seen.has(flag)) throw new Error(`Repeated option: ${flag}`);
     seen.add(flag);
-    if (["--yes", "--previews", "--laravel", "--databases"].includes(flag)) {
+    if (
+      [
+        "--yes",
+        "--previews",
+        "--laravel",
+        "--databases",
+        "--inspection",
+        "--dictation",
+      ].includes(flag)
+    ) {
       if (flag === "--yes") result.yes = true;
       else if (flag === "--previews") result.previews = true;
       else if (flag === "--laravel") result.laravel = true;
-      else result.databases = true;
+      else if (flag === "--databases") result.databases = true;
+      else if (flag === "--inspection") result.inspection = true;
+      else result.dictation = true;
       continue;
     }
     if (flag === "--json") {
@@ -97,6 +110,8 @@ export function parseArguments(
   }
   // Development app databases use the isolated preview runtime, so the reviewed plan includes both.
   if (result.databases) result.previews = true;
+  // Official Laravel Boost inspection depends on the wrenly Laravel toolchain image.
+  if (result.inspection) result.laravel = true;
   if (
     new Set([
       result.webPort,
