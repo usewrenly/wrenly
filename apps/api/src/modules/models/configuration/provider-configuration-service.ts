@@ -74,6 +74,10 @@ export interface ProviderConfigurationService {
     raw: unknown,
   ) => Promise<{ id: string; version: string }>;
   update: (actorId: string, raw: unknown) => Promise<void>;
+  remove: (
+    actorId: string,
+    raw: unknown,
+  ) => Promise<{ deleted: true; clearedInstanceDefault: boolean }>;
   probe: (
     actorId: string,
     raw: unknown,
@@ -125,6 +129,10 @@ export function createProviderConfigurationService(dependencies: {
     input: unknown,
   ) => Promise<{ id: string; version: string }>;
   update: (actorId: string, input: unknown) => Promise<void>;
+  remove: (
+    actorId: string,
+    input: unknown,
+  ) => Promise<{ deleted: true; clearedInstanceDefault: boolean }>;
   saveDefault: (actorId: string, input: unknown) => Promise<void>;
   resolve: (id: string) => Promise<Connection>;
   destination: (endpoint: string, kind: "local" | "cloud") => Promise<unknown>;
@@ -229,6 +237,11 @@ export function createProviderConfigurationService(dependencies: {
       serviceOperation(async () => {
         await dependencies.owner(actorId);
         await dependencies.update(actorId, raw);
+      }),
+    remove: (actorId, raw) =>
+      serviceOperation(async () => {
+        await dependencies.owner(actorId);
+        return await dependencies.remove(actorId, raw);
       }),
     saveDefault: (actorId, raw) =>
       serviceOperation(async () => {

@@ -9,7 +9,7 @@ import type { ProviderConfigurationService } from "./provider-configuration-serv
 const MAX_BODY_BYTES = 16 * 1024;
 const BODY_TIMEOUT_MS = 5000;
 const HEADERS = { "Cache-Control": "no-store, private" };
-type Action = "list" | "create" | "update" | "probe" | "saveDefault";
+type Action = "list" | "create" | "update" | "remove" | "probe" | "saveDefault";
 export type ProviderConfigurationHandlers = Record<
   Action,
   (request: Request) => Promise<Response>
@@ -124,6 +124,7 @@ export function createProviderConfigurationHandlers(dependencies: {
     list: handler("list"),
     create: handler("create"),
     update: handler("update"),
+    remove: handler("remove"),
     probe: handler("probe"),
     saveDefault: handler("saveDefault"),
   };

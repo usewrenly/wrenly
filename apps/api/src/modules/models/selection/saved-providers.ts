@@ -3,7 +3,7 @@
  * Admission freezes the saved connection version and model instead of tokens.
  * Execution resolves only that version; disabled, changed or imported legacy identities fail rather than silently falling back to another endpoint.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { db } from "@wrenly/db";
 import {
@@ -52,7 +52,12 @@ async function savedMetadata(
       kind: providerConnections.kind,
     })
     .from(providerConnections)
-    .where(eq(providerConnections.id, identity.id));
+    .where(
+      and(
+        eq(providerConnections.id, identity.id),
+        isNull(providerConnections.deletedAt),
+      ),
+    );
   if (
     !row ||
     !row.enabled ||
@@ -72,7 +77,12 @@ async function rejectImportedLegacyProvider(
   const [imported] = await database
     .select({ id: providerConnections.id })
     .from(providerConnections)
-    .where(eq(providerConnections.envSourceId, id));
+    .where(
+      and(
+        eq(providerConnections.envSourceId, id),
+        isNull(providerConnections.deletedAt),
+      ),
+    );
   if (imported)
     throw new Error(
       "This environment provider has moved to a saved connection. Refresh models and choose that connection; no legacy fallback is allowed.",
@@ -200,7 +210,12 @@ export async function assertModelImageInputs(
       imageModelIds: providerConnections.imageModelIds,
     })
     .from(providerConnections)
-    .where(eq(providerConnections.id, identity.id));
+    .where(
+      and(
+        eq(providerConnections.id, identity.id),
+        isNull(providerConnections.deletedAt),
+      ),
+    );
   if (
     !row ||
     !row.enabled ||

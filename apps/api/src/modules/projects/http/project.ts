@@ -23,7 +23,7 @@ import {
   providerConnections,
   sourceProjectOrigins,
 } from "@wrenly/db";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull } from "drizzle-orm";
 
 export async function getProject(
   request: Request,
@@ -93,7 +93,10 @@ export async function getProject(
     .from(projectModels)
     .innerJoin(
       providerConnections,
-      eq(providerConnections.id, projectModels.connectionId),
+      and(
+        eq(providerConnections.id, projectModels.connectionId),
+        isNull(providerConnections.deletedAt),
+      ),
     )
     .where(eq(projectModels.projectId, id));
   const [sourceOrigin] = await db

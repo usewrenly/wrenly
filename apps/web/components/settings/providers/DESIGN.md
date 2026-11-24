@@ -63,18 +63,19 @@ paper/ink palette, hairlines and restrained corners. No usage rankings, prices,
 promotions or capabilities are inferred from a model name. This refines the
 approved account/settings component without changing provider architecture.
 
-## Owner-requested guided presentation — 20 October 2026
+## Owner-requested guided presentation — 20 October 2026 (refined 24 November 2026)
 
 COMPONENT: Existing provider page and Models orientation
 PURPOSE: Replace the long connect/manage stack with explicit setup stages and clear model/provider language.
 INPUTS: Existing authorized saved connections/defaults, catalog and discovery responses.
-OUTPUTS: Connect / Choose model stages and a clear route to browser model preferences.
+OUTPUTS: Connect / Choose model stages, compact expandable connection rows and a clear route to browser model preferences.
 STEPS:
-  1. First load selects Connect for empty installations and Choose model for existing connections.
+  1. Open predictably on `01 Connect a provider`, showing saved-connection count and current instance-default summary on `02 Choose a model`.
   2. Label stages with numbers and selected state; keep both panels mounted so switching cannot discard pending requests or credentials.
-  3. Confirmed provider creation advances to Choose model; existing checks/model/default controls stay unchanged.
-  4. Put legacy environment import inside explicit advanced disclosure in Connect.
-  5. Explain provider = service, model = selected inference model, instance default versus this-browser preference.
+  3. Confirmed provider creation advances to Choose model and opens the unified dialog on Models & default; render saved connections in searchable, filterable Cards (grid) and Table views.
+  4. Use a unified tabbed `ProviderConnectionDialog` (`Edit settings`, `Models & default`, `Image inputs`) and dedicated `ProviderRemoveDialog` instead of nested accordions. Allow owner-only endpoint URL fixes (`PATCH`) while blocking active work, validating SSRF destinations, rotating connection version, and requiring token re-entry when changing origins.
+  5. Put legacy environment import inside explicit advanced disclosure in Connect.
+  6. Explain provider = service, model = selected inference model, instance default versus this-browser preference.
 EDGE CASES:
   - Stage switching never marks a connection verified or selects a model automatically.
   - Missing/disabled default remains visibly unavailable; keep probe and uncertain-save recovery.

@@ -58,14 +58,16 @@ integration("Chrome guided provider settings", () => {
       reviewVersion: "b".repeat(64),
     };
     let defaults: { connectionId: string; modelId: string } | null = null;
+    const savedDefaults: Array<{ connectionId: string; modelId: string }> = [];
     let result: { ok?: boolean; error?: string } | undefined;
     const creations: Array<{
       requestId: string;
       token: string;
       providerId: string;
     }> = [];
-    const updates: Array<{ id: string; token?: string; enabled?: boolean }> =
+    const updates: Array<{ id: string; label?: string; endpoint?: string; token?: string; enabled?: boolean }> =
       [];
+    const deletions: Array<{ id: string }> = [];
     const server = Bun.serve({
       hostname: "127.0.0.1",
       port: 0,
@@ -119,9 +121,25 @@ integration("Chrome guided provider settings", () => {
           if (request.method === "PATCH") {
             const update = (await request.json()) as (typeof updates)[number];
             updates.push(update);
+            if (update.label !== undefined)
+              connection.label = update.label;
+            if (update.endpoint !== undefined)
+              connection.endpoint = update.endpoint;
             if (update.enabled !== undefined)
               connection.enabled = update.enabled;
             return Response.json({ saved: true });
+          }
+          if (request.method === "DELETE") {
+            const removal = (await request.json()) as { id: string };
+            deletions.push(removal);
+            if (removal.id === id) created = false;
+            if (removal.id === importId) imported = false;
+            const cleared = defaults?.connectionId === removal.id;
+            if (cleared) defaults = null;
+            return Response.json({
+              deleted: true,
+              clearedInstanceDefault: cleared,
+            });
           }
           return Response.json({
             connections: [
@@ -156,6 +174,7 @@ integration("Chrome guided provider settings", () => {
         }
         if (url.pathname === "/api/models/default") {
           defaults = (await request.json()) as typeof defaults;
+          if (defaults) savedDefaults.push(defaults);
           return Response.json({ saved: true });
         }
         return new Response(
@@ -177,34 +196,56 @@ integration("Chrome guided provider settings", () => {
         const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
         const until=async check=>{for(let n=0;n<600;n++){if(check())return;await sleep(10)}throw Error('Provider browser timed out: '+document.body.textContent)};
         const button=text=>Array.from(document.querySelectorAll('button')).find(node=>(node.getAttribute('aria-label')||node.textContent)===text);
+        const menuItem=text=>Array.from(document.querySelectorAll('[role="menuitem"]')).find(node=>node.textContent.trim()===text);
         const input=label=>Array.from(document.querySelectorAll('label')).find(node=>node.textContent.startsWith(label))?.querySelector('input');
         const fill=(node,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}))};
-        (async()=>{try{
+        (async()=>{let step='init';try{
           if(location.search.includes('member')){
             await until(()=>document.querySelector('[role=alert]'));if(document.querySelector('input[type=password]')||document.querySelector('form'))throw Error('Member saw credential controls');
             await fetch('/report',{method:'POST',body:JSON.stringify({ok:true})});return;
           }
-          await until(()=>button('Hosted provider'));button('Hosted provider').click();await until(()=>document.body.textContent.includes('Native protocol fixture'));
+          step='catalog';await until(()=>button('Hosted provider'));button('Hosted provider').click();await until(()=>document.body.textContent.includes('Native protocol fixture'));
           Array.from(document.querySelectorAll('button')).find(node=>node.textContent.includes('Native protocol fixture')).click();
           await until(()=>document.body.textContent.includes('has not enabled yet'));if(document.querySelector('input[type=password]'))throw Error('Unsupported provider requested token');
-          Array.from(document.querySelectorAll('button')).find(node=>node.textContent.startsWith('Fixture provider')).click();await until(()=>input('API token'));
+          step='save';Array.from(document.querySelectorAll('button')).find(node=>node.textContent.startsWith('Fixture provider')).click();await until(()=>input('API token'));
           if(!document.body.textContent.includes('https://fixture.example/v1'))throw Error('Destination not reviewed');
           fill(input('API token'),'fixture-secret');await sleep(30);button('Save connection').click();await until(()=>document.body.textContent.includes('Acknowledgement lost'));
           await until(()=>!button('Save connection').disabled);button('Save connection').click();await until(()=>button('Check connection'));
           if(input('API token').value)throw Error('Created token remained in input');
-          button('Check connection').click();await until(()=>document.body.textContent.includes('did not list models'));
+          step='probe';button('Check connection').click();await until(()=>document.body.textContent.includes('did not list models'));
           button('Check connection').click();await until(()=>document.body.textContent.includes('1 served models found'));
           document.querySelector('[aria-label="Choose a served model"]').click();await until(()=>document.querySelector('[role=option]'));Array.from(document.querySelectorAll('[role=option]')).find(node=>node.textContent==='fixture-model').click();
           await until(()=>input('Model ID for').value==='fixture-model');button('Set instance default').click();await until(()=>document.body.textContent.includes('Instance default saved'));
-          document.querySelector('details').open=true;fill(input('New token'),'rotated-secret');await sleep(30);button('Replace token').click();await until(()=>document.body.textContent.includes('Token replaced'));
+          step='edit-tab';Array.from(document.querySelectorAll('[role="tab"]')).find(node=>node.textContent==='Edit settings').click();
+          await until(()=>input('New token'));
+          fill(input('Display name'),'Renamed provider');
+          fill(input('Endpoint URL'),'https://fixture.example/v2');
+          fill(input('New token'),'rotated-secret');
+          await sleep(30);
+          step='save-changes';button('Save changes').click();
+          await until(()=>document.body.textContent.includes('Connection updated'));
           if(input('New token').value)throw Error('Replacement token remained in input');
-          button('Disable').click();await until(()=>button('Enable'));if(!button('Check connection').disabled)throw Error('Disabled connection allowed check');
-          button('Refresh saved connections').click();await until(()=>button('Enable')&&!button('Refresh saved connections').disabled);
-          if(!document.body.textContent.includes('Default model: fixture-model'))throw Error('Default did not survive reload');
-          Array.from(document.querySelectorAll('.provider-steps button')).find(node=>node.textContent.includes('Connect a provider')).click();document.querySelector('.provider-import').open=true;button('Import connection').click();await until(()=>button('Imported'));if(!button('Imported').disabled)throw Error('Imported source allowed duplicate import');
+          step='close-edit';button('Close').click();
+          await until(()=>!document.querySelector('[data-slot="dialog-content"]'));
+          step='disable';button('Actions for Renamed provider').click();await until(()=>menuItem('Disable'));menuItem('Disable').click();
+          await until(()=>document.body.textContent.includes('Renamed provider disabled'));
+          button('Refresh saved connections').click();await until(()=>!button('Refresh saved connections').disabled);
+          if(!document.body.textContent.includes('Default: fixture-model'))throw Error('Default did not survive reload');
+          step='import';Array.from(document.querySelectorAll('.provider-steps button')).find(node=>node.textContent.includes('Connect a provider')).click();document.querySelector('.provider-import').open=true;button('Import connection').click();await until(()=>button('Imported'));if(!button('Imported').disabled)throw Error('Imported source allowed duplicate import');
+          step='table';Array.from(document.querySelectorAll('.provider-steps button')).find(node=>node.textContent.includes('Choose a model')).click();
+          await until(()=>document.querySelectorAll('.provider-grid-card').length===2);
+          button('Table').click();
+          await until(()=>document.querySelectorAll('.provider-table-row').length===2);
+          const wrap=document.querySelector('.provider-table-wrap');
+          if(wrap&&wrap.scrollWidth>wrap.clientWidth+1)throw Error('Provider table overflowed horizontally: '+wrap.scrollWidth+'>'+wrap.clientWidth);
+          step='remove';button('Actions for Renamed provider').click();await until(()=>menuItem('Remove'));menuItem('Remove').click();
+          await until(()=>document.querySelector('[data-slot="dialog-content"]'));
+          document.querySelector('[data-slot="dialog-content"] input[type="checkbox"]').click();
+          await until(()=>!button('Remove connection').disabled);button('Remove connection').click();
+          await until(()=>document.body.textContent.includes('The instance default was cleared'));
           if(localStorage.length||sessionStorage.length)throw Error('Provider credentials persisted in browser storage');
           await fetch('/member');location.href='/settings/providers?member';
-        }catch(error){await fetch('/report',{method:'POST',body:JSON.stringify({error:error.message})})}})();`,
+        }catch(error){await fetch('/report',{method:'POST',body:JSON.stringify({error:step+': '+error.message})})}})();`,
       );
       const config = join(directory, "tsconfig.json"),
         output = join(directory, "bundle.js");
@@ -267,9 +308,10 @@ integration("Chrome guided provider settings", () => {
       expect(creations).toHaveLength(2);
       expect(creations[0]?.requestId).toBe(creations[1]?.requestId);
       expect(creations[1]?.providerId).toBe("fixture");
-      expect(
-        defaults as { connectionId: string; modelId: string } | null,
-      ).toEqual({ connectionId: id, modelId: "fixture-model" });
+      expect(savedDefaults).toEqual([
+        { connectionId: id, modelId: "fixture-model" },
+      ]);
+      expect(defaults).toBeNull();
       expect(imports).toHaveLength(1);
       expect(imports[0]).toMatchObject({
         source: "environment",
@@ -279,9 +321,15 @@ integration("Chrome guided provider settings", () => {
       expect(imports[0]).not.toHaveProperty("token");
       expect(imports[0]).not.toHaveProperty("endpoint");
       expect(updates).toEqual([
-        { id, token: "rotated-secret" },
+        {
+          id,
+          label: "Renamed provider",
+          endpoint: "https://fixture.example/v2",
+          token: "rotated-secret",
+        },
         { id, enabled: false },
       ]);
+      expect(deletions).toEqual([{ id }]);
     } finally {
       chrome?.kill();
       await chrome?.exited;

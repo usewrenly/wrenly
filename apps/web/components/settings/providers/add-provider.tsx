@@ -17,7 +17,7 @@ const PAGE_SIZE = 20;
 export function AddProvider({
   onSaved,
 }: {
-  onSaved: () => void;
+  onSaved: (createdId?: string) => void;
 }): React.JSX.Element {
   const [source, setSource] = useState<Source>("ollama");
   const [query, setQuery] = useState("");
@@ -148,14 +148,25 @@ export function AddProvider({
                 kind,
                 ...(token ? { token } : {}),
               };
-      await providerSettingsRequest("/api/models/connections", "POST", body);
+      const created = await providerSettingsRequest(
+        "/api/models/connections",
+        "POST",
+        body,
+      );
+      const createdId =
+        created &&
+        typeof created === "object" &&
+        !Array.isArray(created) &&
+        typeof (created as { id?: unknown }).id === "string"
+          ? (created as { id: string }).id
+          : undefined;
       setToken("");
       requestId.current = null;
       setSaved(true);
       setNotice(
         "Connection saved. Check it below, then choose an instance default.",
       );
-      onSaved();
+      onSaved(createdId);
     } catch (failure) {
       setError(
         `${failure instanceof Error ? failure.message : "Connection could not be saved."} If the response was lost, refresh saved connections or retry without changing these settings.`,

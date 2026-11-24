@@ -13,6 +13,7 @@ export const providerConnections = pgTable('provider_connections', {
   imageInputRevision: uuid('image_input_revision').notNull().defaultRandom(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 })
 export const instanceModelDefault = pgTable('instance_model_default', {
   id: integer('id').primaryKey(), connectionId: uuid('connection_id').notNull().references(() => providerConnections.id, { onDelete: 'restrict' }),

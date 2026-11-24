@@ -3,7 +3,7 @@
  * Reports safe saved configuration facts and actionable setup steps.
  * Configuration flags do not prove provider, preview or publishing health; never return credentials or probe providers during a summary read.
  */
-import { count, eq, isNotNull } from "drizzle-orm";
+import { count, eq, isNotNull, isNull } from "drizzle-orm";
 import type { db } from "@wrenly/db";
 import {
   instanceSetup,
@@ -146,7 +146,8 @@ export async function getSetupSummary(
           credentialPresent: isNotNull(providerConnections.credential),
           envSourceId: providerConnections.envSourceId,
         })
-        .from(providerConnections);
+        .from(providerConnections)
+        .where(isNull(providerConnections.deletedAt));
       const [savedDefault] = await tx
         .select({
           connectionId: instanceModelDefault.connectionId,

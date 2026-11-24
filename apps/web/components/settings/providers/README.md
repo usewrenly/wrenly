@@ -7,9 +7,15 @@ which model new requests should use. The API verifies ownership on every operati
 - `add-provider.tsx` reviews a local, catalog or custom destination and creates a
   connection. Catalog searches cancel when the query changes. A lost save response
   retains its request ID for an exact retry; changing the form creates a new identity.
-- `provider-connection.tsx` checks a saved connection, updates its default model,
-  replaces a token or enables/disables it. A destination is immutable: changing where
-  credentials are sent requires reviewing and creating a new connection.
+- `provider-connection.tsx` renders saved connections as grid cards or table rows with
+  quick **Models**, **Edit**, **Disable / Enable**, and **Remove** actions.
+- `provider-connection-dialog.tsx` provides a unified tabbed dialog for editing
+  display name, endpoint URL, replacement token, enabled state, model checks /
+  instance default selection, and reviewed image-input model IDs. Same-origin URL
+  fixes preserve the saved token while rotating the connection version; cross-origin
+  host changes require re-entering the token.
+- `provider-remove-dialog.tsx` handles confirmation-gated deletion with clear notices
+  for instance defaults, imported environment sources, and bound project blockers.
 - `import-environment-provider.tsx` requests a server-side copy of an existing
   environment credential. It never receives that credential in its response.
 

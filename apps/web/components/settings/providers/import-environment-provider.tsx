@@ -30,6 +30,7 @@ export function ImportEnvironmentProvider({
         reviewVersion: provider.reviewVersion,
         requestId: requestId.current,
       });
+      requestId.current = null;
       onChanged();
     } catch (failure) {
       setError(
