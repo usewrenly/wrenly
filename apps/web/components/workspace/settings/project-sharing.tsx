@@ -575,6 +575,9 @@ export function ProjectAccessSettings({
           <div className="project-model-controls">
             <ChoiceSelect
               label="Project model"
+              searchable
+              searchPlaceholder="Search saved models…"
+              emptySearchText="No matching models found."
               value={modelValue}
               disabled={blocked}
               onChange={setModelValue}

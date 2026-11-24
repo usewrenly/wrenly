@@ -208,6 +208,9 @@ export function ProviderConnectionCard({
                       ? "Choose a local model"
                       : "Choose a served model"
                   }
+                  searchable
+                  searchPlaceholder="Search models…"
+                  emptySearchText="No matching models found."
                   value={probe.models.includes(model) ? model : null}
                   disabled={busy}
                   onChange={setModel}
@@ -243,6 +246,9 @@ export function ProviderConnectionCard({
                   <span>Catalog choices · access not verified</span>
                   <ChoiceSelect
                     label="Catalog choices · access not verified"
+                    searchable
+                    searchPlaceholder="Search catalog models…"
+                    emptySearchText="No matching catalog models found."
                     value={
                       catalogModels.some((item) => item.id === model)
                         ? model

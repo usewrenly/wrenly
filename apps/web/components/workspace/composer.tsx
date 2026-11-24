@@ -245,6 +245,9 @@ export function Composer({
     <div className="composer-choices">
       <ChoiceSelect
         label="Framework"
+        searchable
+        searchPlaceholder="Search frameworks…"
+        emptySearchText="No matching frameworks found."
         description={
           compact
             ? framework
@@ -267,6 +270,9 @@ export function Composer({
       />
       <ChoiceSelect
         label="Model"
+        searchable
+        searchPlaceholder="Search models or providers…"
+        emptySearchText="No matching models found."
         description={
           compact
             ? fixedModel
@@ -325,8 +331,9 @@ export function Composer({
   return (
     <div
       ref={containerRef}
-      className={`${variant === "home" ? "home-composer" : ""} rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] transition-shadow focus-within:shadow-[var(--shadow-md)]`}
+      className={variant === "home" ? "home-composer" : undefined}
     >
+      <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] transition-shadow focus-within:shadow-[var(--shadow-md)]">
       {revising && (
         <p className="composer-revision-note" role="status">
           New request from a previous prompt ·{" "}
@@ -556,17 +563,18 @@ export function Composer({
           </button>
         </div>
       </div>
-      <p className="composer-guidance">
-        {readOnly
-          ? "You can inspect this project. An Editor or owner can send changes."
-          : mode === "plan"
-            ? "Plan helps you shape and revise an approach without building."
-            : "Chats start in Auto. Use + → Plan to work through an approach without building."}
-      </p>
+        <p className="composer-guidance">
+          {readOnly
+            ? "You can inspect this project. An Editor or owner can send changes."
+            : mode === "plan"
+              ? "Plan helps you shape and revise an approach without building."
+              : "Chats start in Auto. Use + → Plan to work through an approach without building."}
+        </p>
+      </div>
       {preferenceError && (
         <p
           role="alert"
-          className="px-4 pb-3 text-xs text-[var(--color-text-2)]"
+          className="px-4 pt-2 text-center text-xs text-[var(--color-text-2)]"
         >
           {preferenceError}
         </p>
