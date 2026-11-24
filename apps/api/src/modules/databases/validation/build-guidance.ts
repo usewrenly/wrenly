@@ -15,11 +15,11 @@ export function databaseBuildGuidance(
     throw new BuildExecutionInterruptedError();
   const connection =
     framework === "laravel"
-      ? "Use Laravel's pgsql connection and DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME and DB_PASSWORD environment variables. Keep its configuration environment-based."
+      ? "Use Laravel's pgsql connection in config/database.php with DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME and DB_PASSWORD environment variables (never DATABASE_URL or hardcoded hosts/credentials). Keep GET / returning HTTP 200 on an empty migrated database (render a landing or sign-in page on /, never a 3xx redirect from /)."
       : "Use Drizzle with Postgres.js. Use exactly const client = postgres(); export const db = drizzle(client, { schema });. postgres() reads PGHOST, PGPORT, PGDATABASE, PGUSER and PGPASSWORD supplied only at runtime. Wrenly does not provide DATABASE_URL or POSTGRES_URL; never read them or supply fallback connection URLs, hosts or credentials. All server pages in this managed app must export const dynamic = 'force-dynamic' (or export const revalidate = 0), or put the force-dynamic export in the root layout. Never await database queries during static page generation. Browser-only pages still need safe API error handling.";
   const migrations =
     framework === "laravel"
-      ? "Declare adapter laravel and every native database/migrations/*.php migration path. Preserve existing migrations; changes require new reviewed migrations."
+      ? "Declare adapter laravel and every native database/migrations/*.php migration path (letters, digits, _ and - only). Preserve existing migrations; changes require new reviewed migrations."
       : "Declare adapter drizzle-postgres and every drizzle/*.sql migration path. Supply a matching drizzle/meta/_journal.json with ordered unique tags/timestamps. Preserve applied migration files and add changes as new migrations.";
   return [
     "A managed Development PostgreSQL resource was explicitly selected for this build. No database data or connection secrets are available to the model.",
@@ -30,7 +30,7 @@ export function databaseBuildGuidance(
           'Matching drizzle/meta/_journal.json: {"version":"7","dialect":"postgresql","entries":[{"idx":0,"version":"7","when":1,"tag":"0000_initial","breakpoints":true}]}',
           "Each journal tag is the migration filename WITHOUT .sql and WITHOUT drizzle/. Entry idx starts at 0; timestamps must be strictly increasing safe integers; breakpoints must be a boolean. The manifest list must include every saved SQL migration exactly once. Keep existing journal entries unchanged when adding a migration.",
         ].join("\n")
-      : "",
+      : 'Example wrenly.app.json: {"version":1,"database":{"engine":"postgresql","adapter":"laravel","migrations":["database/migrations/2026_01_01_000000_create_users_table.php","database/migrations/2026_01_01_000001_create_items_table.php"]}}',
     connection,
     migrations,
     "For a visual or application-only edit, omit existing migration SQL/PHP files and drizzle/meta/_journal.json from edit operations entirely. Never reformat them, change whitespace, add a final newline or regenerate the journal as a side effect of a UI repair. Preserve every unrelated interface file as well.",

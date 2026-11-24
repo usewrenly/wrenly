@@ -43,6 +43,42 @@ return ['default' => env('CACHE_STORE', 'array'), 'stores' => ['array' => ['driv
 return ['default' => 'stderr', 'channels' => ['stderr' => ['driver' => 'monolog',
     'handler' => Monolog\\Handler\\StreamHandler::class, 'with' => ['stream' => 'php://stderr']]]];
 ` },
+  { path: 'config/database.php', content: `<?php
+return [
+    'default' => env('DB_CONNECTION', 'pgsql'),
+    'connections' => [
+        'pgsql' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '/run/wrenly-database'),
+            'port' => env('DB_PORT', '6432'),
+            'database' => env('DB_DATABASE', 'app'),
+            'username' => env('DB_USERNAME', ''),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => 'utf8',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'disable'),
+        ],
+    ],
+    'migrations' => ['table' => 'migrations', 'update_date_on_publish' => true],
+];
+` },
+  { path: 'config/auth.php', content: `<?php
+return [
+    'defaults' => ['guard' => 'web', 'passwords' => 'users'],
+    'guards' => [
+        'web' => ['driver' => 'session', 'provider' => 'users'],
+    ],
+    'providers' => [
+        'users' => ['driver' => 'eloquent', 'model' => env('AUTH_MODEL', App\\Models\\User::class)],
+    ],
+    'passwords' => [
+        'users' => ['provider' => 'users', 'table' => 'password_reset_tokens', 'expire' => 60, 'throttle' => 60],
+    ],
+    'password_timeout' => 10800,
+];
+` },
   { path: 'routes/console.php', content: '<?php\n' },
   { path: 'routes/web.php', content: `<?php
 use Illuminate\\Support\\Facades\\Route;

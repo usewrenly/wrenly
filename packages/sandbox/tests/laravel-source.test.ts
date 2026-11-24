@@ -4,6 +4,8 @@ import { validateLaravelSource } from '../src/source-policy/laravel-runtime'
 
 test('Laravel source preflight preserves secure install policy and rejects legacy versions', () => {
   expect(() => validateLaravelSource(LARAVEL_SKELETON)).not.toThrow()
+  expect(LARAVEL_SKELETON.some(file => file.path === 'config/database.php')).toBe(true)
+  expect(LARAVEL_SKELETON.some(file => file.path === 'config/auth.php')).toBe(true)
   const manifest = JSON.parse(LARAVEL_SKELETON[0]!.content) as Record<string, unknown>
   for (const patch of [
     { require: { 'laravel/framework': '^11.0' } }, { scripts: { 'post-install-cmd': 'php malicious.php' } },

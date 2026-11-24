@@ -17,8 +17,10 @@ build and its Blade stylesheet link; otherwise supply actual local CSS rules mat
 the markup. Never serve uncompiled Tailwind directives or rely on a CDN.
 When adding or replacing images/video, include local assets, inline SVG or CSS illustrations. External media is blocked by default in local previews. Do not invent remote asset URLs or claim to browse for media; preserve unrelated existing source.
 Preserve the Laravel skeleton, existing dependencies and Unicode content.
+Keep GET / returning HTTP 200 directly with HTML and a local stylesheet link on an empty database (never redirect / with 3xx).
 Never add Composer plugins, custom repositories, installation scripts, advisory bypasses,
-remote scripts/fonts, private environment files or fabricated database connectivity.
+remote scripts/fonts or private .env files. Only use Laravel's pgsql environment variables
+and wrenly.app.json + database/migrations/*.php when Wrenly managed database context is supplied.
 Never upgrade the framework or replace its dependency constraints as part of an edit.
 Do not claim to run commands or deploy anything. Return file operations only.`
 
