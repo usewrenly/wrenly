@@ -35,7 +35,10 @@ isolated preview before publishing.
   sharing and Viewer/Editor roles. Projects start private.
 - **References alongside your prompt.** Attach screenshots or short text documents;
   image input requires a compatible, configured model.
-- **Source you can keep.** Saved revisions, follow-up edits and source ZIP downloads.
+- **Voice dictation & framework inspection.** Opt-in local Whisper speech-to-text and
+  isolated Laravel Boost / Next.js DevTools MCP inspection.
+- **Source you can keep.** Saved revisions, follow-up edits, source ZIP downloads, plus
+  GitHub repository import and reviewed branch export.
 - **Infrastructure you control.** Docker-isolated execution; private publishing starts
   with Gitea, a private image registry and Coolify. Other integrations are planned.
 
@@ -45,15 +48,29 @@ Figma and other external MCP connectors are roadmap work.
 
 ## Run Wrenly
 
-The current installation uses a source checkout on a Linux Docker host. You need
-**Bun 1.3.14, Node.js 24+, Git and Docker**. Only the person running the instance installs
-it; invited users open its browser address and sign in.
+Start a local or self-hosted instance with the guided installer on **Linux x86_64**
+(**Bun 1.3.14+, Node.js 24+, Docker Engine with Compose v2, `util-linux` (`flock`),
+and at least 10 GiB free disk space**):
 
-Follow **[Install Wrenly](https://usewrenly.org/docs/guides/installation)** for configuration,
-migrations and protected first-owner setup. Then connect a model in Settings.
-[Previews](https://usewrenly.org/docs/guides/local-previews) and
-[publishing](https://usewrenly.org/docs/guides/publishing-setup) have separate setup steps.
-A packaged installer is not released yet.
+```bash
+bunx @wrenly/cli
+# or with npm / pnpm / yarn:
+npx @wrenly/cli
+pnpm dlx @wrenly/cli
+yarn dlx @wrenly/cli
+```
+
+Only the person running the instance installs it; invited teammates open its browser
+address and sign in. Running without arguments starts the interactive wizard; opt-in
+flags enable isolated previews (`--previews`), Laravel 13 (`--laravel`), official MCP
+framework inspection (`--inspection`), local Whisper dictation (`--dictation`), and
+experimental Development app databases (`--databases`).
+
+See **[Guided CLI Installer](https://usewrenly.org/docs/guides/guided-installer)** for
+lifecycle commands, or follow **[Manual Source Install](https://usewrenly.org/docs/guides/installation)**
+to run directly from a Git checkout. [Previews](https://usewrenly.org/docs/guides/local-previews)
+and [publishing](https://usewrenly.org/docs/guides/publishing-setup) also have
+dedicated guides.
 
 Self-hosting requires no external Wrenly account. Prompts and context go to the model
 provider you select; choose a local model for local inference.
