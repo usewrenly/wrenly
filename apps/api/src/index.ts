@@ -54,6 +54,8 @@ try {
   await verifyMemberAccessSchema(db)
   const { verifyProjectAccessSchema } = await import("./modules/projects/access/project-access")
   await verifyProjectAccessSchema(db)
+  const { verifyProjectPinsSchema } = await import("./modules/projects/pins/project-pins")
+  await verifyProjectPinsSchema(db)
   const { verifyDraftSchema } = await import("./modules/projects/drafts/draft-store")
   await verifyDraftSchema(db)
   const { verifyDatabaseSchema } = await import("./modules/databases/database-store")

@@ -49,6 +49,16 @@ export function Dashboard(): React.JSX.Element {
   const [submitting, setSubmitting] = useState(false);
   const [skillVersionIds, setSkillVersionIds] = useState<string[]>([]);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [focusComposer, setFocusComposer] = useState(false);
+
+  useEffect(() => {
+    const syncHash = (): void => {
+      if (window.location.hash === "#new-project") setFocusComposer(true);
+    };
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
 
   const [idea, setIdea] = useState<ProjectDraft | null>(null);
   const [ideaError, setIdeaError] = useState("");
@@ -222,9 +232,11 @@ export function Dashboard(): React.JSX.Element {
           </section>
         )}
         <Composer
+          id="new-project"
           onSubmit={submit}
           disabled={submitting || Boolean(createdProject)}
           draft={draft}
+          autoFocus={focusComposer}
           projectTools={
             <InitialProjectSkills
               versionIds={skillVersionIds}

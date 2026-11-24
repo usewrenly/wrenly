@@ -53,6 +53,7 @@ const COMPACT_OPTIONS_WIDTH = 440;
 const HOME_COMPACT_OPTIONS_WIDTH = 600;
 
 interface ComposerProps {
+  id?: string;
   projectTools?: React.ReactNode;
   revisionRequest?: { id: string; text: string } | null;
   revisionBaseLabel?: string;
@@ -77,6 +78,7 @@ interface ComposerProps {
 }
 
 export function Composer({
+  id,
   onSubmit,
   projectTools,
   fixedModel,
@@ -216,6 +218,9 @@ export function Composer({
     null,
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (autoFocus) textareaRef.current?.focus();
+  }, [autoFocus]);
 
   const setup = useSetupSummary();
   const isOwner = !setup.isError && setup.data?.role === "owner";
@@ -413,6 +418,7 @@ export function Composer({
 
   return (
     <div
+      id={id}
       ref={containerRef}
       className={variant === "home" ? "home-composer" : undefined}
     >

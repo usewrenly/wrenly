@@ -29,6 +29,8 @@ import {
 } from "./conversation/conversation-timeline";
 import { StackBadge } from "@/components/shell/stack-badge";
 import { StatusPill } from "@/components/shell/status-pill";
+import { ProfileAvatar } from "@/components/account/profile-avatar";
+import { useProjectPin } from "@/hooks/use-project-pin";
 import {
   SettingsIcon,
   ArrowLeftRightIcon,
@@ -39,6 +41,8 @@ import {
   TerminalIcon,
   DatabaseIcon,
   BookOpenIcon,
+  PinIcon,
+  PlusIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -55,6 +59,7 @@ const DIVIDER_WIDTH = 7;
 const SPLIT_KEY = "wrenly:split";
 const SCROLL_BOTTOM_THRESHOLD = 80;
 const TERMINAL_BUILD = new Set(["success", "failed"]);
+const MAX_WORKSPACE_AVATARS = 4;
 
 export function Workspace({
   projectId,
@@ -70,6 +75,7 @@ export function Workspace({
 
   const execution = useBuildStream(projectId);
   const conversation = useConversation(projectId);
+  const pin = useProjectPin();
   const [mode, setMode] = useState<ConversationMode>("auto");
   const [side, setSide] = useState<"conversation-left" | "conversation-right">(
     "conversation-left",
@@ -123,6 +129,14 @@ export function Workspace({
         );
       return response.json() as Promise<{
         features?: { developmentDatabases?: boolean };
+        pinned?: boolean;
+        collaborators?: Array<{
+          id: string;
+          name: string;
+          role: "owner" | "editor" | "viewer";
+          pictureUrl: string | null;
+        }>;
+        collaboratorCount?: number;
         project: {
           id: string;
           name: string;
@@ -514,28 +528,39 @@ export function Workspace({
               {execution.state.phase.error}
             </p>
           )}
-        {(conversation.error || workspaceError) && (
+        {(conversation.error || workspaceError || pin.error) && (
           <div
             role="alert"
             className="mt-4 space-y-2 rounded-md border border-[var(--color-border)] p-3 text-sm"
           >
-            <p>{conversation.error ?? workspaceError}</p>
-            <button
-              type="button"
-              onClick={() => {
-                if (conversation.unknown) void conversation.checkPending();
-                else {
-                  setWorkspaceError(null);
-                  conversation.reconnect();
-                  void refetch();
-                }
-              }}
-              className="text-xs underline"
-            >
-              {conversation.unknown
-                ? "Check saved request"
-                : "Reconnect history"}
-            </button>
+            <p>{conversation.error ?? workspaceError ?? pin.error}</p>
+            {(conversation.error || workspaceError) && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (conversation.unknown) void conversation.checkPending();
+                  else {
+                    setWorkspaceError(null);
+                    conversation.reconnect();
+                    void refetch();
+                  }
+                }}
+                className="text-xs underline"
+              >
+                {conversation.unknown
+                  ? "Check saved request"
+                  : "Reconnect history"}
+              </button>
+            )}
+            {pin.error && !conversation.error && !workspaceError && (
+              <button
+                type="button"
+                onClick={pin.clearError}
+                className="text-xs underline"
+              >
+                Dismiss
+              </button>
+            )}
             {conversation.invalidPending && (
               <button
                 type="button"
@@ -778,6 +803,34 @@ export function Workspace({
         >
           <ArrowLeftRightIcon size={15} />
         </button>
+        {shared && (data?.collaborators?.length ?? 0) > 0 && (
+          <Link
+            href={`/p/${projectId}/settings`}
+            className="workspace-member-stack"
+            aria-label={`Project members (${data!.collaboratorCount ?? data!.collaborators!.length})`}
+            title={data!.collaborators!
+              .slice(0, MAX_WORKSPACE_AVATARS)
+              .map((person) => `${person.name} (${person.role})`)
+              .join(", ")}
+          >
+            {data!.collaborators!.slice(0, MAX_WORKSPACE_AVATARS).map((person) => (
+              <ProfileAvatar
+                key={person.id}
+                name={person.name}
+                pictureUrl={person.pictureUrl}
+                className="workspace-avatar"
+              />
+            ))}
+            {(data!.collaboratorCount ?? data!.collaborators!.length) >
+              MAX_WORKSPACE_AVATARS && (
+              <span className="workspace-avatar">
+                +
+                {(data!.collaboratorCount ?? data!.collaborators!.length) -
+                  MAX_WORKSPACE_AVATARS}
+              </span>
+            )}
+          </Link>
+        )}
         <Link
           className="workspace-share-link"
           href={`/p/${projectId}/settings`}
@@ -787,6 +840,29 @@ export function Workspace({
             : permissions?.role
               ? `${permissions.role} · Access`
               : "Project access"}
+        </Link>
+        {project && (
+          <button
+            type="button"
+            className="workspace-pin-button"
+            data-pinned={Boolean(data?.pinned)}
+            aria-pressed={Boolean(data?.pinned)}
+            aria-label={data?.pinned ? "Unpin project" : "Pin project"}
+            title={data?.pinned ? "Unpin project" : "Pin project"}
+            disabled={pin.pendingId === projectId}
+            onClick={() => void pin.togglePin(projectId, !data?.pinned)}
+          >
+            <PinIcon size={15} aria-hidden="true" />
+          </button>
+        )}
+        <Link
+          href="/#new-project"
+          className="workspace-new-link"
+          aria-label="New project"
+          title="Start a new project"
+        >
+          <PlusIcon size={15} aria-hidden="true" />
+          <span>New</span>
         </Link>
         {project && (
           <Link

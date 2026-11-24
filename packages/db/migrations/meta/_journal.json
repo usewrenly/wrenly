@@ -351,6 +351,13 @@
       "when": 1795521159592,
       "tag": "0052_provider_connection_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795545807664,
+      "tag": "0053_project_pins",
+      "breakpoints": true
     }
   ]
 }

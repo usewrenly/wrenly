@@ -11,6 +11,7 @@ const deployedUrl = z.string().refine(value => {
 const projectSchema = z.object({
   id: z.string().min(1), name: z.string(), stack: z.string(),
   owned: z.boolean().optional(), archivedAt: timestamp.nullable().optional(),
+  pinnedAt: timestamp.nullable().optional(),
   accessMode: z.enum(['private', 'selected', 'instance']).optional(),
   description: z.string().nullable().optional(), createdAt: timestamp, updatedAt: timestamp,
   latestBuild: z.object({

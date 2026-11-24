@@ -30,6 +30,7 @@ import { listSkills, readSkill, createSkill, changeSkill, getSkillAction } from 
 import { readProjectSkills, changeProjectSkills } from "./modules/skills/project-skills"
 import { listDeploymentHistory } from "./modules/deployments/http/deployment-history"
 import { createProjectArchiveHandlers } from "./modules/projects/archive/archive-http"
+import { createProjectPinHandlers } from "./modules/projects/pins/pin-http"
 import { createDraftHandlers } from "./modules/projects/drafts/draft-http"
 import { createPreviewMediaHandlers } from './modules/previews/media/preview-media-http'
 import {createSharingHandlers} from './modules/projects/sharing/sharing-http'
@@ -181,6 +182,7 @@ export function createProductionApp(
       getProject: (request, id) => getProject(request, id, { database: db, session: getUserId, developmentDatabases: environment.WRENLY_APP_DATABASES_ENABLED === 'true' }),
       sharing:createSharingHandlers(db,getUserId,environment.WRENLY_WEB_URL),
       projectArchive: createProjectArchiveHandlers(db,{webUrl:environment.WRENLY_WEB_URL,userId:getUserId}),
+      projectPins: createProjectPinHandlers(db, { webUrl: environment.WRENLY_WEB_URL, userId: getUserId }),
       drafts: createDraftHandlers(db, { webUrl: environment.WRENLY_WEB_URL, userId: getUserId }),
       previewMedia: createPreviewMediaHandlers(db,{webUrl:environment.WRENLY_WEB_URL,userId:getUserId}),
       projectSettings: createProjectSettingsHandlers({webUrl:environment.WRENLY_WEB_URL,userId:getUserId,read:(userId,id)=>readProjectSettings(db,userId,id),save:(userId,id,input)=>saveProjectSettings(db,userId,id,input)}),
