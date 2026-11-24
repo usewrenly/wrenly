@@ -10,6 +10,10 @@
 import { usePromptAttachments } from "./attachments/use-prompt-attachments";
 import { AttachmentList } from "./attachments/attachment-list";
 import {
+  ImageCapabilityBanner,
+  isImageAttachment,
+} from "./attachments/image-capability-banner";
+import {
   Dialog,
   DialogContent,
   DialogTitle,
@@ -29,10 +33,13 @@ import {
   useModels,
 } from "@/lib/models/discovery";
 import type { ModelSelection } from "@/lib/models/discovery";
+import { useSetupSummary } from "@/lib/onboarding/setup-summary";
 import { DocumentationLink } from "@/components/documentation-link";
 import { useDictation } from "./dictation/use-dictation";
 import { DictationPanel } from "./dictation/dictation-panel";
+import { insertTranscriptText } from "./dictation/insert-transcript";
 import {
+  CornerDownLeftIcon,
   MicIcon,
   PaperclipIcon,
   PlusIcon,
@@ -139,13 +146,64 @@ export function Composer({
   const submittingRef = useRef(false);
   const mode = controlledMode ?? localMode;
   const blocked = disabled || submitting;
-  const dictation = useDictation(Boolean(blocked || readOnly), (text) => {
-    const next = prompt.trim() ? `${prompt}\n${text}` : text;
-    if (next.length > 16000) return false;
-    setPrompt(next);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-    return true;
-  });
+  const selectionRangeRef = useRef<{
+    start: number;
+    end: number;
+    length: number;
+  } | null>(null);
+  const lastDictationSnapshotRef = useRef<string | null>(null);
+  const recordSelection = (element: HTMLTextAreaElement): void => {
+    selectionRangeRef.current = {
+      start: element.selectionStart ?? element.value.length,
+      end: element.selectionEnd ?? element.value.length,
+      length: element.value.length,
+    };
+  };
+  const syncTextareaHeight = (element: HTMLTextAreaElement | null): void => {
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, MAX_DRAFT_HEIGHT)}px`;
+  };
+  const dictation = useDictation(
+    Boolean(blocked || readOnly),
+    (text) => {
+      const current = promptRef.current;
+      const savedRange =
+        selectionRangeRef.current &&
+        selectionRangeRef.current.length === current.length
+          ? selectionRangeRef.current
+          : null;
+      const next = insertTranscriptText(current, text, savedRange);
+      if (!next) return false;
+      lastDictationSnapshotRef.current = current;
+      selectionRangeRef.current = {
+        start: next.caret,
+        end: next.caret,
+        length: next.text.length,
+      };
+      setPrompt(next.text);
+      requestAnimationFrame(() => {
+        const area = textareaRef.current;
+        syncTextareaHeight(area);
+        if (area) {
+          area.focus();
+          area.setSelectionRange(next.caret, next.caret);
+        }
+      });
+      return true;
+    },
+    () => {
+      const previous = lastDictationSnapshotRef.current;
+      if (previous === null) return;
+      lastDictationSnapshotRef.current = null;
+      selectionRangeRef.current = null;
+      setPrompt(previous);
+      requestAnimationFrame(() => {
+        syncTextareaHeight(textareaRef.current);
+        textareaRef.current?.focus();
+      });
+    },
+  );
   useEffect(() => {
     if (!draft) return;
     setPrompt(draft.text);
@@ -154,7 +212,13 @@ export function Composer({
   const [stack, setStack] = useState<string>(STACKS[0]?.id ?? "nextjs");
   const [selection, setSelection] = useState<ModelSelection | null>(null);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
+  const [enabledImageNotice, setEnabledImageNotice] = useState<string | null>(
+    null,
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const setup = useSetupSummary();
+  const isOwner = !setup.isError && setup.data?.role === "owner";
 
   const {
     data: models,
@@ -181,17 +245,25 @@ export function Composer({
   }, [models, fixedModel]);
 
   const effectiveSelection = fixedModel ?? selection;
-  const selectionAvailable =
-    Boolean(fixedModel) ||
-    Boolean(
-      effectiveSelection &&
-      models?.models.some(
+  const activeModelOption = effectiveSelection
+    ? models?.models.find(
         (option) =>
           option.id === effectiveSelection.model &&
           option.provider === effectiveSelection.provider,
-      ),
-    );
+      )
+    : undefined;
+  const selectionAvailable =
+    Boolean(fixedModel) || Boolean(activeModelOption);
+  const hasImageAttachment = attachments.items.some(isImageAttachment);
   const activeStack = framework ?? stack;
+
+  useEffect(() => {
+    if (!hasImageAttachment) setEnabledImageNotice(null);
+  }, [hasImageAttachment]);
+
+  useEffect(() => {
+    setEnabledImageNotice(null);
+  }, [effectiveSelection?.model, effectiveSelection?.provider]);
   const selected = STACKS.find((s) => s.id === activeStack) ?? {
     id: activeStack,
     label: activeStack,
@@ -230,7 +302,11 @@ export function Composer({
       );
       if (accepted === false) return;
       setPrompt("");
+      lastDictationSnapshotRef.current = null;
+      selectionRangeRef.current = null;
+      dictation.cancel();
       attachments.clear();
+      setEnabledImageNotice(null);
       setRevising(false);
       if (textareaRef.current) textareaRef.current.style.height = "auto";
     } catch {
@@ -315,13 +391,20 @@ export function Composer({
           }
         }}
         options={
-          models?.models.map((option) => ({
-            value: JSON.stringify([option.provider, option.id]),
-            label: option.label,
-            description: models.providers.find(
+          models?.models.map((option) => {
+            const providerLabel = models.providers.find(
               (provider) => provider.id === option.provider,
-            )?.label,
-          })) ?? []
+            )?.label;
+            return {
+              value: JSON.stringify([option.provider, option.id]),
+              label: option.label,
+              description: option.supportsImages
+                ? providerLabel
+                  ? `${providerLabel} · Images`
+                  : "Images"
+                : providerLabel,
+            };
+          }) ?? []
         }
         footer={<Link href="/settings/providers">Configure providers</Link>}
       />
@@ -398,14 +481,51 @@ export function Composer({
           {attachments.error}
         </p>
       )}
+      {hasImageAttachment &&
+        selectionAvailable &&
+        effectiveSelection &&
+        activeModelOption?.supportsImages === false && (
+          <ImageCapabilityBanner
+            provider={effectiveSelection.provider}
+            model={effectiveSelection.model}
+            isOwner={isOwner}
+            disabled={Boolean(blocked || readOnly)}
+            onEnabled={async () => {
+              const targetModel = effectiveSelection.model;
+              await reloadModels();
+              setEnabledImageNotice(
+                `Image inputs enabled for ${targetModel}.`,
+              );
+            }}
+          />
+        )}
+      {enabledImageNotice && hasImageAttachment && (
+        <p
+          role="status"
+          className="mx-4 mt-2.5 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs text-[var(--color-text-2)]"
+        >
+          <span>{enabledImageNotice}</span>
+          <button
+            type="button"
+            onClick={() => setEnabledImageNotice(null)}
+            className="text-[var(--color-text-3)] hover:text-[var(--color-text-1)]"
+          >
+            Dismiss
+          </button>
+        </p>
+      )}
       <textarea
         ref={textareaRef}
         value={prompt}
         onChange={(e) => {
           setPrompt(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${Math.min(e.target.scrollHeight, MAX_DRAFT_HEIGHT)}px`;
+          recordSelection(e.currentTarget);
+          syncTextareaHeight(e.currentTarget);
         }}
+        onSelect={(e) => recordSelection(e.currentTarget)}
+        onKeyUp={(e) => recordSelection(e.currentTarget)}
+        onMouseUp={(e) => recordSelection(e.currentTarget)}
+        onBlur={(e) => recordSelection(e.currentTarget)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
@@ -533,13 +653,14 @@ export function Composer({
               aria-label="Dictate a prompt"
               disabled={Boolean(blocked || readOnly || dictation.busy)}
               onClick={dictation.begin}
-              className="flex size-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-text-3)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-text-1)] disabled:opacity-40"
+              className="flex size-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-text-2)] transition-colors hover:border-[var(--color-border-2)] hover:text-[var(--color-text-1)] disabled:opacity-40"
             >
               <MicIcon size={17} aria-hidden="true" />
             </button>
           )}
-          <span className="hidden font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-3)] sm:inline">
-            ⏎ to send
+          <span className="hidden items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-[var(--color-text-2)] sm:inline-flex">
+            <span>to send</span>
+            <CornerDownLeftIcon size={12} strokeWidth={2.2} aria-hidden="true" />
           </span>
           <button
             type="button"

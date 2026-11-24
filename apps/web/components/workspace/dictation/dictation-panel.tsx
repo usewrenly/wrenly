@@ -1,8 +1,8 @@
 "use client";
-import { MicIcon, Loader2Icon, SquareIcon, XIcon } from "lucide-react";
+import { MicIcon, Loader2Icon, RotateCcwIcon, SquareIcon, XIcon } from "lucide-react";
 import type { useDictation } from "./use-dictation";
 type Dictation = ReturnType<typeof useDictation>;
-/** Inline review avoids stacked dialogs and never treats recognized words as an automatic prompt submission. */
+/** Compact inline status bar; speech inserts straight into the composer for review before manual Send. */
 export function DictationPanel({
   dictation,
   disabled,
@@ -12,11 +12,11 @@ export function DictationPanel({
 }): React.JSX.Element | null {
   if (dictation.stage === "idle") return null;
   const button =
-    "rounded-lg border border-[var(--color-border)] px-3 py-2 text-xs disabled:opacity-40";
+    "rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-xs disabled:opacity-40";
   return (
     <section
       aria-label="Voice dictation"
-      className="mx-3 mb-3 space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm"
+      className="mx-3 mb-3 space-y-2.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3 text-sm"
     >
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2 font-medium">
@@ -35,8 +35,8 @@ export function DictationPanel({
       {dictation.stage === "consent" && (
         <>
           <p className="text-xs leading-relaxed text-[var(--color-text-3)]">
-            Your recording is transcribed on this instance. Audio is discarded
-            afterward. Review the words before sending.
+            Your recording is transcribed on this instance and inserted directly
+            into your prompt. Audio is discarded afterward. Review before sending.
           </p>
           <button
             type="button"
@@ -75,10 +75,38 @@ export function DictationPanel({
           Transcribing on your instance…
         </p>
       )}
+      {dictation.stage === "inserted" && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <p role="status" className="text-[var(--color-text-2)]">
+            Dictated text added to your prompt. Edit in place before sending.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {dictation.canUndo && (
+              <button
+                type="button"
+                className={`${button} inline-flex items-center gap-1`}
+                disabled={disabled}
+                onClick={dictation.undo}
+              >
+                <RotateCcwIcon size={12} aria-hidden="true" />
+                Undo
+              </button>
+            )}
+            <button
+              type="button"
+              className={button}
+              disabled={disabled}
+              onClick={dictation.begin}
+            >
+              Record again
+            </button>
+          </div>
+        </div>
+      )}
       {dictation.stage === "review" && (
         <>
           <label className="block space-y-2 text-xs">
-            <span>Review your words</span>
+            <span>Transcript kept while prompt is full</span>
             <textarea
               aria-label="Dictation transcript"
               className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm"

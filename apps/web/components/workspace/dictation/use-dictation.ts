@@ -1,5 +1,5 @@
 "use client";
-/** Dictation owns temporary audio only; inserting a transcript and sending a prompt remain separate actions. */
+/** Dictation inserts speech directly into the composer draft for in-place review; sending remains explicit. */
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { validateTranscript } from "@wrenly/audio";
@@ -13,17 +13,20 @@ export type DictationStage =
   | "permission"
   | "recording"
   | "transcribing"
+  | "inserted"
   | "review"
   | "error";
 const HTTP_TIMEOUT_MS = 105_000; // Includes bounded upload, native deadline and cleanup grace.
 export function useDictation(
   disabled: boolean,
   onInsert: (text: string) => boolean,
+  onUndo?: () => void,
 ): {
   available: boolean;
   checked: boolean;
   stage: DictationStage;
   busy: boolean;
+  canUndo: boolean;
   elapsed: number;
   text: string;
   error: string;
@@ -32,6 +35,7 @@ export function useDictation(
   consent(): void;
   stop(): void;
   cancel(): void;
+  undo(): void;
   insert(): void;
 } {
   const [available, setAvailable] = useState(false);
@@ -40,6 +44,7 @@ export function useDictation(
   const [elapsed, setElapsed] = useState(0);
   const [text, setText] = useState("");
   const [error, setError] = useState("");
+  const [canUndo, setCanUndo] = useState(false);
   const capture = useRef<MicrophoneCapture | null>(null);
   const operation = useRef(0);
   const request = useRef<AbortController | null>(null);
@@ -47,7 +52,11 @@ export function useDictation(
   const mounted = useRef(true);
   const started = useRef(0);
   const disabledNow = useRef(disabled);
+  const onInsertRef = useRef(onInsert);
+  const onUndoRef = useRef(onUndo);
   disabledNow.current = disabled;
+  onInsertRef.current = onInsert;
+  onUndoRef.current = onUndo;
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
@@ -98,6 +107,7 @@ export function useDictation(
     void capture.current?.cancel();
     setText("");
     setError("");
+    setCanUndo(false);
     setStage("idle");
     setElapsed(0);
   };
@@ -149,7 +159,17 @@ export function useDictation(
         !disabledNow.current
       ) {
         setText(transcript);
-        setStage("review");
+        if (onInsertRef.current(transcript)) {
+          setError("");
+          setCanUndo(Boolean(onUndoRef.current));
+          setStage("inserted");
+        } else {
+          setCanUndo(false);
+          setError(
+            "Your prompt is full. Shorten it before inserting these words.",
+          );
+          setStage("review");
+        }
       }
     } catch (failure) {
       if (mounted.current && operation.current === current) {
@@ -170,6 +190,7 @@ export function useDictation(
     const current = ++operation.current;
     setText("");
     setError("");
+    setCanUndo(false);
     setElapsed(0);
     setStage("permission");
     capture.current ??= createMicrophoneCapture();
@@ -200,6 +221,7 @@ export function useDictation(
     available,
     checked,
     stage,
+    canUndo,
     elapsed,
     text,
     error,
@@ -219,12 +241,22 @@ export function useDictation(
       if (stage === "recording") void stop();
     },
     cancel,
+    undo: () => {
+      if (!disabledNow.current && canUndo) {
+        onUndoRef.current?.();
+      }
+      cancel();
+    },
     insert: () => {
       try {
         const value = validateTranscript(text);
         if (!disabledNow.current) {
-          if (onInsert(value)) cancel();
-          else
+          if (onInsertRef.current(value)) {
+            setText(value);
+            setError("");
+            setCanUndo(Boolean(onUndoRef.current));
+            setStage("inserted");
+          } else
             setError(
               "Your prompt is full. Shorten it before inserting these words.",
             );

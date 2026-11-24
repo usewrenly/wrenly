@@ -55,6 +55,7 @@ export async function discoverConfiguredModels(
         endpoint: providerConnections.endpoint,
         envSourceId: providerConnections.envSourceId,
         enabled: providerConnections.enabled,
+        imageModelIds: providerConnections.imageModelIds,
       })
       .from(providerConnections)
       .where(isNull(providerConnections.deletedAt))
@@ -73,6 +74,9 @@ export async function discoverConfiguredModels(
           kind: row.kind as "local" | "cloud",
           protocol: row.protocol,
           displayUrl: safeDisplayUrl(row.endpoint),
+          imageModelIds: new Set(
+            Array.isArray(row.imageModelIds) ? row.imageModelIds : [],
+          ),
         })),
       ...resolveProviders()
         .filter((provider) => !suppressed.has(provider.id))
@@ -82,6 +86,7 @@ export async function discoverConfiguredModels(
           kind: provider.kind,
           protocol: provider.id === "ollama" ? "ollama" : "openai-compatible",
           displayUrl: safeDisplayUrl(provider.displayUrl),
+          imageModelIds: new Set<string>(),
         })),
     ];
     const [defaults] = await database
@@ -141,6 +146,7 @@ export async function discoverConfiguredModels(
               label: id,
               kind: entry.kind,
               provider: entry.id,
+              supportsImages: entry.imageModelIds.has(id),
             })),
           );
         } catch {
@@ -175,6 +181,9 @@ export async function discoverConfiguredModels(
         label: `${defaults.modelId} (configured default)`,
         kind: defaultConnection.kind as "local" | "cloud",
         provider: defaultProvider!,
+        supportsImages:
+          Array.isArray(defaultConnection.imageModelIds) &&
+          defaultConnection.imageModelIds.includes(defaults.modelId),
       });
     return {
       providers: providers.sort((a, b) => a.label.localeCompare(b.label)),

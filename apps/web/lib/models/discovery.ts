@@ -13,6 +13,7 @@ export interface ModelOption {
   label: string
   kind: ModelKind
   provider: string
+  supportsImages?: boolean
 }
 
 export interface ProviderStatus {
@@ -44,6 +45,7 @@ const modelsResponseSchema = z.object({
   })),
   models: z.array(z.object({
     id: z.string(), label: z.string(), kind: modelKindSchema, provider: z.string(),
+    supportsImages: z.boolean().optional(),
   })),
   envDefault: z.string(),
   defaultProvider: z.string().nullable().optional(),
