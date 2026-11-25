@@ -20,6 +20,8 @@ framework MCP servers; they do not generate or publish the app themselves.
 | Next.js 16 | DevTools MCP 0.4.0 error state | One fixed home-page browser session inside the disposable container |
 | Next.js 15 and other versions | Existing validation only | Wrenly never upgrades the app just to enable inspection |
 
+New Next.js projects generate on Next.js 16, so official inspection applies to them automatically; existing or imported Next.js 15 projects are never upgraded.
+
 Inspection currently runs for **stateless sandbox builds**. Database-backed validation
 keeps its separate workflow and does not receive inspection access to a database.
 This is not a full app test suite: one page can work while another page has errors.
