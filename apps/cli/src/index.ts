@@ -1,6 +1,13 @@
 #!/usr/bin/env -S bun --no-env-file
 /** Entrypoints are inert when imported; interactive setup is explicit and local. */
-import { createTerminalWriter, supportsDecoration } from "./presentation";
+import {
+  createTerminalWriter,
+  renderInstallSummary,
+  renderStatusReport,
+  supportsDecoration,
+} from "./presentation";
+import { PromptCancelledError, confirmPrompt } from "./prompts";
+import { runInstallWizard } from "./wizard";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArguments } from "./arguments";
@@ -14,6 +21,9 @@ import {
   openOwnerSetup,
 } from "./commands/management";
 import { serveInstallation } from "./runtime/supervisor";
+
+const CANCEL_EXIT_CODE = 130;
+
 const HELP = `Wrenly · guided local setup
 
   USAGE
@@ -30,26 +40,40 @@ const HELP = `Wrenly · guided local setup
     setup        Print a one-time owner onboarding link in the terminal
     help         Display this command reference
 
-  OPTIONS
+  SETUP
     --directory <path>       Absolute installation folder (default: ~/wrenly)
     --web-port <port>        Browser port (default: 3000)
     --api-port <port>        API port (default: 3002)
     --database-port <port>   PostgreSQL port (default: 65433)
-    --previews               Prepare isolated local preview containers
     --preview-port <port>    Preview gateway port (default: 3003)
+
+  CAPABILITIES
+    --preset <name>          minimal | recommended | full
+      minimal                Core workspace only
+      recommended            previews, Laravel 13, app databases, inspection
+      full                   recommended + local voice dictation
+    --previews               Prepare isolated local preview containers
     --laravel                Build the Laravel 13 FrankenPHP runtime image
     --databases              Prepare Development app databases (enables previews)
     --inspection             Build official Laravel & Next.js MCP inspection images
     --dictation              Download Whisper weights and build dictation runtime
+
+  AUTOMATION
     --archive <file>         Use a pre-downloaded verified release tarball
     --json                   Output structured JSON (doctor, plan, status)
-    --yes                    Confirm non-interactive execution after reviewing plan
+    --yes                    Confirm non-interactive execution without prompts
+
+  EXAMPLES
+    bunx @wrenly/cli                                   Interactive guided setup
+    bunx @wrenly/cli install --preset recommended --yes Scripted recommended install
+    bunx @wrenly/cli doctor                            Verify host prerequisites
 
   NOTES
-    Running without arguments in an interactive terminal opens the guided wizard.
+    Running without arguments or install without --yes opens interactive prompts on a TTY.
     Stop preserves data. This version does not upgrade or uninstall an instance.
     Optional major updates: https://www.usewrenly.org/#join (browser only; no CLI email collection).
 `;
+
 function renderReport(report: Report, write: (text: string) => void): void {
   write("Wrenly · installation checks\n\n");
   for (const check of report.checks) {
@@ -68,37 +92,36 @@ function renderReport(report: Report, write: (text: string) => void): void {
     `\n${report.ready ? "Prerequisites passed." : "Resolve the failed or unconfirmed checks before installing."}\n`,
   );
 }
-async function confirm(action: string, yes: boolean): Promise<void> {
+
+async function confirm(
+  action: string,
+  yes: boolean,
+  decorated: boolean,
+): Promise<void> {
   if (yes) return;
   if (!process.stdin.isTTY || !process.stdout.isTTY)
     throw new Error(
       "Review plan first, then use --yes for non-interactive execution.",
     );
-  const { createInterface } = await import("node:readline/promises");
-  const terminal = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  try {
-    if (
-      (await terminal.question(`Type ${action} to continue: `)).trim() !==
-      action
-    )
-      throw new Error("Cancelled. No action was started.");
-  } finally {
-    terminal.close();
-  }
+  const accepted = await confirmPrompt(
+    { message: `Continue with ${action}?`, initial: false },
+    { input: process.stdin, output: process.stdout },
+    decorated,
+  );
+  if (!accepted) throw new PromptCancelledError("Cancelled. No action was started.");
 }
+
 async function manage(
   options: Options,
   write: (text: string) => void,
+  decorated: boolean,
 ): Promise<number> {
   if (options.command === "status") {
     const status = await inspectInstallationStatus(options.directory);
     write(
       options.json
         ? JSON.stringify(status) + "\n"
-        : `Wrenly ${status.id}\nInstallation: ${status.phase}\nDatabase: ${status.database}\nRuntime: ${status.runtime?.status ?? "not running"}\nBrowser: ${status.url}\n`,
+        : renderStatusReport(status, decorated, process.stdout.columns ?? 80),
     );
     return status.runtime?.status === "running" ? 0 : 1;
   }
@@ -110,7 +133,7 @@ async function manage(
     );
     return 0;
   }
-  await confirm(options.command, options.yes);
+  await confirm(options.command, options.yes, decorated);
   if (options.command === "resume") {
     const state = await resumeInstallation(options.directory, write);
     write(
@@ -126,11 +149,13 @@ async function manage(
   }
   return 0;
 }
+
 export async function runCli(
   args: string[],
   write: (text: string) => void,
   probes: Probes = createLocalProbes(),
   defaultDirectory = join(homedir(), "wrenly"),
+  decorated = false,
 ): Promise<number> {
   let options: Options;
   try {
@@ -145,7 +170,7 @@ export async function runCli(
   }
   try {
     if (!["doctor", "plan", "install"].includes(options.command))
-      return await manage(options, write);
+      return await manage(options, write, decorated);
     const report = await inspectInstallation(
       { ...options, command: options.command === "doctor" ? "doctor" : "plan" },
       probes,
@@ -158,10 +183,14 @@ export async function runCli(
     }
     renderReport(report, write);
     if (!report.ready) return 1;
-    await confirm("install", options.yes);
+    await confirm("install", options.yes, decorated);
     const state = await installNew(options, import.meta.path, write);
     write(
-      `\nWrenly is running: http://localhost:${state.webPort}\nConfiguration: ${join(state.directory, ".env")} (keep this private and back it up).\n${state.databases ? "Development app databases are prepared. Approve project storage and migration changes in the conversation." : "Development app databases are off; choose --databases during a new installation to prepare them."}\n${state.inspection ? "Official framework inspection is prepared." : "Official framework inspection is off; choose --inspection during a new installation to enable it."}\n${state.dictation ? "Local voice dictation is prepared." : "Local voice dictation is off; choose --dictation during a new installation to enable it."}\nProduction databases and publishing require separate connection setup.\nOptional major updates: https://www.usewrenly.org/#join (subscribe in your browser).\n`,
+      renderInstallSummary(
+        state,
+        decorated,
+        typeof process.stdout.columns === "number" ? process.stdout.columns : 80,
+      ),
     );
     if (process.stdin.isTTY && process.stdout.isTTY)
       await openOwnerSetup(state.directory, true, write);
@@ -171,82 +200,17 @@ export async function runCli(
       );
     return 0;
   } catch (error) {
+    if (error instanceof PromptCancelledError) {
+      write(`${error.message}\n`);
+      return CANCEL_EXIT_CODE;
+    }
     write(
       `${error instanceof Error ? error.message : "Setup could not be completed. Saved configuration and data were preserved."}\n`,
     );
     return 1;
   }
 }
-async function wizard(write: (text: string) => void): Promise<string[]> {
-  const { createInterface } = await import("node:readline/promises");
-  const terminal = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  try {
-    write(
-      "Wrenly · your own instance\nCheck this machine, prepare a verified release, then create your owner account in the browser.\n\n",
-    );
-    const directory =
-      (
-        await terminal.question(
-          `◆  1/7  Installation folder [${join(homedir(), "wrenly")}]: `,
-        )
-      ).trim() || join(homedir(), "wrenly");
-    const web =
-      (await terminal.question("│  2/7  Browser port [3000]: ")).trim() || "3000";
-    const api =
-      (await terminal.question("│       API port [3002]: ")).trim() || "3002";
-    const database =
-      (await terminal.question("│       Wrenly database port [65433]: ")).trim() ||
-      "65433";
-    const previews =
-      (await terminal.question("│  3/7  Prepare local previews? [y/N]: "))
-        .trim()
-        .toLowerCase() === "y";
-    const laravel =
-      (await terminal.question("│  4/7  Prepare the Laravel toolchain? [y/N]: "))
-        .trim()
-        .toLowerCase() === "y";
-    const inspection =
-      (
-        await terminal.question(
-          "│  5/7  Prepare official framework inspection (Laravel Boost & Next.js DevTools; includes Laravel toolchain)? [y/N]: ",
-        )
-      )
-        .trim()
-        .toLowerCase() === "y";
-    const dictation =
-      (
-        await terminal.question(
-          "│  6/7  Prepare local voice dictation (downloads ~148 MB Whisper weights)? [y/N]: ",
-        )
-      )
-        .trim()
-        .toLowerCase() === "y";
-    const databases =
-      (await terminal.question("◆  7/7  Prepare Development app databases (includes previews)? [y/N]: "))
-        .trim().toLowerCase() === "y";
-    return [
-      "install",
-      "--directory",
-      directory,
-      "--web-port",
-      web,
-      "--api-port",
-      api,
-      "--database-port",
-      database,
-      ...(previews ? ["--previews"] : []),
-      ...(laravel ? ["--laravel"] : []),
-      ...(inspection ? ["--inspection"] : []),
-      ...(dictation ? ["--dictation"] : []),
-      ...(databases ? ["--databases"] : []),
-    ];
-  } finally {
-    terminal.close();
-  }
-}
+
 if (import.meta.main) {
   if (Bun.argv[2] === "_serve") {
     try {
@@ -256,21 +220,48 @@ if (import.meta.main) {
       process.exitCode = 1;
     }
   } else {
-    const output = createTerminalWriter(
-      (text) => {
-        process.stdout.write(text);
-      },
-      supportsDecoration({
-        interactive: Boolean(process.stdout.isTTY),
-        noColor: process.env.NO_COLOR,
-        term: process.env.TERM,
-        ci: process.env.CI,
-      }),
-    );
-    const args =
-      Bun.argv.length === 2 && process.stdin.isTTY && process.stdout.isTTY
-        ? await wizard(output)
-        : Bun.argv.slice(2);
-    process.exitCode = await runCli(args, output);
+    const decorated = supportsDecoration({
+      interactive: Boolean(process.stdout.isTTY),
+      noColor: process.env.NO_COLOR,
+      term: process.env.TERM,
+      ci: process.env.CI,
+    });
+    const output = createTerminalWriter((text) => {
+      process.stdout.write(text);
+    }, decorated);
+    const rawArgs = Bun.argv.slice(2);
+    const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    const shouldRunWizard =
+      interactive &&
+      (rawArgs.length === 0 ||
+        (rawArgs[0] === "install" && !rawArgs.includes("--yes")));
+    try {
+      const args = shouldRunWizard
+        ? await runInstallWizard(
+            rawArgs,
+            { input: process.stdin, output: process.stdout },
+            createLocalProbes(),
+            decorated,
+            join(homedir(), "wrenly"),
+          )
+        : rawArgs;
+      process.exitCode = await runCli(
+        args,
+        output,
+        createLocalProbes(),
+        join(homedir(), "wrenly"),
+        decorated,
+      );
+    } catch (error) {
+      if (error instanceof PromptCancelledError) {
+        output(`${error.message}\n`);
+        process.exitCode = CANCEL_EXIT_CODE;
+      } else {
+        output(
+          `${error instanceof Error ? error.message : "Invalid arguments."}\n`,
+        );
+        process.exitCode = 2;
+      }
+    }
   }
 }
