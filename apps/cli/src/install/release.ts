@@ -5,8 +5,8 @@ export interface Release {
   sha256: string;
 }
 export const PINNED_RELEASE: Readonly<Release> = Object.freeze({
-  revision: "4b5c742e221b9f0752fb9bcfd447e3b576fe0b67",
-  sha256: "fe752677f26ff8524d09c9dbc8d24863b4c7dbf5d11ce290fe22f945b9163157",
+  revision: "17b5bc9a1955c4793785428bb4e9e1d5f785ca18",
+  sha256: "8f1adbc1db6aa66501bd9b2327d13faef9d9d8403a3b4be4604672d06fe5138c",
 });
 export const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
