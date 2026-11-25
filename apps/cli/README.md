@@ -127,7 +127,7 @@ archive alone is not a backup of accounts or projects.
 
 ## Release integrity and scope
 
-This CLI pins public commit `17b5bc9a1955c4793785428bb4e9e1d5f785ca18` and checks the
+This CLI pins public commit `99061ff29631df4a29d8440d046b27a099a1fcf4` and checks the
 archive's SHA-256 before extracting or executing source. It rejects links, unsafe paths,
 collisions and oversized archives. `--archive /absolute/source.tgz` accepts only those
 same pinned bytes; it does not allow arbitrary code or a moving branch. The checksum
