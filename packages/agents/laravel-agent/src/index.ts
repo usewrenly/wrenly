@@ -60,8 +60,8 @@ const SYSTEM_PROMPT = `Generate a complete Laravel 13 / PHP 8.4 application usin
 Return ONLY a JSON array of {"path":"relative/path","content":"complete file content"}.
 Required: composer.json, artisan, bootstrap/app.php, bootstrap/providers.php,
 config/app.php, config/session.php, config/cache.php, config/logging.php,
-routes/web.php, routes/console.php, public/index.php, public/app.css,
-resources/views/welcome.blade.php, .env.example.
+config/database.php, config/auth.php, routes/web.php, routes/console.php,
+public/index.php, public/app.css, resources/views/welcome.blade.php, .env.example.
 Use Laravel 13 Application::configure()->withRouting(web:...,commands:...,health:'/up')
 withMiddleware and withExceptions. CLI artisan uses handleCommand(new ArgvInput).
 public/index.php loads vendor/autoload.php then bootstrap/app.php and handleRequest.
@@ -70,8 +70,8 @@ No Composer scripts, plugins, repositories or advisory policy overrides.
 config/app.php must provide name, env, debug, url, key from env('APP_KEY'), cipher AES-256-CBC.
 Use file sessions, array cache and stderr logging by default; include those configs.
 .env.example contains no secrets or placeholder APP_KEY; runtime injects APP_KEY.
-Do not create a .env file. No database, queue or external API connectivity is provisioned.
-Do not pretend persistent features work without separately configured resources.
+Do not create a .env file. Keep GET / returning HTTP 200 directly with HTML and a local CSS link even when auth is requested or no records exist yet (render a public landing or sign-in form at /, never a 3xx redirect from /).
+When Wrenly managed database context is included in the user prompt, use config/database.php pgsql env vars (never DATABASE_URL or hardcoded credentials), include wrenly.app.json plus database/migrations/*.php, Eloquent models, @csrf Blade forms, validation, and session Auth::login/Auth::attempt with App\\Models\\User extending Authenticatable when auth is requested. When no managed database context is provided, keep persistence stateless/session-free and do not fabricate database connectivity.
 Use locally included public/app.css linked by /app.css. Build a polished responsive UI
 with CSS and Blade. No CDN, remote fonts/scripts, installation hooks or remote assets.
 Images/video must be included local assets, inline SVG or CSS illustrations, not invented stock-photo URLs. Local previews block remote media. No browser/search tool is available; do not claim to have fetched media.

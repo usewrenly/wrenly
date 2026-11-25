@@ -132,6 +132,9 @@ for (const framework of ["nextjs", "laravel"] as const)
     const guidance = databaseBuildGuidance(framework, parent.input.databaseV1);
     expect(guidance).toContain("wrenly.app.json");
     expect(guidance).toContain(
+      framework === "laravel" ? '"adapter":"laravel"' : '"adapter":"drizzle-postgres"',
+    );
+    expect(guidance).toContain(
       framework === "laravel" ? "DB_PASSWORD" : "PGPASSWORD",
     );
     expect(guidance).not.toContain(parent.input.databaseV1!.resourceId);
