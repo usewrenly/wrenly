@@ -25,15 +25,21 @@ Or inspect your host and review the exact installation plan without making any c
 bunx @wrenly/cli@beta doctor
 bunx @wrenly/cli@beta plan --directory "$HOME/wrenly"
 bunx @wrenly/cli@beta install --directory "$HOME/wrenly"
+bunx @wrenly/cli@beta install --preset recommended --yes
 ```
 
 Interactive reports use colour; `NO_COLOR=1` disables it. Redirected output
 and JSON remain plain. Help and the installation summary include an optional major-updates
 link. Subscription happens only on the website; the CLI never collects or sends an email address.
 
-Review the plan and type `install` to proceed. Running without arguments
-in an interactive terminal opens the guided questions instead. `--yes` provides explicit
-confirmation for a non-interactive install after reviewing the same plan.
+Running without arguments or `install` without `--yes` in an interactive TTY opens guided
+prompts for any omitted folder, capability preset/custom options, or ports—flags you supply
+explicitly skip their corresponding prompts. Pressing Ctrl+C or Esc inside any prompt cancels
+cleanly with exit code `130`. `--yes` provides explicit confirmation for non-interactive
+runs (and non-TTY runs require `--yes`). `--preset <minimal|recommended|full>` selects a
+capability bundle (`minimal`: core workspace only; `recommended`: previews, Laravel 13,
+app databases, and framework inspection; `full`: recommended plus voice dictation) and
+cannot be combined with individual capability flags.
 
 If a port is occupied, choose another rather than stopping an unrelated service:
 

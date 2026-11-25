@@ -28,28 +28,28 @@ bunx @wrenly/cli@beta doctor
 bunx @wrenly/cli@beta plan --directory "$HOME/wrenly"
 ```
 
-Start the interactive setup wizard or run `install` directly:
+Start the interactive wizard or run `install` directly (passing `install` on a TTY without `--yes` runs interactive prompts for any omitted folder, preset, or port flags, skipping prompts whose flags you already supplied):
 
 ```bash
 bunx @wrenly/cli@beta
-# or explicitly:
+# or explicitly with interactive prompts:
 bunx @wrenly/cli@beta install --directory "$HOME/wrenly"
+# or non-interactively with a preset:
+bunx @wrenly/cli@beta install --preset recommended --yes
 ```
 
-Review the plan and type `install` to proceed. Passing `--yes` confirms non-interactive
-execution after you have reviewed the plan. Help and the installation summary also link
-to an optional major-updates signup page on the website; the CLI never collects or
-submits an email address.
+Pressing Ctrl+C or Esc inside any prompt cancels cleanly with exit code `130` without creating files. Passing `--yes` or running without a TTY skips all interactive prompts after validation.
 
-If a port is occupied, choose another rather than stopping an unrelated service:
+If a port is occupied, choose another rather than stopping an unrelated service, or let the interactive wizard detect busy ports and propose available replacements:
 
 ```bash
 bunx @wrenly/cli@beta install \
   --directory "$HOME/wrenly" \
   --web-port 41000 --api-port 41002 --database-port 65433 \
-  --previews --preview-port 41003 --databases
+  --previews --preview-port 41003 --databases --yes
 ```
 
+- `--preset <minimal|recommended|full>` selects a capability bundle (`minimal`: core only; `recommended`: `--previews --laravel --databases --inspection`; `full`: recommended plus `--dictation`). Supported on `install` and `plan`; cannot be combined with individual capability flags.
 - Use a short absolute path containing letters, numbers, `/`, `.`, `-`, or `_` under an existing parent directory. Existing destinations and symlink ancestors are refused.
 - `--previews` prepares the Next.js preview runtime image (`oven/bun:alpine`).
 - `--laravel` builds the repository's Laravel 13 FrankenPHP toolchain (`wrenly/laravel-runtime:13-php8.4`) and should be paired with `--previews` for Laravel previews.

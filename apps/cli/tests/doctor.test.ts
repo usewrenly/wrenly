@@ -151,3 +151,27 @@ test("inspection and dictation options update the installation plan and reject n
     expect(await runCli(args, () => {}, probes())).toBe(2);
   }
 });
+test("--preset expands capabilities cleanly and rejects conflicts or unsupported commands", async () => {
+  let output = "";
+  expect(
+    await runCli(
+      ["plan", "--json", "--preset", "recommended", "--directory", "/tmp/new-wrenly"],
+      (text) => (output += text),
+      probes(),
+    ),
+  ).toBe(0);
+  const report: Report = JSON.parse(output);
+  expect(report.ready).toBe(true);
+  expect(report.checks).toHaveLength(13);
+  expect(report.plan?.join(" ")).toContain("Development app databases: enabled with previews.");
+  expect(report.plan?.join(" ")).toContain("Official framework inspection: enabled.");
+  expect(report.plan?.join(" ")).not.toContain("Local voice dictation: enabled.");
+  for (const args of [
+    ["install", "--preset", "recommended", "--laravel"],
+    ["plan", "--preset", "full", "--databases"],
+    ["status", "--preset", "recommended"],
+    ["doctor", "--preset", "minimal"],
+  ]) {
+    expect(await runCli(args, () => {}, probes())).toBe(2);
+  }
+});

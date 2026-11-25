@@ -1,4 +1,5 @@
 /** Shared CLI-only result shapes; reports never contain environment values or file contents. */
+export type InstallPreset = "minimal" | "recommended" | "full";
 export interface Options {
   command:
     | "doctor"
@@ -23,6 +24,7 @@ export interface Options {
   databases: boolean;
   inspection: boolean;
   dictation: boolean;
+  preset?: InstallPreset;
 }
 export interface Check {
   name: string;

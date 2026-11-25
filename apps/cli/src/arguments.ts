@@ -1,9 +1,21 @@
 /** Parse a strict command allowlist before inspecting or changing an installation. */
 import { isAbsolute, normalize } from "node:path";
-import type { Options } from "./contracts";
+import type { InstallPreset, Options } from "./contracts";
 const MAX_PATH_LENGTH = 4096;
 const MIN_PORT = 1024;
 const MAX_PORT = 65535;
+const CAPABILITY_FLAGS = [
+  "--previews",
+  "--laravel",
+  "--databases",
+  "--inspection",
+  "--dictation",
+] as const;
+const PRESET_VALUES: readonly InstallPreset[] = [
+  "minimal",
+  "recommended",
+  "full",
+];
 export function parseArguments(
   args: string[],
   defaultDirectory: string,
@@ -76,12 +88,19 @@ export function parseArguments(
         "--database-port",
         "--preview-port",
         "--archive",
+        "--preset",
       ].includes(flag)
     )
       throw new Error("Unknown option. Use help for supported options.");
     const value = args[++index];
     if (!value || value.startsWith("--"))
       throw new Error(`Missing value for ${flag}.`);
+    if (flag === "--preset") {
+      if (!PRESET_VALUES.includes(value as InstallPreset))
+        throw new Error("Choose minimal, recommended, or full for --preset.");
+      result.preset = value as InstallPreset;
+      continue;
+    }
     if (flag === "--directory" || flag === "--archive") {
       if (
         !isAbsolute(value) ||
@@ -108,6 +127,22 @@ export function parseArguments(
       else result.previewPort = port;
     }
   }
+  if (seen.has("--preset") && !["install", "plan"].includes(command))
+    throw new Error("--preset is supported only with install and plan.");
+  if (
+    result.preset &&
+    CAPABILITY_FLAGS.some((capability) => seen.has(capability))
+  )
+    throw new Error(
+      "Use either --preset or individual capability flags, not both.",
+    );
+  if (result.preset === "recommended" || result.preset === "full") {
+    result.previews = true;
+    result.laravel = true;
+    result.databases = true;
+    result.inspection = true;
+  }
+  if (result.preset === "full") result.dictation = true;
   // Development app databases use the isolated preview runtime, so the reviewed plan includes both.
   if (result.databases) result.previews = true;
   // Official Laravel Boost inspection depends on the wrenly Laravel toolchain image.

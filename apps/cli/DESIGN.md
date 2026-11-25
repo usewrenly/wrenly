@@ -65,14 +65,26 @@ auto-update, uninstall or an npm publication workflow.
 COMPONENT: Installer terminal presentation
 PURPOSE: Make the existing guided flow easier to scan without changing any installation action.
 INPUTS: Existing text reports, interactive terminal capability and colour preferences.
-OUTPUTS: Restrained wood-coloured headings/status labels in a TTY; identical plain/JSON output otherwise.
+OUTPUTS: Restrained wood-coloured headings/status labels, step spinner, summary box and status card in a TTY; identical plain/JSON output otherwise.
 STEPS:
-1. Keep the wizard's existing questions and confirmation semantics.
-2. Number the sections and distinguish checks from execution progress.
-3. Style only recognized report labels; never alter setup links, arbitrary errors or JSON.
-4. Honour NO_COLOR, CI and TERM=dumb; add no dependency or full-screen state.
-EDGE CASES: Redirected output stays plain; cancellation and failed checks retain exit codes.
+1. Number/count applicable installation steps cleanly and animate an inline spinner per step in a decorated TTY without altering underlying journal step names.
+2. Style only recognized report labels; render an install summary box and status card cleanly while keeping private setup links undecorated and outside summary boxes.
+3. No runtime dependencies; inline prompts only; raw mode always restored; `--yes` and non-TTY streams never prompt.
+4. Honour NO_COLOR, CI and TERM=dumb; redirected output and failed checks retain exit codes.
+EDGE CASES: Redirected output stays plain; spinner intervals are `.unref()`'d and cleared on exit or error.
 ERROR STATES: Presentation never hides a check or turns an uncertain operation into success.
+
+COMPONENT: Interactive installer prompts
+PURPOSE: Guide interactive TTY operators through folder, capability presets/custom selection and free ports cleanly without external prompt dependencies.
+INPUTS: Partial CLI flags, interactive `PromptIO` stream, destination/port probes and decoration capability.
+OUTPUTS: Resolved explicit `install` arguments ending with `--yes`, or exit code 130 on cancellation.
+STEPS:
+1. Enable raw mode on start, hide cursor, and restore both in `finally`.
+2. Skip any prompt whose flag (`--directory`, `--preset`, individual capability flag or port flag) was explicitly supplied.
+3. Expand capability implications (`--databases` implies `--previews`, `--inspection` implies `--laravel`), detect busy default ports and offer free candidates (`+1..+50`).
+4. Show a collapsed review summary plus equivalent CLI command before final confirmation.
+EDGE CASES: Esc/Ctrl+C or negative confirmation rejects with `PromptCancelledError` and exits 130 without touching disk; invalid destination/port inputs show inline amber errors and re-prompt.
+ERROR STATES: Non-TTY streams without `--yes` never hang waiting on stdin and reject immediately.
 
 COMPONENT: Development database option and owner setup handoff
 PURPOSE: Prepare optional Development app databases and guide the owner to protected setup without leaking tokens.

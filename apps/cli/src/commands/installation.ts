@@ -43,12 +43,13 @@ async function step(
   name: string,
   action: () => Promise<void>,
   write: (text: string) => void,
+  counter?: string,
 ): Promise<void> {
   if (state.steps[name] === "completed") return;
   state.steps[name] = "started";
   state.phase = "installing";
   await saveState(state);
-  write(`Preparing ${name}…\n`);
+  write(`Preparing ${name}${counter ? ` (${counter})` : ""}…\n`);
   try {
     await action();
     state.steps[name] = "completed";
@@ -62,6 +63,28 @@ async function step(
       `${name} did not complete. Configuration and data are preserved. Inspect status, then explicitly resume when the previous command has settled.`,
     );
   }
+}
+
+function plannedStepNames(state: State): string[] {
+  return [
+    "dependencies",
+    "API build",
+    "web build",
+    ...(state.laravel ? ["Laravel toolchain"] : []),
+    ...(state.inspection
+      ? ["Laravel inspection image", "Next.js inspection image"]
+      : []),
+    ...(state.dictation
+      ? ["voice dictation model", "voice dictation image"]
+      : []),
+    ...(state.previews ? ["preview image"] : []),
+    ...(state.databases
+      ? ["app PostgreSQL image", "app database socket image"]
+      : []),
+    "database",
+    "schema",
+    "runtime",
+  ];
 }
 /** A separate kernel step lock remains held if the interactive CLI dies while a build/migration continues. */
 async function trustedStep(
@@ -129,6 +152,11 @@ export async function resumeInstallation(
       throw new Error(
         "Installation is already prepared. Use start or status; resume does not rebuild a running instance.",
       );
+    const stepNames = plannedStepNames(state);
+    const stepCounter = (name: string): string => {
+      const index = stepNames.indexOf(name);
+      return `${index + 1}/${stepNames.length}`;
+    };
     await step(
       state,
       "dependencies",
@@ -144,6 +172,7 @@ export async function resumeInstallation(
           directory,
         ),
       write,
+      stepCounter("dependencies"),
     );
     await step(
       state,
@@ -155,6 +184,7 @@ export async function resumeInstallation(
           join(directory, "apps/api"),
         ),
       write,
+      stepCounter("API build"),
     );
     await step(
       state,
@@ -166,6 +196,7 @@ export async function resumeInstallation(
           join(directory, "apps/web"),
         ),
       write,
+      stepCounter("web build"),
     );
     if (state.laravel)
       await step(
@@ -187,6 +218,7 @@ export async function resumeInstallation(
             IMAGE_BUILD_TIMEOUT_MS,
           ),
         write,
+        stepCounter("Laravel toolchain"),
       );
     if (state.inspection) {
       for (const [name, target, image] of [
@@ -224,6 +256,7 @@ export async function resumeInstallation(
               IMAGE_BUILD_TIMEOUT_MS,
             ),
           write,
+          stepCounter(name),
         );
       }
     }
@@ -235,6 +268,7 @@ export async function resumeInstallation(
           await ensureVerifiedSpeechModel(directory);
         },
         write,
+        stepCounter("voice dictation model"),
       );
       await step(
         state,
@@ -257,6 +291,7 @@ export async function resumeInstallation(
             IMAGE_BUILD_TIMEOUT_MS,
           ),
         write,
+        stepCounter("voice dictation image"),
       );
     }
     if (state.previews)
@@ -276,6 +311,7 @@ export async function resumeInstallation(
             directory,
           ),
         write,
+        stepCounter("preview image"),
       );
     if (state.databases) {
       for (const [name, image, context] of [
@@ -284,10 +320,10 @@ export async function resumeInstallation(
       ] as const) {
         await step(state, name, () => trustedStep(state, [
           "docker", "--host", "unix:///var/run/docker.sock", "build", "-t", image, context,
-        ], directory, IMAGE_BUILD_TIMEOUT_MS), write);
+        ], directory, IMAGE_BUILD_TIMEOUT_MS), write, stepCounter(name));
       }
     }
-    await step(state, "database", () => startDatabase(state), write);
+    await step(state, "database", () => startDatabase(state), write, stepCounter("database"));
     if ((await inspectDatabase(state)) !== "running")
       await startDatabase(state);
     // The native migrator inspects its transactional journal and never reapplies committed control migrations.
@@ -311,8 +347,9 @@ export async function resumeInstallation(
         );
       },
       write,
+      stepCounter("schema"),
     );
-    await step(state, "runtime", () => startRuntime(state), write);
+    await step(state, "runtime", () => startRuntime(state), write, stepCounter("runtime"));
     await startRuntime(state);
     state.phase = "ready";
     await saveState(state);
