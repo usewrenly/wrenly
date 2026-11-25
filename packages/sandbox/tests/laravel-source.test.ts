@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { LARAVEL_SKELETON } from '../../agents/laravel-agent/src/skeleton'
 import { validateLaravelSource } from '../src/source-policy/laravel-runtime'
+import { laravelInertiaFixture } from './laravel-fixture'
 
 test('Laravel source preflight preserves secure install policy and rejects legacy versions', () => {
   expect(() => validateLaravelSource(LARAVEL_SKELETON)).not.toThrow()
@@ -36,3 +37,7 @@ for (const version of ['^12.0', '~12.1.0', '12.1.0', '^13.0']) {
     expect(JSON.parse(files[0]!.content).require['laravel/framework']).toBe(version);
   });
 }
+
+test('Laravel source preflight accepts Inertia.js React structure with offline asset build', () => {
+  expect(() => validateLaravelSource(laravelInertiaFixture())).not.toThrow()
+})
