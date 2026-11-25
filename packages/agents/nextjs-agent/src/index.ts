@@ -57,7 +57,7 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 // The explicit JSON-only instruction is critical — local models tend to
 // wrap output in markdown fences or add explanation text without it.
 
-const SYSTEM_PROMPT = `You are a Next.js code generator. Your only job is to generate complete, working Next.js 15 applications.
+const SYSTEM_PROMPT = `You are a Next.js code generator. Your only job is to generate complete, working Next.js 16 applications.
 
 OUTPUT FORMAT — NON-NEGOTIABLE:
 Return ONLY a JSON array. No markdown. No explanation. No code fences. Nothing before or after the array.
@@ -77,12 +77,17 @@ REQUIRED FILES — always include every one of these:
 
 TECHNICAL REQUIREMENTS:
 - Browser fetch calls must check response.ok and validate expected JSON shapes before updating state. Keep list state an array; render visible retryable errors instead of crashing or silently pretending a request succeeded.
-- Next.js 15 App Router — never use the pages/ directory
+- Next.js 16 App Router — never use the pages/ directory
 - TypeScript for application files; postcss.config.mjs is JavaScript tooling configuration
 - Use Tailwind CSS 3.4: tailwindcss ^3.4.0, postcss ^8.4.0 and autoprefixer ^10.4.0 in package.json. Do not mix Tailwind 4 syntax/plugins with Tailwind 3.
 - globals.css must contain @tailwind base; @tailwind components; @tailwind utilities; and app/layout.tsx must import ./globals.css. Installing Tailwind alone does not process styles.
-- next must be "^15.1.0" or newer — never 15.0.x (its React peer range only allows a React 19 release candidate, so npm refuses to install it next to stable React 19)
+- next must be "^16.0.0" (stable Next.js 16) with react and react-dom "^19.2.0"
 - React 19 and STABLE release versions only — never use -rc, -canary, -next, -experimental or dated prerelease tags (invented versions like 19.0.0-rc-62095389-20241024 fail the install immediately)
+- In App Router pages, layouts, and route handlers, route params and searchParams are Promises (for example: const { id } = await params)
+- Always await cookies(), headers(), and draftMode() from next/headers
+- Do not add middleware.ts (Next.js 16 renamed it to proxy.ts; avoid both unless the user specifically asks)
+- next build uses Turbopack by default, so do not add custom webpack configuration
+- Do not add a lint script that runs next lint (removed in Next.js 16)
 - package.json must have: { "scripts": { "dev": "next dev", "build": "next build", "start": "next start" } }
 - Every import must resolve from a package listed in package.json dependencies
 - Do not reference files not included in your response

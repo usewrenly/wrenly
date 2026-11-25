@@ -52,7 +52,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'generate_app',
       description:
-        'Generate a complete Next.js 15 application from a natural language prompt. ' +
+        'Generate a complete Next.js 16 application from a natural language prompt. ' +
         'Returns a FileTree: an array of { path, content } objects ready for sandbox execution.',
       inputSchema: {
         type: 'object',

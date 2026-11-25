@@ -25,7 +25,7 @@ tools rather than importing the generator implementation.
 ## Tools
 
 - `generate_app`: prompt, prior errors and attempt → complete `{files:[{path,content}]}`.
-  Targets Next.js 15 App Router, TypeScript, React 19 and Tailwind using the existing
+  Targets Next.js 16 App Router, TypeScript, React 19.2 and Tailwind 3.4 using the existing
   generation instructions. Output still requires Docker validation.
   New generation explicitly targets Tailwind 3.4 with Tailwind/PostCSS configuration,
   global directives and root-layout CSS import; installing Tailwind alone is insufficient.
