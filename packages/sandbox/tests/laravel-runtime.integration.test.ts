@@ -7,13 +7,20 @@ import { tmpdir } from 'node:os'
 import { runSandbox } from '../src/index'
 import { buildRuntimeArtifact, cleanupRuntimeArtifactPreparation } from '../src/artifacts/runtime-artifact'
 import { startPreviewRuntime, cleanupPreviewRuntime } from '../src/previews/runtime'
-import { laravelFixture } from './laravel-fixture'
+import { laravelFixture, laravelInertiaFixture } from './laravel-fixture'
 
 const integration = process.env.WRENLY_TEST_LARAVEL === 'true' ? describe : describe.skip
 const docker = new Docker({ socketPath: '/var/run/docker.sock' })
 integration('Laravel offline sandbox, preview and production artifact', () => {
   test('validates a real Blade page and local CSS with no host execution', async () => {
     const result = await runSandbox({ projectId: crypto.randomUUID(), stack: 'laravel', files: laravelFixture() })
+    if (!result.success) throw new Error(result.error + '\n' + result.output)
+    expect(result.output).toContain('Laravel offline HTTP and local asset validation passed.')
+    expect(result.output).toContain('Building with network disabled')
+  }, 300_000)
+
+  test('validates a real Inertia React page and offline bundled assets with no host execution', async () => {
+    const result = await runSandbox({ projectId: crypto.randomUUID(), stack: 'laravel', files: laravelInertiaFixture() })
     if (!result.success) throw new Error(result.error + '\n' + result.output)
     expect(result.output).toContain('Laravel offline HTTP and local asset validation passed.')
     expect(result.output).toContain('Building with network disabled')

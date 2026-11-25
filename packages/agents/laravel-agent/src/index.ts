@@ -56,12 +56,13 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 // Laravel-specific instructions. The LLM must generate PHP, not JavaScript.
 // Required files differ significantly from Next.js — this prompt is precise.
 
-const SYSTEM_PROMPT = `Generate a complete Laravel 13 / PHP 8.4 application using Blade.
+const SYSTEM_PROMPT = `Generate a complete Laravel 13 / PHP 8.4 application using Blade or Inertia.js (React or Vue 3).
 Return ONLY a JSON array of {"path":"relative/path","content":"complete file content"}.
 Required: composer.json, artisan, bootstrap/app.php, bootstrap/providers.php,
 config/app.php, config/session.php, config/cache.php, config/logging.php,
 config/database.php, config/auth.php, routes/web.php, routes/console.php,
-public/index.php, public/app.css, resources/views/welcome.blade.php, .env.example.
+public/index.php, public/app.css (or built stylesheet linked by Blade), .env.example,
+and either resources/views/welcome.blade.php (Blade default) or resources/views/app.blade.php (Inertia).
 Use Laravel 13 Application::configure()->withRouting(web:...,commands:...,health:'/up')
 withMiddleware and withExceptions. CLI artisan uses handleCommand(new ArgvInput).
 public/index.php loads vendor/autoload.php then bootstrap/app.php and handleRequest.
@@ -70,10 +71,16 @@ No Composer scripts, plugins, repositories or advisory policy overrides.
 config/app.php must provide name, env, debug, url, key from env('APP_KEY'), cipher AES-256-CBC.
 Use file sessions, array cache and stderr logging by default; include those configs.
 .env.example contains no secrets or placeholder APP_KEY; runtime injects APP_KEY.
-Do not create a .env file. Keep GET / returning HTTP 200 directly with HTML and a local CSS link even when auth is requested or no records exist yet (render a public landing or sign-in form at /, never a 3xx redirect from /).
-When Wrenly managed database context is included in the user prompt, use config/database.php pgsql env vars (never DATABASE_URL or hardcoded credentials), include wrenly.app.json plus database/migrations/*.php, Eloquent models, @csrf Blade forms, validation, and session Auth::login/Auth::attempt with App\\Models\\User extending Authenticatable when auth is requested. When no managed database context is provided, keep persistence stateless/session-free and do not fabricate database connectivity.
-Use locally included public/app.css linked by /app.css. Build a polished responsive UI
-with CSS and Blade. No CDN, remote fonts/scripts, installation hooks or remote assets.
+Do not create a .env file. Keep GET / returning HTTP 200 directly with HTML and a local CSS link even when auth is requested or no records exist yet (render a public landing, Inertia page, or sign-in form at /, never a 3xx redirect from /).
+When Wrenly managed database context is included in the user prompt, use config/database.php pgsql env vars (never DATABASE_URL or hardcoded credentials), include wrenly.app.json plus database/migrations/*.php, Eloquent models, validation, CSRF-protected forms or Inertia router requests, and session Auth::login/Auth::attempt with App\\Models\\User extending Authenticatable when auth is requested. When no managed database context is provided, keep persistence stateless/session-free and do not fabricate database connectivity.
+Default to server-rendered Blade + public/app.css for simple sites. Use Inertia.js when the prompt asks for Inertia, React, Vue, or an interactive single-page app workflow in Laravel:
+- Add "inertiajs/inertia-laravel": "^3.0" in composer.json.
+- Create app/Http/Middleware/HandleInertiaRequests.php extending Inertia\\Middleware (with protected $rootView = 'app';) and register $middleware->web(append: [\\App\\Http\\Middleware\\HandleInertiaRequests::class]); in bootstrap/app.php.
+- Create resources/views/app.blade.php with @inertiaHead, @inertia, a static <link rel="stylesheet" href="/app.css"> (or compiled local CSS), and <script type="module" src="/build/app.js"></script>. Never use @vite(...) or external CDN URLs.
+- Include package.json with ONLY "scripts": {"build": "..."} (no install hooks, trustedDependencies, or workspaces):
+  * For React + Inertia: dependencies "@inertiajs/react": "^3.0.0", "react": "^19.0.0", "react-dom": "^19.0.0"; script "build": "bun build resources/js/app.tsx --outdir public/build --entry-naming=app.js --minify --target=browser"; map explicit static page imports in createInertiaApp in resources/js/app.tsx so Bun bundles every page offline into public/build/app.js.
+  * For Vue 3 + Inertia: dependencies "@inertiajs/vue3": "^3.0.0", "vue": "^3.5.0", "@vitejs/plugin-vue": "^5.2.0", "vite": "^6.0.0"; script "build": "vite build"; include vite.config.js with publicDir: false and build.outDir: 'public/build', emptyOutDir: true, rollupOptions: { input: 'resources/js/app.ts', output: { entryFileNames: 'app.js', assetFileNames: 'app.[ext]' } }.
+Use locally included public/app.css linked by /app.css (or compiled local CSS). Build a polished responsive UI. No CDN, remote fonts/scripts, installation hooks or remote assets.
 Images/video must be included local assets, inline SVG or CSS illustrations, not invented stock-photo URLs. Local previews block remote media. No browser/search tool is available; do not claim to have fetched media.
 Tailwind class names alone do not provide styling. Either write the complete equivalent
 CSS in public/app.css, or include Tailwind dependencies, all input/config files and an
