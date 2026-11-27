@@ -5,6 +5,7 @@ export interface Options {
     | "doctor"
     | "plan"
     | "help"
+    | "version"
     | "install"
     | "resume"
     | "status"

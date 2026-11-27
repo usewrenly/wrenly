@@ -65,12 +65,18 @@ test("missing prerequisites and occupied ports fail without hiding other checks"
   ).toHaveLength(6);
   expect(report.checks.at(-1)?.status).toBe("failed");
 });
-test("help and invalid arguments do not probe", async () => {
+test("help, version and invalid arguments do not probe", async () => {
   const fixture = probes();
   fixture.command = async () => {
     throw Error("must not run");
   };
   expect(await runCli(["help"], () => {}, fixture)).toBe(0);
+  let versionOut = "";
+  expect(await runCli(["--version"], (t) => (versionOut += t), fixture)).toBe(0);
+  expect(versionOut.trim()).toMatch(/^wrenly v\d+\.\d+\.\d+/);
+  let shortVersionOut = "";
+  expect(await runCli(["-v"], (t) => (shortVersionOut += t), fixture)).toBe(0);
+  expect(shortVersionOut).toBe(versionOut);
   for (const args of [
     ["destroy"],
     ["doctor", "--directory", "relative"],

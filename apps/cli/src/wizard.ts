@@ -4,7 +4,13 @@ import { homedir } from "node:os";
 import { isAbsolute, join, normalize, resolve } from "node:path";
 import { parseArguments } from "./arguments";
 import type { InstallPreset, Probes } from "./contracts";
-import { BOLD, MUTED, RESET, WOOD } from "./presentation";
+import {
+  MUTED,
+  RESET,
+  WOOD,
+  renderBrandHeader,
+  renderWizardSummary,
+} from "./presentation";
 import {
   PromptCancelledError,
   confirmPrompt,
@@ -60,18 +66,7 @@ function collectSeenFlags(args: string[]): Set<string> {
 }
 
 function formatLine(text: string, decorated: boolean): string {
-  return decorated ? `${WOOD}│${RESET}  ${text}\n` : `│  ${text}\n`;
-}
-
-function formatSection(
-  label: string,
-  value: string,
-  decorated: boolean,
-): string {
-  const prefix = decorated ? `${WOOD}◇${RESET}` : "◇";
-  const title = decorated ? `${BOLD}${label}${RESET}` : label;
-  const body = decorated ? `${MUTED}${value}${RESET}` : value;
-  return `${prefix}  ${title}\n${formatLine(body, decorated)}`;
+  return decorated ? `  ${WOOD}│${RESET}  ${text}\n` : `  │  ${text}\n`;
 }
 
 function quoteArg(value: string): string {
@@ -187,11 +182,7 @@ export async function runInstallWizard(
   const parsed = parseArguments(normalizedInput, defaultDirectory);
   const seen = collectSeenFlags(normalizedInput.slice(1));
 
-  io.output.write(
-    decorated
-      ? `\n${WOOD}┌  ${BOLD}Wrenly · set up your own instance${RESET}\n${WOOD}│${RESET}\n`
-      : `\n┌  Wrenly · set up your own instance\n│\n`,
-  );
+  io.output.write(renderBrandHeader("guided setup", decorated));
 
   let directory = parsed.directory;
   if (!seen.has("--directory")) {
@@ -475,23 +466,26 @@ export async function runInstallWizard(
     `db ${databasePort}`,
     ...(capabilities.previews ? [`preview ${previewPort}`] : []),
   ].join(" · ");
+  const frameworks = capabilities.laravel
+    ? "Next.js 16 + Laravel 13"
+    : "Next.js 16";
 
-  io.output.write(formatSection("Folder", directory, decorated));
   io.output.write(
-    formatSection("Capabilities", summarizeCapabilities(capabilities), decorated),
-  );
-  io.output.write(formatSection("Ports", portSummary, decorated));
-  io.output.write(
-    formatLine(
-      decorated
-        ? `${MUTED}Equivalent command: ${equivalentCommand}${RESET}`
-        : `Equivalent command: ${equivalentCommand}`,
+    renderWizardSummary(
+      {
+        directory,
+        frameworks,
+        capabilities: summarizeCapabilities(capabilities),
+        ports: portSummary,
+        equivalentCommand,
+      },
       decorated,
+      io.output.columns ?? 80,
     ),
   );
 
   const proceed = await confirmPrompt(
-    { message: "Run the checks and install now?", initial: true },
+    { message: "Run checks and install now?", initial: true },
     io,
     decorated,
   );

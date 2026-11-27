@@ -21,12 +21,18 @@ export function parseArguments(
   defaultDirectory: string,
 ): Options {
   const first = args[0] ?? "help";
-  const command = first === "--help" || first === "-h" ? "help" : first;
+  const command =
+    first === "--help" || first === "-h"
+      ? "help"
+      : first === "--version" || first === "-v"
+        ? "version"
+        : first;
   if (
     ![
       "doctor",
       "plan",
       "help",
+      "version",
       "install",
       "resume",
       "status",
@@ -36,7 +42,7 @@ export function parseArguments(
     ].includes(command)
   )
     throw new Error(
-      "Use doctor, plan, install, resume, status, start, stop, setup or help.",
+      "Use doctor, plan, install, resume, status, start, stop, setup, version or help.",
     );
   const result: Options = {
     command: command as Options["command"],
