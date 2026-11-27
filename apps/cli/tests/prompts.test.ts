@@ -145,6 +145,36 @@ test("textPrompt supports typing, backspace, inline validation error and retry",
   expect(fake.getOutput()).toContain("\u001b[?25h");
 });
 
+test("textPrompt placeholder accepts Enter, replaces on first keystroke, and edits on Backspace", async () => {
+  const f1 = createFakeIo();
+  const p1 = textPrompt(
+    { message: "Folder", placeholder: "/home/user/wrenly" },
+    f1.io,
+    false,
+  );
+  sendKeys(f1.input, ["\r"]);
+  expect(await p1).toBe("/home/user/wrenly");
+  expect(f1.getOutput()).toContain("▌/home/user/wrenly");
+
+  const f2 = createFakeIo();
+  const p2 = textPrompt(
+    { message: "Folder", placeholder: "/home/user/wrenly" },
+    f2.io,
+    false,
+  );
+  sendKeys(f2.input, ["./app", "\r"]);
+  expect(await p2).toBe("./app");
+
+  const f3 = createFakeIo();
+  const p3 = textPrompt(
+    { message: "Folder", placeholder: "/home/user/ab" },
+    f3.io,
+    false,
+  );
+  sendKeys(f3.input, ["\u007f", "c", "\r"]);
+  expect(await p3).toBe("/home/user/ac");
+});
+
 test("confirmPrompt toggles with left arrow and submits boolean", async () => {
   const fake = createFakeIo();
   const promise = confirmPrompt(

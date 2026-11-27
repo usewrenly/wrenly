@@ -49,8 +49,8 @@ const HELP = `Wrenly · guided local setup
 
   CAPABILITIES
     --preset <name>          minimal | recommended | full
-      minimal                Core workspace only
-      recommended            previews, Laravel 13, app databases, inspection
+      minimal                Next.js 16 core workspace only
+      recommended            Next.js 16 + Laravel 13, previews, app databases, inspection
       full                   recommended + local voice dictation
     --previews               Prepare isolated local preview containers
     --laravel                Build the Laravel 13 FrankenPHP runtime image

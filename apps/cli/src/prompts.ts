@@ -240,43 +240,76 @@ export async function textPrompt(
   options: {
     message: string;
     initial?: string;
+    placeholder?: string;
+    hint?: string;
     validate?: (value: string) => string | undefined | Promise<string | undefined>;
   },
   io: PromptIO,
   decorated = true,
 ): Promise<string> {
-  let buffer = options.initial ?? "";
+  let buffer = options.placeholder !== undefined ? "" : (options.initial ?? "");
+  let touched = options.placeholder === undefined;
   let errorText: string | undefined;
+  const cursorMark = decorated ? `${WOOD}▌${RESET}` : "▌";
 
   return runInteractivePrompt<string>(
     io,
     decorated,
     options.message,
     () => {
+      const displayValue =
+        options.placeholder !== undefined && !touched
+          ? `${cursorMark}${muted(options.placeholder, decorated)}`
+          : `${buffer}${cursorMark}`;
+      const hintText =
+        options.hint ??
+        (options.placeholder !== undefined && !touched
+          ? "type a value or press enter for default · ctrl+c cancel"
+          : "enter confirm · ctrl+c cancel");
       const lines = [
         `${diamondActive(decorated)}  ${bold(options.message, decorated)}`,
-        `${rail(decorated)}  ${buffer}`,
+        `${rail(decorated)}  ${displayValue}`,
       ];
       if (errorText) lines.push(`${rail(decorated)}  ${amber(errorText, decorated)}`);
-      lines.push(`${cornerBottom(decorated)}  ${muted("enter confirm · ctrl+c cancel", decorated)}`);
+      lines.push(`${cornerBottom(decorated)}  ${muted(hintText, decorated)}`);
       return lines;
     },
     async (token) => {
       if (token === "\r" || token === "\n") {
-        const error = options.validate ? await options.validate(buffer) : undefined;
+        const submitted =
+          options.placeholder !== undefined && !touched
+            ? options.placeholder
+            : buffer;
+        const error = options.validate
+          ? await options.validate(submitted)
+          : undefined;
         if (error) {
           errorText = error;
           return { type: "redraw" };
         }
-        return { type: "submit", value: buffer, summary: buffer };
+        return { type: "submit", value: submitted, summary: submitted };
       }
       if (token === "\u007f" || token === "\b") {
-        buffer = buffer.slice(0, -1);
+        if (options.placeholder !== undefined && !touched) {
+          touched = true;
+          buffer = options.placeholder.slice(0, -1);
+        } else {
+          buffer = buffer.slice(0, -1);
+        }
         errorText = undefined;
         return { type: "redraw" };
       }
-      if (token.length === 1 && token.charCodeAt(0) >= 32 && token.charCodeAt(0) !== 127) {
-        buffer += token;
+      if (
+        token.length === 1 &&
+        token.charCodeAt(0) >= 32 &&
+        token.charCodeAt(0) !== 127
+      ) {
+        if (options.placeholder !== undefined && !touched) {
+          touched = true;
+          buffer = token;
+        } else {
+          buffer += token;
+        }
         errorText = undefined;
         return { type: "redraw" };
       }

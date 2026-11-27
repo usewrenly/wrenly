@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { homedir } from "node:os";
 import { PassThrough } from "node:stream";
 import type { Probes } from "../src/contracts";
 import type { PromptIO } from "../src/prompts";
@@ -60,6 +61,7 @@ test("Recommended preset returns expanded args with previews, laravel, databases
     createProbes(),
     false,
     "/home/tester/wrenly",
+    "/home/tester",
   );
   // Folder Enter -> Preset Recommended Enter -> Default ports Yes Enter -> Confirm install Enter
   sendKeys(fake.input, ["\r", "\r", "\r", "\r"]);
@@ -73,6 +75,7 @@ test("Recommended preset returns expanded args with previews, laravel, databases
   expect(result).toContain("--inspection");
   expect(result).toContain("--yes");
   expect(result).not.toContain("--dictation");
+  expect(fake.getOutput()).toContain("Next.js 16 + Laravel 13");
   expect(fake.getOutput()).toContain(
     "Equivalent command: bunx @wrenly/cli install --directory /home/tester/wrenly --preset recommended",
   );
@@ -86,6 +89,7 @@ test("Custom setup selecting only databases implies --previews and notes it", as
     createProbes(),
     false,
     "/home/tester/wrenly",
+    "/home/tester",
   );
   // Folder Enter -> Select Custom (3 downs + Enter) -> Multiselect 3rd item (2 downs + space + Enter) -> Ports Enter -> Proceed Enter
   sendKeys(fake.input, [
@@ -120,6 +124,7 @@ test("busy port 3000 suggests 3001 as initial replacement value", async () => {
     }),
     false,
     "/home/tester/wrenly",
+    "/home/tester",
   );
   // Folder Enter -> Recommended Enter -> accept suggested 3001 Enter -> Confirm install Enter
   sendKeys(fake.input, ["\r", "\r", "\r", "\r"]);
@@ -144,6 +149,7 @@ test("explicit --directory and --preset flags skip their prompts", async () => {
     createProbes(),
     false,
     "/home/tester/wrenly",
+    "/home/tester",
   );
   // Only default ports prompt + final proceed prompt should run
   sendKeys(fake.input, ["\r", "\r"]);
@@ -165,6 +171,7 @@ test("existing destination folder triggers validation error and re-asks", async 
     }),
     false,
     "/home/tester/taken",
+    homedir(),
   );
   // Enter on taken -> backspace x5 ("taken") -> type "fresh" -> Enter -> Recommended -> Ports -> Confirm
   sendKeys(fake.input, [
@@ -185,8 +192,34 @@ test("existing destination folder triggers validation error and re-asks", async 
     "\r",
   ]);
   const result = await promise;
-  expect(fake.getOutput()).toContain(
-    "That folder already exists; choose a new one.",
-  );
+  expect(fake.getOutput()).toContain("That folder already exists");
   expect(result).toContain("/home/tester/fresh");
+});
+
+test("suggests cwd/wrenly outside homedir and resolves typed relative subfolder", async () => {
+  const fake1 = createFakeIo();
+  const p1 = runInstallWizard(
+    [],
+    fake1.io,
+    createProbes(),
+    false,
+    "/home/tester/wrenly",
+    "/tmp/e2e/v5",
+  );
+  sendKeys(fake1.input, ["\r", "\r", "\r", "\r"]);
+  const r1 = await p1;
+  expect(r1).toContain("/tmp/e2e/v5/wrenly");
+
+  const fake2 = createFakeIo();
+  const p2 = runInstallWizard(
+    [],
+    fake2.io,
+    createProbes(),
+    false,
+    "/home/tester/wrenly",
+    "/tmp/e2e/v5",
+  );
+  sendKeys(fake2.input, ["custom-app", "\r", "\r", "\r", "\r"]);
+  const r2 = await p2;
+  expect(r2).toContain("/tmp/e2e/v5/custom-app");
 });
