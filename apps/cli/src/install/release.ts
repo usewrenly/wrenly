@@ -1,5 +1,7 @@
 /** The CLI pins reviewed source bytes; a GitHub checksum is integrity evidence, not a signature. */
 import { createHash } from "node:crypto";
+// Updated alongside PINNED_RELEASE on each published CLI release.
+export const CLI_VERSION = "0.1.0-beta.5";
 export interface Release {
   revision: string;
   sha256: string;

@@ -1,8 +1,17 @@
 #!/usr/bin/env -S bun --no-env-file
 /** Entrypoints are inert when imported; interactive setup is explicit and local. */
 import {
+  BOLD,
+  GREEN,
+  MUTED,
+  RESET,
   createTerminalWriter,
+  renderActionResult,
+  renderBrandHeader,
+  renderDoctorTable,
+  renderHelp,
   renderInstallSummary,
+  renderPlanTable,
   renderStatusReport,
   supportsDecoration,
 } from "./presentation";
@@ -12,8 +21,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArguments } from "./arguments";
 import { inspectInstallation } from "./doctor";
+import { CLI_VERSION } from "./install/release";
 import { createLocalProbes } from "./probes";
-import type { Probes, Options, Report } from "./contracts";
+import type { Probes, Options } from "./contracts";
 import { installNew, resumeInstallation } from "./commands/installation";
 import {
   inspectInstallationStatus,
@@ -23,75 +33,6 @@ import {
 import { serveInstallation } from "./runtime/supervisor";
 
 const CANCEL_EXIT_CODE = 130;
-
-const HELP = `Wrenly · guided local setup
-
-  USAGE
-    bunx @wrenly/cli [command] [options]
-
-  COMMANDS
-    install      Prepare a verified release, database and local services
-    doctor       Check host prerequisites, ports and disk space
-    plan         Preview the exact installation actions without changes
-    status       Inspect the installation journal, database and runtime
-    start        Start the installation's PostgreSQL and local runtime
-    stop         Stop services while preserving all data and keys
-    resume       Continue an interrupted installation safely
-    setup        Print a one-time owner onboarding link in the terminal
-    help         Display this command reference
-
-  SETUP
-    --directory <path>       Absolute installation folder (default: ~/wrenly)
-    --web-port <port>        Browser port (default: 3000)
-    --api-port <port>        API port (default: 3002)
-    --database-port <port>   PostgreSQL port (default: 65433)
-    --preview-port <port>    Preview gateway port (default: 3003)
-
-  CAPABILITIES
-    --preset <name>          minimal | recommended | full
-      minimal                Next.js 16 core workspace only
-      recommended            Next.js 16 + Laravel 13, previews, app databases, inspection
-      full                   recommended + local voice dictation
-    --previews               Prepare isolated local preview containers
-    --laravel                Build the Laravel 13 FrankenPHP runtime image
-    --databases              Prepare Development app databases (enables previews)
-    --inspection             Build official Laravel & Next.js MCP inspection images
-    --dictation              Download Whisper weights and build dictation runtime
-
-  AUTOMATION
-    --archive <file>         Use a pre-downloaded verified release tarball
-    --json                   Output structured JSON (doctor, plan, status)
-    --yes                    Confirm non-interactive execution without prompts
-
-  EXAMPLES
-    bunx @wrenly/cli                                   Interactive guided setup
-    bunx @wrenly/cli install --preset recommended --yes Scripted recommended install
-    bunx @wrenly/cli doctor                            Verify host prerequisites
-
-  NOTES
-    Running without arguments or install without --yes opens interactive prompts on a TTY.
-    Stop preserves data. This version does not upgrade or uninstall an instance.
-    Optional major updates: https://www.usewrenly.org/#join (browser only; no CLI email collection).
-`;
-
-function renderReport(report: Report, write: (text: string) => void): void {
-  write("Wrenly · installation checks\n\n");
-  for (const check of report.checks) {
-    const label = check.status.toUpperCase();
-    const gap = " ".repeat(Math.max(2, 13 - label.length));
-    const dots = ".".repeat(Math.max(3, 22 - check.name.length));
-    write(
-      `${label}${gap}${check.name} ${dots} ${check.message}\n${check.remedy ? `  ↳ ${check.remedy}\n` : ""}`,
-    );
-  }
-  if (report.plan) {
-    write("\nINSTALLATION PLAN\n");
-    for (const item of report.plan) write(`  • ${item}\n`);
-  }
-  write(
-    `\n${report.ready ? "Prerequisites passed." : "Resolve the failed or unconfirmed checks before installing."}\n`,
-  );
-}
 
 async function confirm(
   action: string,
@@ -130,6 +71,7 @@ async function manage(
       options.directory,
       Boolean(process.stdin.isTTY && process.stdout.isTTY),
       write,
+      decorated,
     );
     return 0;
   }
@@ -137,14 +79,20 @@ async function manage(
   if (options.command === "resume") {
     const state = await resumeInstallation(options.directory, write);
     write(
-      `Ready: http://localhost:${state.webPort}\nRun wrenly setup --directory ${JSON.stringify(state.directory)} to create the first owner.\n`,
+      renderActionResult(
+        `Ready: http://localhost:${state.webPort} · run setup to create the first owner`,
+        decorated,
+      ),
     );
   } else if (options.command === "start" || options.command === "stop") {
     await changeInstallationRuntime(options.directory, options.command);
     write(
-      options.command === "stop"
-        ? "Stopped. Your data and configuration are preserved.\n"
-        : "Started. Use status to check your instance.\n",
+      renderActionResult(
+        options.command === "stop"
+          ? "Stopped. Your data and configuration are preserved."
+          : "Started. Use status to check your instance.",
+        decorated,
+      ),
     );
   }
   return 0;
@@ -164,10 +112,16 @@ export async function runCli(
     write(`${error instanceof Error ? error.message : "Invalid arguments."}\n`);
     return 2;
   }
-  if (options.command === "help") {
-    write(HELP);
+  if (options.command === "version") {
+    write(`wrenly v${CLI_VERSION}\n`);
     return 0;
   }
+  if (options.command === "help") {
+    write(renderHelp(decorated));
+    return 0;
+  }
+  const columns =
+    typeof process.stdout.columns === "number" ? process.stdout.columns : 80;
   try {
     if (!["doctor", "plan", "install"].includes(options.command))
       return await manage(options, write, decorated);
@@ -175,25 +129,44 @@ export async function runCli(
       { ...options, command: options.command === "doctor" ? "doctor" : "plan" },
       probes,
     );
-    if (options.command !== "install") {
-      report.command = options.command === "plan" ? "plan" : "doctor";
+    if (options.command === "doctor") {
       if (options.json) write(JSON.stringify(report) + "\n");
-      else renderReport(report, write);
+      else {
+        write(renderBrandHeader("host prerequisites", decorated));
+        write(renderDoctorTable(report, decorated, columns));
+      }
       return report.ready ? 0 : 1;
     }
-    renderReport(report, write);
-    if (!report.ready) return 1;
-    await confirm("install", options.yes, decorated);
-    const state = await installNew(options, import.meta.path, write);
+    if (options.command === "plan") {
+      report.command = "plan";
+      if (options.json) write(JSON.stringify(report) + "\n");
+      else {
+        write(renderBrandHeader("installation plan", decorated));
+        write(renderDoctorTable(report, decorated, columns));
+        write("\n");
+        write(renderPlanTable(options, decorated, columns, true));
+      }
+      return report.ready ? 0 : 1;
+    }
+    if (!report.ready) {
+      write("\n");
+      write(renderDoctorTable(report, decorated, columns));
+      return 1;
+    }
+    if (!options.yes) {
+      write(renderPlanTable(options, decorated, columns, false));
+      write("\n");
+      await confirm("install", options.yes, decorated);
+    }
     write(
-      renderInstallSummary(
-        state,
-        decorated,
-        typeof process.stdout.columns === "number" ? process.stdout.columns : 80,
-      ),
+      decorated
+        ? `  ${GREEN}✔${RESET}  ${BOLD}Preflight checks passed${RESET} ${MUTED}(${report.checks.length}/${report.checks.length})${RESET}\n`
+        : `Preflight checks passed (${report.checks.length}/${report.checks.length}).\n`,
     );
+    const state = await installNew(options, import.meta.path, write);
+    write(renderInstallSummary(state, decorated, columns));
     if (process.stdin.isTTY && process.stdout.isTTY)
-      await openOwnerSetup(state.directory, true, write);
+      await openOwnerSetup(state.directory, true, write, decorated);
     else
       write(
         `Run wrenly setup --directory ${JSON.stringify(state.directory)} in an interactive terminal for the private owner link.\n`,

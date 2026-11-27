@@ -155,7 +155,7 @@ test("inspection and dictation options enable Laravel, write env configuration, 
     await rm(root, { recursive: true, force: true });
   }
 });
-test("browser handoff opens only the public setup route without tokens", async () => {
+test("browser handoff never auto-opens a blank setup page or leaks tokens", async () => {
   const opened: string[] = [];
   let output = "";
   await offerSetupBrowserHandoff(41000, {
@@ -183,23 +183,7 @@ test("browser handoff opens only the public setup route without tokens", async (
       output += text;
     },
   });
-  expect(opened).toEqual(["http://localhost:41000/setup"]);
-  expect(output).toContain("Opened http://localhost:41000/setup in your browser");
-  expect(output).not.toContain("#setup=");
-
-  opened.length = 0;
-  output = "";
-  await offerSetupBrowserHandoff(41000, {
-    desktop: true,
-    open: async (url) => {
-      opened.push(url);
-      return false;
-    },
-    write: (text) => {
-      output += text;
-    },
-  });
-  expect(opened).toEqual(["http://localhost:41000/setup"]);
-  expect(output).toContain("Could not open a browser automatically");
+  expect(opened).toHaveLength(0);
+  expect(output).toContain("http://localhost:41000/setup");
   expect(output).not.toContain("#setup=");
 });

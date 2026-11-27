@@ -50,23 +50,23 @@ function countWrappedLines(lines: string[], columns: number): number {
 }
 
 function rail(decorated: boolean): string {
-  return decorated ? `${WOOD}│${RESET}` : "│";
+  return decorated ? `  ${WOOD}│${RESET}` : "  │";
 }
 
 function diamondActive(decorated: boolean): string {
-  return decorated ? `${WOOD}◆${RESET}` : "◆";
+  return decorated ? `  ${WOOD}◆${RESET}` : "  ◆";
 }
 
 function diamondDone(decorated: boolean): string {
-  return decorated ? `${WOOD}◇${RESET}` : "◇";
+  return decorated ? `  ${WOOD}◇${RESET}` : "  ◇";
 }
 
 function cornerBottom(decorated: boolean): string {
-  return decorated ? `${WOOD}└${RESET}` : "└";
+  return decorated ? `  ${WOOD}└${RESET}` : "  └";
 }
 
 function cancelMark(decorated: boolean): string {
-  return decorated ? `${RED}■${RESET}` : "■";
+  return decorated ? `  ${RED}■${RESET}` : "  ■";
 }
 
 function bold(text: string, decorated: boolean): string {
@@ -213,7 +213,7 @@ async function runInteractivePrompt<T>(
               finish(() => {
                 clearFrame();
                 io.output.write(
-                  `${diamondDone(decorated)}  ${bold(message, decorated)}\n${rail(decorated)}  ${muted(action.summary, decorated)}\n`,
+                  `${diamondDone(decorated)}  ${bold(message, decorated)}\n${rail(decorated)}  ${muted(action.summary, decorated)}\n${rail(decorated)}\n`,
                 );
                 resolve(action.value);
               });

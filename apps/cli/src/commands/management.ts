@@ -11,7 +11,8 @@ import {
 } from "../install/state";
 import { SPEECH_MODEL_FILENAME } from "../install/speech-model";
 import { runtimeRequest, type Reply } from "../runtime/control";
-import { cleanEnvironment, runCommand } from "../runtime/process";
+import { cleanEnvironment } from "../runtime/process";
+import { renderOwnerSetupLink } from "../presentation";
 import {
   inspectDatabase,
   startDatabase,
@@ -21,18 +22,11 @@ import { acquireInstallationLock } from "../runtime/lock";
 const RUNTIME_START_TIMEOUT_MS = 100000;
 const RUNTIME_POLL_MS = 500;
 const OWNER_SETUP_TIMEOUT_MS = 30000;
-const BROWSER_OPEN_TIMEOUT_MS = 5000;
-const SAFE_DESKTOP_ENVIRONMENT = [
-  "DISPLAY",
-  "WAYLAND_DISPLAY",
-  "XDG_RUNTIME_DIR",
-  "DBUS_SESSION_BUS_ADDRESS",
-  "XDG_CURRENT_DESKTOP",
-] as const;
+const MAX_SETUP_OUTPUT_BYTES = 8 * 1024;
 
 export interface BrowserHandoff {
-  desktop: boolean;
-  open(url: string): Promise<boolean>;
+  desktop?: boolean;
+  open?: (url: string) => Promise<boolean>;
   write(text: string): void;
 }
 function environment(text: string): Map<string, string> {
@@ -226,63 +220,84 @@ function publicSetupUrl(webPort: number): string {
     throw new Error("Setup browser URL must not carry parameters or tokens.");
   return url.href;
 }
-/** Automatically open only the token-free public setup page on local desktops so the one-time token never enters opener command arguments. */
+/** Never auto-launch a blank /setup tab or pass setup proofs to a desktop opener. */
 export async function offerSetupBrowserHandoff(
   webPort: number,
   handoff: BrowserHandoff,
 ): Promise<void> {
   const url = publicSetupUrl(webPort);
-  if (!handoff.desktop) {
-    handoff.write(
-      `Open ${url} in your browser and use the private setup link printed above.\n`,
-    );
-    return;
-  }
-  const opened = await handoff.open(url);
-  if (opened)
-    handoff.write(
-      `Opened ${url} in your browser. Keep the private setup link printed above to complete setup.\n`,
-    );
-  else
-    handoff.write(
-      `Could not open a browser automatically. Open ${url} and use the private setup link printed above.\n`,
-    );
+  handoff.write(
+    `Open the private setup link printed above (or visit ${url} manually if copying the code).\n`,
+  );
 }
-async function openPublicSetupBrowser(url: string, cwd: string): Promise<boolean> {
-  if (url.includes("#") || url.includes("?")) return false;
-  const env = cleanEnvironment();
-  for (const key of SAFE_DESKTOP_ENVIRONMENT) {
-    const value = process.env[key];
-    if (value) env[key] = value;
+async function readPrivateSetupUrl(
+  directory: string,
+  expectedOrigin: string,
+): Promise<string> {
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "--no-env-file",
+      `--env-file=${join(directory, ".env")}`,
+      "src/modules/auth/setup/setup-cli.ts",
+    ],
+    {
+      cwd: join(directory, "apps/api"),
+      env: cleanEnvironment(),
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "inherit",
+    },
+  );
+  const timer = setTimeout(() => child.kill("SIGKILL"), OWNER_SETUP_TIMEOUT_MS);
+  try {
+    const reader = child.stdout.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const item = await reader.read();
+        if (item.done) break;
+        size += item.value.length;
+        if (size > MAX_SETUP_OUTPUT_BYTES) {
+          throw new Error("Owner setup reply exceeded bounds.");
+        }
+        chunks.push(item.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const exitCode = await child.exited;
+    if (exitCode !== 0) {
+      throw new Error("Owner setup link could not be generated.");
+    }
+    const expectedPrefix = `${expectedOrigin}/setup#setup=`;
+    const setupUrl = Buffer.concat(chunks)
+      .toString("utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(
+        (line) =>
+          line.startsWith(expectedPrefix) &&
+          /^[A-Za-z0-9_-]+$/.test(line.slice(expectedPrefix.length)),
+      );
+    if (!setupUrl) {
+      throw new Error("Owner setup link was not returned by setup helper.");
+    }
+    return setupUrl;
+  } finally {
+    clearTimeout(timer);
+    if (child.exitCode === null) child.kill("SIGKILL");
+    await child.exited;
   }
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (value: boolean): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(value);
-    };
-    const child = spawn("xdg-open", [url], {
-      cwd,
-      env,
-      detached: true,
-      stdio: "ignore",
-    });
-    const timer = setTimeout(() => {
-      if (child.exitCode === null) child.kill("SIGTERM");
-      finish(false);
-    }, BROWSER_OPEN_TIMEOUT_MS);
-    child.once("error", () => finish(false));
-    child.once("close", (code) => finish(code === 0));
-    child.unref();
-  });
 }
+
 /** Native Better Auth setup prints its short-lived link only to an explicitly interactive terminal. */
 export async function openOwnerSetup(
   directory: string,
   interactive: boolean,
   write: (text: string) => void = (text) => process.stdout.write(text),
+  decorated = false,
 ): Promise<void> {
   if (!interactive)
     throw new Error(
@@ -290,32 +305,18 @@ export async function openOwnerSetup(
     );
   const state = await readState(directory);
   const release = await acquireInstallationLock(directory);
+  let setupUrl: string;
   try {
     await verifyConfiguration(state);
     const runtime = await runtimeRequest(state, "status");
     if (runtime?.status !== "running")
       throw new Error("Start this installation before opening owner setup.");
-    await runCommand(
-      [
-        process.execPath,
-        "--no-env-file",
-        `--env-file=${join(directory, ".env")}`,
-        "src/modules/auth/setup/setup-cli.ts",
-      ],
-      join(directory, "apps/api"),
-      OWNER_SETUP_TIMEOUT_MS,
-      true,
+    setupUrl = await readPrivateSetupUrl(
+      directory,
+      `http://localhost:${state.webPort}`,
     );
   } finally {
     await release();
   }
-  await offerSetupBrowserHandoff(state.webPort, {
-    desktop: Boolean(
-      process.stdin.isTTY &&
-        process.stdout.isTTY &&
-        (process.env.DISPLAY || process.env.WAYLAND_DISPLAY),
-    ),
-    open: (url) => openPublicSetupBrowser(url, state.directory),
-    write,
-  });
+  write(renderOwnerSetupLink(setupUrl, state.directory, decorated));
 }
