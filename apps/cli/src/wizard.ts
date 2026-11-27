@@ -1,5 +1,7 @@
 /** Interactive installation wizard that skips prompts for any explicitly provided flags. */
-import { isAbsolute, normalize } from "node:path";
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, join, normalize, resolve } from "node:path";
 import { parseArguments } from "./arguments";
 import type { InstallPreset, Probes } from "./contracts";
 import { BOLD, MUTED, RESET, WOOD } from "./presentation";
@@ -13,6 +15,7 @@ import {
 } from "./prompts";
 
 const MAX_PATH_LENGTH = 4096;
+const MAX_CONTROL_SOCKET_PATH_BYTES = 100;
 const MIN_PORT = 1024;
 const MAX_PORT = 65535;
 const PORT_SCAN_LIMIT = 50;
@@ -136,6 +139,36 @@ async function findNextFreePort(
   return start;
 }
 
+function normalizeDirectoryInput(raw: string, cwd: string): string {
+  const trimmed = raw.trim();
+  const expanded =
+    trimmed === "~"
+      ? homedir()
+      : trimmed.startsWith("~/")
+        ? join(homedir(), trimmed.slice(2))
+        : trimmed;
+  return isAbsolute(expanded)
+    ? normalize(expanded)
+    : normalize(resolve(cwd, expanded));
+}
+
+function suggestInstallDirectory(
+  cwd: string,
+  defaultDirectory: string,
+): string {
+  const localCandidate = join(cwd, "wrenly");
+  const isSourceCheckout = existsSync(join(cwd, "turbo.json"));
+  if (
+    cwd !== homedir() &&
+    !isSourceCheckout &&
+    Buffer.byteLength(join(localCandidate, ".wrenly", "control.sock")) <=
+      MAX_CONTROL_SOCKET_PATH_BYTES
+  ) {
+    return localCandidate;
+  }
+  return defaultDirectory;
+}
+
 /** Runs the interactive installation flow and returns resolved non-interactive install arguments. */
 export async function runInstallWizard(
   args: string[],
@@ -143,6 +176,7 @@ export async function runInstallWizard(
   probes: Probes,
   decorated: boolean,
   defaultDirectory: string,
+  cwd: string = process.cwd(),
 ): Promise<string[]> {
   const normalizedInput =
     args.length === 0
@@ -161,24 +195,33 @@ export async function runInstallWizard(
 
   let directory = parsed.directory;
   if (!seen.has("--directory")) {
+    const suggestedDirectory = suggestInstallDirectory(cwd, defaultDirectory);
     const chosen = await textPrompt(
       {
         message: "Installation folder",
-        initial: defaultDirectory,
+        placeholder: suggestedDirectory,
+        hint: "type a path or press enter for default · ctrl+c cancel",
         validate: async (raw) => {
           const trimmed = raw.trim();
           if (
             !trimmed ||
-            !isAbsolute(trimmed) ||
-            trimmed.length > MAX_PATH_LENGTH ||
-            !PATH_ALLOWED.test(trimmed) ||
             [...trimmed].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)
           ) {
-            return "Choose a short absolute path using letters, numbers, '/', '.', '-', or '_'.";
+            return "Choose a valid path using letters, numbers, '/', '.', '-', or '_'.";
           }
-          const destination = await probes.destination(normalize(trimmed));
+          const resolved = normalizeDirectoryInput(trimmed, cwd);
+          if (
+            !isAbsolute(resolved) ||
+            resolved.length > MAX_PATH_LENGTH ||
+            !PATH_ALLOWED.test(resolved) ||
+            Buffer.byteLength(join(resolved, ".wrenly", "control.sock")) >
+              MAX_CONTROL_SOCKET_PATH_BYTES
+          ) {
+            return "Choose a shorter path using simple directory names (100-byte socket limit).";
+          }
+          const destination = await probes.destination(resolved);
           if (destination === "existing")
-            return "That folder already exists; choose a new one.";
+            return "That folder already exists — enter a new subfolder (e.g. ./wrenly) or press Enter for default.";
           if (destination === "unsafe")
             return "That folder uses a symlink or unsafe parent permissions.";
           if (destination === "unconfirmed")
@@ -189,7 +232,7 @@ export async function runInstallWizard(
       io,
       decorated,
     );
-    directory = normalize(chosen.trim());
+    directory = normalizeDirectoryInput(chosen, cwd);
   }
 
   const capabilities: CapabilityState = {
@@ -217,22 +260,22 @@ export async function runInstallWizard(
           {
             value: "recommended",
             label: "Recommended",
-            hint: "previews, Laravel 13, app databases, framework inspection",
+            hint: "Next.js 16 + Laravel 13, previews, app databases, inspection",
           },
           {
             value: "full",
             label: "Everything",
-            hint: "adds local voice dictation, ~148 MB download",
+            hint: "adds local voice dictation (~148 MB download)",
           },
           {
             value: "minimal",
             label: "Minimal",
-            hint: "core workspace only",
+            hint: "Next.js 16 core workspace only",
           },
           {
             value: "custom",
             label: "Custom",
-            hint: "choose each capability",
+            hint: "choose optional capabilities (Next.js 16 always included)",
           },
         ],
       },

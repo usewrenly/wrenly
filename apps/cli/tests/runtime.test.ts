@@ -1,11 +1,12 @@
 /** Real child processes verify lock exclusion and the private control protocol without Docker. */
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createServer } from "node:net";
 import { acquireInstallationLock } from "../src/runtime/lock";
 import { runtimeRequest } from "../src/runtime/control";
+import { runCommand } from "../src/runtime/process";
 import { prepareInstallation } from "../src/install/prepare";
 import { tarFixture } from "./source-fixture";
 async function port(): Promise<number> {
@@ -95,3 +96,31 @@ test("supervisor starts only its children, validates identity and stops through 
     await rm(parent, { recursive: true, force: true });
   }
 }, 20000);
+
+test("runCommand provisions an ephemeral writable DOCKER_CONFIG for docker invocations and cleans it up", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "wrenly-docker-env-test-"));
+  const fakeBin = join(dir, "bin");
+  await mkdir(fakeBin, { recursive: true });
+  const dockerPath = join(fakeBin, "docker");
+  const recordedPath = join(dir, "recorded-config.txt");
+  await writeFile(
+    dockerPath,
+    `#!/bin/sh
+echo "$DOCKER_CONFIG" > ${JSON.stringify(recordedPath)}
+mkdir -p "$DOCKER_CONFIG/buildx" && touch "$DOCKER_CONFIG/buildx/probe"
+`,
+    { mode: 0o755 },
+  );
+  try {
+    await runCommand([dockerPath, "build", "."], dir);
+    const usedConfig = (await readFile(recordedPath, "utf8")).trim();
+    expect(usedConfig).not.toBe("/nonexistent");
+    expect(usedConfig).toContain("wrenly-docker-");
+    const leftovers = (await readdir(tmpdir())).filter((name) =>
+      usedConfig.endsWith(name),
+    );
+    expect(leftovers).toHaveLength(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
