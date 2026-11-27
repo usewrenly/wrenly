@@ -1,14 +1,14 @@
 /** The CLI pins reviewed source bytes; a GitHub checksum is integrity evidence, not a signature. */
 import { createHash } from "node:crypto";
 // Updated alongside PINNED_RELEASE on each published CLI release.
-export const CLI_VERSION = "0.1.0-beta.5";
+export const CLI_VERSION = "0.1.0-beta.6";
 export interface Release {
   revision: string;
   sha256: string;
 }
 export const PINNED_RELEASE: Readonly<Release> = Object.freeze({
-  revision: "99061ff29631df4a29d8440d046b27a099a1fcf4",
-  sha256: "698b652c498779c392e052cb33c774ca4a04f1c45091795312ef6d8f47d62af8",
+  revision: "0ca419a989b17e4affaa925e1e78b35aa0d38543",
+  sha256: "37681b163b0cfdf4b49b06793ae65fce210a2268fe827d99c3030d50d91ffe60",
 });
 export const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT_MS = 120_000;
