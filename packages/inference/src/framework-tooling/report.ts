@@ -215,11 +215,14 @@ export function parseFrameworkInspectionReport(
   return parsed;
 }
 
-/** Use the same complete file order on each side of the internal MCP contract. */
+/** Produces a canonical revision digest independent of input file ordering. */
 export function frameworkSourceHash(
   files: Array<{ path: string; content: string }>,
 ): string {
-  return createHash("sha256").update(JSON.stringify(files)).digest("hex");
+  const canonical = files
+    .map((file) => ({ path: file.path, content: file.content }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
 /** Keep error messages, not browser URLs, stack traces or arbitrary metadata from the runtime envelope. */

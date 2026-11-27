@@ -2,11 +2,11 @@
 import Docker from "dockerode";
 import { mkdir, lstat } from "node:fs/promises";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import {
   OFFICIAL_FRAMEWORK_RELEASES,
   FRAMEWORK_INSPECTION_LIMITS,
   assertInspectionIdentity,
+  frameworkSourceHash,
   parseFrameworkInspectionReport,
   type FrameworkInspectionReport,
   type InspectionFramework,
@@ -94,9 +94,7 @@ export async function inspectInstalledFramework(input: {
     return { status: "unavailable", reason: "toolchain_identity_mismatch" };
   const expected = {
     framework: input.framework,
-    sourceHash: createHash("sha256")
-      .update(JSON.stringify(input.files))
-      .digest("hex"),
+    sourceHash: frameworkSourceHash(input.files),
     toolchainHash: image.Id.slice(7),
   };
   if (input.framework === "nextjs") {
