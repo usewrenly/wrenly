@@ -141,3 +141,35 @@ test("official browser errors project messages without retaining stack traces or
     ),
   ).toThrow();
 });
+
+test("frameworkSourceHash is order-independent and parseEditInput accepts reordered multi-file trees", async () => {
+  const { parseEditInput } =
+    await import("../../../src/contracts/edit-contract.js");
+  const { frameworkSourceHash } =
+    await import("../../../src/framework-tooling/report.js");
+  const original = [
+    { path: "routes/web.php", content: "<?php" },
+    { path: "composer.json", content: "{}" },
+    { path: "app/Http/Controller.php", content: "<?php" },
+  ];
+  const reordered = [original[2]!, original[0]!, original[1]!];
+  expect(frameworkSourceHash(original)).toBe(frameworkSourceHash(reordered));
+
+  const report = applicationInformationReport(
+    {
+      framework: "laravel",
+      sourceHash: frameworkSourceHash(original),
+      toolchainHash,
+    },
+    { php_version: "8.4", laravel_version: "13.0.0", packages: [] },
+  );
+  const parsed = parseEditInput({
+    version: 1,
+    prompt: "Repair",
+    files: reordered,
+    attempt: 2,
+    previousErrors: [],
+    framework_inspection_v1: report,
+  });
+  expect(parsed.framework_inspection_v1?.sourceHash).toBe(report.sourceHash);
+});
